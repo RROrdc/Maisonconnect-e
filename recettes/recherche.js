@@ -37,16 +37,93 @@ const SITES = [
   },
 ];
 
-const sansAccent = (s) => String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+/* ⚠️ Les LIGATURES ne sont pas des accents : `normalize('NFD')` décompose « é »
+   en e + accent, mais laisse « œ » intact. Le filtre [^a-z] le remplaçait donc
+   par une espace, et « bœuf » devenait « b uf » — deux fragments trop courts,
+   jetés. Le mot disparaissait purement et simplement du nom du plat.
+   Conséquence vue en vrai : « Fajitas de bœuf aux poivrons » ne cherchait plus
+   que [fajitas, poivrons], et acceptait des fajitas AU POULET. */
+const sansAccent = (s) => String(s || '')
+  .replace(/œ/gi, 'oe').replace(/æ/gi, 'ae')
+  .normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 /* Mots qui ne distinguent rien : les garder ferait passer « tarte aux pommes »
-   pour « tarte aux poireaux ». */
-const VIDES = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'a', 'et', 'en', 'un', 'une',
-  'sur', 'avec', 'sans', 'maison', 'facile', 'rapide', 'recette', 'pour']);
+   pour « tarte aux poireaux ».
 
+   ⚠️ La seconde moitié de cette liste — les QUALIFICATIFS — a été ajoutée après
+   mesure sur les vrais plats du foyer. Les noms venus des « idées de plats » de
+   l'IA sont descriptifs (« Bo bun EXPRESS au poulet GRILLÉ », « Riz cantonais
+   MAISON aux crevettes ») ; ces adjectifs ne figurent dans aucun titre de
+   recette, et comptés comme attendus ils faisaient chuter la couverture sur la
+   page qui était pourtant la bonne. Ils décrivent la préparation, pas le plat. */
+const VIDES = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'a', 'et', 'en', 'un', 'une',
+  'sur', 'avec', 'sans', 'ou', 'mon', 'ma', 'mes', 'son', 'sa', 'ses', 'par', 'dans',
+  'maison', 'facile', 'rapide', 'recette', 'pour',
+  'express', 'minute', 'simple', 'leger', 'legere', 'gourmand', 'gourmande', 'delicieux',
+  'traditionnel', 'traditionnelle', 'grille', 'grilles', 'grillee', 'grillees',
+  'marine', 'marines', 'marinee', 'marinees', 'fait', 'faite', 'bon', 'bonne', 'super',
+  'meilleur', 'meilleure', 'parfait', 'parfaite', 'veritable', 'vraie', 'vrai']);
+
+/* ⚠️ Seuil à 3 lettres, pas 4. Avec 4, « bo » et « bun » disparaissaient : « Bo
+   bun express au poulet grillé » cherchait [express, poulet] — c'est-à-dire tout
+   sauf le nom du plat. Même chose pour « riz », « pho », « wok », « thé ». Les
+   mots de 3 lettres sans intérêt sont couverts par la liste ci-dessus. */
 const motsUtiles = (s) => sansAccent(s)
   .replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/)
-  .filter((m) => m.length >= 4 && !VIDES.has(m));
+  .filter((m) => m.length >= 3 && !VIDES.has(m));
+
+/* Distance de Levenshtein, deux lignes seulement. */
+function distance(a, b) {
+  if (a === b) return 0;
+  if (!a.length || !b.length) return Math.max(a.length, b.length);
+  let prec = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cour = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cour[j] = Math.min(prec[j] + 1, cour[j - 1] + 1, prec[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prec = cour;
+  }
+  return prec[b.length];
+}
+
+/* Ressemblance entre deux mots, de 0 à 1.
+
+   ⚠️ Ceci remplace une tolérance qui tronquait la FIN du mot (`m.slice(0, len-2)`).
+   Elle ne rattrapait donc que les fautes de terminaison — or les vraies fautes
+   sont au MILIEU : « ba(g)gels », « sara(z)in », « bru(s)chetta », « rigaton(n)i ».
+   Résultat mesuré : 750g renvoyait bien « bruschetta tomates mozzarella » en
+   premier résultat pour « bruchetta », et notre comparateur le notait 0 %.
+
+   Seuil 0,75, calibré pour accepter les quatre fautes réelles du foyer tout en
+   refusant les vrais faux amis :
+     bruchetta / bruschetta  0,90 ✓      poulet / poulpe  0,67 ✗
+     baggels   / bagels      0,86 ✓      creme  / crepe   0,60 ✗
+     sarazin   / sarrasin    0,75 ✓      jambon / jambe   0,67 ✗
+   En dessous de 5 lettres on n'essaie pas : à cette longueur, deux mots
+   différents sont trop souvent à une lettre l'un de l'autre. */
+const RESSEMBLANCE = 0.75;
+
+/* Le pluriel n'est pas une faute : « galette » et « galettes », « tomate » et
+   « tomates » sont le même mot. Le retirer d'abord évite de dépenser la
+   tolérance aux fautes sur une simple marque de nombre — c'est ce qui faisait
+   échouer « baggels » face à « bagel » (deux différences au lieu d'une). */
+const singulier = (m) => (m.length > 4 ? m.replace(/[sx]$/, '') : m);
+
+function proches(a, b) {
+  if (a === b) return 1;
+  const x = singulier(a), y = singulier(b);
+  if (x === y) return 1;
+  /* ⚠️ Au moins un des deux mots doit faire 6 lettres. En dessous, une seule
+     lettre d'écart suffit à confondre deux mots bien distincts — « crème » et
+     « crêpe » sont à 0,80 de ressemblance et n'ont rien à voir. */
+  if (Math.max(x.length, y.length) < 6) return 0;
+  if (Math.abs(x.length - y.length) > 3) return 0;
+  const d = distance(x, y);
+  if (d > 2) return 0;
+  const s = 1 - d / Math.max(x.length, y.length);
+  return s >= RESSEMBLANCE ? s : 0;
+}
 
 /* Score de correspondance entre le nom du plat et un titre trouvé.
 
@@ -66,31 +143,66 @@ const motsUtiles = (s) => sansAccent(s)
    Le produit des deux favorise le titre le plus SOBRE parmi ceux qui couvrent :
    « gratin de courgettes » l'emporte sur « gratin de courgettes au chèvre », et
    « dahl de lentilles corail » sur une variante à rallonge. */
-function detail(nomPlat, titre) {
+function detail(nomPlat, titre, { photo = false } = {}) {
   const attendus = motsUtiles(nomPlat);
-  if (!attendus.length) return { score: 0, couverture: 0, extras: 0 };
+  if (!attendus.length) return { score: 0, couverture: 0, extras: 0, teteOk: false };
 
   const motsTitre = motsUtiles(titre);
   const cible = sansAccent(titre).replace(/[^a-z0-9]+/g, ' ');
 
+  /* Un mot attendu est-il présent dans le titre — exactement, en sous-chaîne,
+     ou à une faute près ? Renvoie le crédit obtenu (0 à 1). */
+  const credit = (m) => {
+    if (cible.includes(m)) return 1;
+    let meilleure = 0;
+    for (const t of motsTitre) {
+      if (t.includes(m) || m.includes(t)) return 1;
+      meilleure = Math.max(meilleure, proches(m, t));
+    }
+    return meilleure;
+  };
+
   let trouves = 0;
-  for (const m of attendus) {
-    if (cible.includes(m)) { trouves++; continue; }
-    /* Tolérance à une faute de frappe : « sarazin » vs « sarrasin ». */
-    const racine = m.slice(0, Math.max(4, m.length - 2));
-    if (cible.includes(racine)) trouves += 0.75;
-  }
+  const credits = attendus.map((m) => { const c = credit(m); trouves += c; return c; });
   const couverture = trouves / attendus.length;
 
-  /* Un mot du titre est « en trop » si aucun mot attendu ne s'y rapporte.
-     Le test va dans les deux sens : « burger » se retrouve dans
-     « cheeseburger », qui n'est donc pas un mot parasite. */
-  const extras = motsTitre.filter((t) =>
-    !attendus.some((a) => t.includes(a) || a.includes(t)
-      || t.includes(a.slice(0, Math.max(4, a.length - 2))))).length;
+  /* ⚠️ « Tous les mots sont présents » et « la couverture vaut 1 » ne sont PAS
+     la même chose, et les confondre m'a coûté un tour : un mot rattrapé malgré
+     une faute rapporte sa ressemblance (0,90 pour bruchetta/bruschetta), jamais
+     1. La couverture d'un plat mal orthographié ne peut donc jamais atteindre
+     100 %, et la règle « tout couvert » ne se déclenchait plus jamais dès qu'il
+     y avait une faute — c'est-à-dire dans le seul cas qu'elle devait servir.
+     La couverture PONDÈRE (elle classe), ce booléen CONSTATE (il décide). */
+  const tousCouverts = credits.every((c) => c > 0);
 
-  const precision = attendus.length / (attendus.length + extras);
-  return { score: couverture * precision, couverture, extras };
+  /* LA TÊTE, des DEUX côtés. En français, le premier mot significatif nomme la
+     chose : « RIGATONI chorizo burrata », « BAGELS saumon ». Le contrôle est
+     SYMÉTRIQUE — la tête du plat et celle du titre doivent être la même.
+
+     ⚠️ Le contrôle à sens unique ne suffisait pas, et c'est le test qui l'a
+     montré : « barbecue » se retrouve bien dans « papillote de fruits d'été au
+     barbecue », donc la tête du plat était couverte… par un mot posé en fin de
+     titre, sur une recette de dessert. Exiger que les deux commencent pareil
+     règle le cas sans liste de mots interdits à tenir à jour. */
+  const teteTitre = motsTitre[0] || '';
+  const teteOk = credits[0] > 0 && !!teteTitre
+    && (proches(attendus[0], teteTitre) > 0
+      || teteTitre.includes(attendus[0]) || attendus[0].includes(teteTitre));
+
+  /* Un mot du titre est « en trop » si aucun mot attendu ne s'y rapporte. */
+  const extras = motsTitre.filter((t) =>
+    !attendus.some((a) => t.includes(a) || a.includes(t) || proches(a, t))).length;
+
+  /* ⚠️ Les mots en trop ne pèsent PAS le même poids selon ce qu'on cherche.
+     Pour une RECETTE, ils comptent plein pot : « gratin de courgettes au
+     chèvre » n'est pas « gratin de courgettes », les ingrédients diffèrent.
+     Pour une PHOTO, un titre plus précis reste une image parfaitement juste —
+     « bruschetta tomates mozzarella » illustre très bien « bruschetta ». Les
+     pénaliser pareil, c'était refuser 100 % des titres un peu détaillés, alors
+     que ce sont précisément ceux qui portent les belles photos. */
+  const poids = photo ? 0.35 : 1;
+  const precision = attendus.length / (attendus.length + extras * poids);
+  return { score: couverture * precision, couverture, extras, teteOk, tousCouverts };
 }
 
 const correspondance = (nomPlat, titre) => detail(nomPlat, titre).score;
@@ -113,7 +225,7 @@ async function page(url, msMax = 15000) {
 
 /* Renvoie les candidats CLASSÉS, avec leur score. Ne télécharge aucune recette :
    c'est l'appelant qui décidera d'aller lire la meilleure. */
-async function chercher(nomPlat, { max = 6 } = {}) {
+async function chercher(nomPlat, { max = 6, photo = false } = {}) {
   const nom = nettoyerTexte(nomPlat);
   if (!nom) return [];
   const out = [];
@@ -128,7 +240,7 @@ async function chercher(nomPlat, { max = 6 } = {}) {
       if (vus.has(url)) continue;
       vus.add(url);
       const titre = site.titre(url);
-      out.push({ url, titre, site: site.nom, ...detail(nom, titre) });
+      out.push({ url, titre, site: site.nom, ...detail(nom, titre, { photo }) });
       if (vus.size >= max * 2) break;
     }
   }
@@ -146,4 +258,40 @@ async function meilleur(nomPlat, { seuil = SEUIL } = {}) {
   return premier;
 }
 
-module.exports = { chercher, meilleur, correspondance, detail, motsUtiles, SEUIL };
+/* Accepter une page POUR SA PHOTO — deux règles explicites, pas un seuil.
+
+   Un seuil chiffré ne se discute pas et ne s'explique pas. À la première
+   tentative j'en avais posé un bas (0,42) en comptant sur lui pour trier : le
+   test a immédiatement laissé entrer « pâtes carbo → pâtes au pesto », c'est-à-
+   dire l'erreur exacte que ce fichier existe pour empêcher. Deux règles
+   structurelles font mieux, et se disent en une phrase :
+
+   1. MÊME TÊTE — le plat et le titre doivent commencer par le même mot.
+      Élimine risotto/rigatoni, club sandwich/bagels, papillote/barbecue.
+
+   2. TOUT COUVERT, ou RIEN EN TROP.
+      • tous les mots retrouvés → le titre contient tout le nom du plat ; s'il en
+        dit plus, c'est une version plus PRÉCISE du même plat, et sa photo
+        convient. « bruschetta tomates mozzarella » illustre « bruschetta ».
+      • aucun mot en trop → le titre est une version plus SOBRE du plat.
+        « riz cantonais » illustre « riz cantonais aux crevettes ».
+      Ce qu'on refuse, c'est le cas MIXTE : un mot attendu manque ET un mot
+      étranger le remplace. C'est la signature d'un autre plat — « pâtes AU
+      PESTO » quand on cherchait « carbo », « tarte aux POIREAUX » quand on
+      cherchait des pommes.
+
+   Le score ne sert plus qu'à CLASSER les candidats entre eux ; le plancher
+   n'écarte que l'absurde. */
+const SEUIL_PHOTO = 0.30;
+
+const convientPourPhoto = (d) => !!d.teteOk
+  && (d.tousCouverts || d.extras === 0)
+  && d.score >= SEUIL_PHOTO;
+
+async function meilleurPourPhoto(nomPlat) {
+  const candidats = await chercher(nomPlat, { photo: true });
+  return candidats.find(convientPourPhoto) || null;
+}
+
+module.exports = { chercher, meilleur, meilleurPourPhoto, convientPourPhoto,
+  correspondance, detail, motsUtiles, distance, proches, SEUIL, SEUIL_PHOTO };

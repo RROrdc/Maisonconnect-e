@@ -744,10 +744,20 @@ app.post('/api/recette/chercher', async (req, res) => {
       /* On rend quand même les candidats écartés : c'est plus utile que « rien
          trouvé », et ça laisse la main à l'humain, qui reconnaîtra peut-être le
          bon titre. */
-      const proches = await recettes.recherche.chercher(nom, { max: 5 });
+      const proches = await recettes.recherche.chercher(nom, { max: 5, photo: true });
       return res.status(404).json({
         error: `Aucune recette ne correspond assez nettement à « ${nom} ».`,
-        candidats: proches.map((c) => ({ titre: c.titre, url: c.url, score: Math.round(c.score * 100) })),
+        /* On dit POURQUOI chacun a été écarté. « Rien trouvé » n'apprend rien et
+           ne se conteste pas ; « ce n'est pas le même plat » et « il manque un
+           mot » se jugent d'un coup d'œil — et orientent vers le vrai remède,
+           qui est souvent de corriger l'orthographe du plat. */
+        candidats: proches.map((c) => ({
+          titre: c.titre, url: c.url, score: Math.round(c.score * 100),
+          photoOk: recettes.recherche.convientPourPhoto(c),
+          raison: !c.teteOk ? 'ce n\'est pas le même plat'
+            : (!c.tousCouverts && c.extras ? 'il manque un mot du plat, et le titre en ajoute d\'autres'
+              : (!c.tousCouverts ? 'il manque un mot du plat' : 'convient pour la photo')),
+        })),
       });
     }
     res.json({ recette: r });

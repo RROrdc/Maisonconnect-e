@@ -72,7 +72,11 @@ async function depuisRecherche(nom, { seuil } = {}) {
    Renvoie `null` quand aucune page ne correspond assez nettement : c'est une
    réponse valable, et de loin préférable à une vignette fausse sur un mur. */
 async function photoPour(nom) {
-  const trouve = await recherche.meilleur(nom);
+  /* Sélection dédiée à la photo : seuil plus bas, mais tête du plat obligatoire.
+     Auparavant on réutilisait le seuil « recette », ce qui écartait des pages
+     dont la photo convenait parfaitement — « bruschetta tomates mozzarella »
+     était refusée pour « bruchetta » alors que le site l'avait bien trouvée. */
+  const trouve = await recherche.meilleurPourPhoto(nom);
   if (!trouve) return null;
 
   let distante = '';

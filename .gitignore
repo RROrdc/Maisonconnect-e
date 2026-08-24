@@ -23,6 +23,11 @@ sauvegardes/
 *.db-wal
 *.db-shm
 
+# --- SORTIES GÉNÉRÉES CONTENANT DES DONNÉES DU FOYER -----------------------
+# outils/marqueurs-vacances.js produit un .ics avec les dates de garde des
+# enfants. C'est un fichier de travail, à importer puis à jeter — pas du code.
+*.ics
+
 # --- PHOTOS DE PLATS -------------------------------------------------------
 # ~8,5 Mo récupérés sur des sites de cuisine : ce n'est pas à nous de les
 # redistribuer, et elles se régénèrent en un clic (/admin/ → Repas →

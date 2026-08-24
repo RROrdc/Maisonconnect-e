@@ -909,6 +909,43 @@ Ce que fait le projet, l'architecture, les trois principes tenus dans le code (l
 ### ⚠️ Rappel du § 5 quater, obstacle n° 4
 Le projet est développé sur une machine dont Rémi n'est pas administrateur, sur un réseau d'entreprise. Le pousser sur un GitHub **personnel** est cohérent avec le conseil « migrer sur du matériel personnel avant tout développement à visée commerciale » — mais le développement, lui, se fait toujours sur le poste professionnel. Le point reste ouvert.
 
+## 2 septdecies. 📅 MARQUEURS DE PRÉSENCE + 🖼️ PHOTOS DES PLATS RÉCALCITRANTS (24/08/2026)
+Deux demandes de Rémi pendant l'attente du matériel (Mac mini le 28/08). Écran 21,5" et Raspberry déjà reçus, mais **rien ne se monte tant que le Mac n'est pas là** : tout tourne sur le portable, qui bouge.
+
+### `outils/marqueurs-vacances.js` — proposer sans jamais écrire dans le calendrier
+Deux périodes de garde manquaient dans iCloud (février 2027, été 2027). La règle du 19/08 tient — **le calendrier est en lecture seule** — donc l'outil produit un **fichier `.ics` à importer d'un double-clic**. Rien n'entre dans le calendrier sans un geste humain.
+- 🐞 **Ma première version coupait chaque vacance en deux moitiés.** Elle proposait *juillet* 2027 alors que les enfants arrivent le **1er août**, et le *26* février au lieu du **27**. Retirée : le script ne devine plus aucune date, il les **reçoit**. Une date de garde fausse envoie un enfant au mauvais endroit — ça ne s'estime pas.
+- L'outil sait dire qu'une vacance **en cours** sans marqueur est probablement volontaire (enfants absents), et non un oubli. Sans ça, l'été 2026 remontait comme un manque alors qu'il est juste.
+- **Repliage RFC 5545** (75 **octets**, pas caractères — « é » en vaut deux, et on ne coupe jamais au milieu d'un caractère). node-ical est tolérant, l'importateur d'Apple ne l'est pas.
+- ✅ **Vérifié par ALLER-RETOUR**, seul contrôle qui prouve quoi que ce soit ici : le `.ics` est relu **avec le moteur du serveur**, et la présence tombe bien du 19 au **27** février inclus, rien le 28. Relire le fichier à l'œil ne prouve pas le maniement de DTEND exclusif.
+
+### Photos : 24 → 30 plats sur 38, sans jamais relâcher le garde-fou
+Question de Rémi : « les 14 plats sans photo, c'est que j'ai mal orthographié, ou c'est générique — une parade ? ». **Diagnostic chiffré d'abord**, et il a contredit l'hypothèse de départ : le site trouvait souvent la bonne page, **c'est notre comparateur qui la refusait**.
+
+| Défaut trouvé | Preuve mesurée |
+|---|---|
+| **Le score se calculait contre le nom fautif** | 750g renvoyait « bruschetta tomates mozzarella » en 1er résultat pour « bruchetta » — noté **0 %** |
+| **La tolérance aux fautes ne marchait qu'en FIN de mot** | Elle tronquait le préfixe ; les vraies fautes sont au milieu (`bag<b>g</b>els`, `sara<b>z</b>in`) ⇒ remplacée par **Levenshtein** |
+| **Les mots de moins de 4 lettres étaient jetés** | « **Bo bun** express au poulet grillé » cherchait `[express, poulet]` — tout sauf le plat |
+| **Les qualificatifs comptaient comme des mots attendus** | « express », « maison », « grillé », « mariné » ne figurent dans aucun titre de recette et faisaient chuter la couverture |
+| 🔑 **La ligature `œ` disparaissait** | `normalize('NFD')` décompose « é » mais **pas « œ »** : « b**œ**uf » devenait « b uf », deux fragments jetés. Conséquence vue en vrai : « Fajitas de bœuf » a accepté des **fajitas au poulet** |
+
+**Le seuil chiffré a été remplacé par deux règles explicites** — un seuil ne s'explique pas et ne se discute pas :
+1. **Même tête, des deux côtés** — le plat et le titre commencent par le même mot. Élimine risotto/rigatoni, club sandwich/bagels, papillote/barbecue.
+2. **Tout couvert, ou rien en trop.** Un titre plus *précis* convient (« bruschetta tomates mozzarella » pour « bruschetta »), un titre plus *sobre* aussi (« riz cantonais » pour « riz cantonais aux crevettes »). Ce qu'on refuse, c'est le cas **mixte** : un mot attendu manque **et** un mot étranger le remplace — la signature exacte d'un autre plat (« pâtes AU PESTO » quand on cherchait « carbo »).
+
+- 🐞 **Mon premier jet posait un seuil bas (0,42) en comptant sur lui pour trier.** Le test a immédiatement laissé entrer « pâtes carbo → pâtes au pesto », c'est-à-dire **l'erreur exacte que ce fichier existe pour empêcher**. Les règles structurelles font mieux et se disent en une phrase.
+- 🐞 **« Tous les mots présents » ≠ « couverture = 1 ».** Un mot rattrapé malgré une faute rapporte sa ressemblance (0,90), jamais 1 : la couverture d'un plat mal orthographié **ne peut donc jamais atteindre 100 %**, et la règle « tout couvert » ne se déclenchait plus jamais dans le seul cas qu'elle devait servir. La couverture **pondère** (elle classe), un booléen **constate** (il décide).
+- Le **mode recette est inchangé** (mots en trop pénalisés plein pot, seuil 0,55) : pour une recette les ingrédients comptent, pour une photo non. Les quatre repères de calibrage du 19/08 sont dans la suite de tests et n'ont pas bougé.
+- **`outils/photos-plats.js`** : même travail que le bouton du back-office, sans serveur ni session. Simulation par défaut, `--vraiment` pour écrire, **n'écrase jamais une photo existante**.
+- **Le bouton « 🔎 Trouver en ligne » cherche désormais des mots MODIFIABLES**, pré-remplis avec le nom du plat. Avant, il fallait **renommer le plat** pour chercher autrement — deux choses sans rapport. Les noms du foyer sont souvent trop détaillés pour un moteur de recettes : « Gaspacho de tomates jaunes et concombre » ne trouve rien, « gaspacho tomate » trouve à 85 %.
+- Les candidats écartés affichent maintenant **pourquoi** (« pas le même plat » / « il manque un mot »). « Rien trouvé » n'oriente vers aucune action.
+
+**Les 8 restants sont des refus assumés** : noms qui ne désignent pas un plat (« barbecue », « Soupe & tartines »), nom anglais absent du site (« butter chicken »), plat inventé (« semoule orientale protéiné »). Mesuré : un renommage débloquerait certains, mais « galette complète » ramène une **gaufre** — donc on propose, on ne renomme pas.
+
+### Vérifié
+**224 tests, 0 échec** (les 195 précédents + 29 sur les photos et les fautes d'orthographe, tous hors réseau donc rejouables). Sauvegarde faite avant écriture. 6 photos ajoutées aux vraies données, aucune écrasée.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.

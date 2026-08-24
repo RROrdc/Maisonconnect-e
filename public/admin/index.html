@@ -887,8 +887,16 @@ function brancherRecette(){
   };
 
   $('#src_chercher').onclick = async ()=>{
-    const nom = ($('#f_nom').value.trim()) || prompt('Nom du plat ?');
-    if(!nom) return;
+    /* Les mots cherchés sont MODIFIABLES, pré-remplis avec le nom du plat.
+       Avant, la recherche prenait le nom tel quel : pour chercher autrement il
+       fallait RENOMMER le plat, ce qui n'a rien à voir. Or les noms du foyer
+       sont souvent trop détaillés pour un moteur de recettes (« Gaspacho de
+       tomates jaunes et concombre » ne trouve rien, « gaspacho tomate » trouve
+       du premier coup), ou portent une faute qu'on préfère corriger ici plutôt
+       que dans la bibliothèque. */
+    const nom = prompt('Chercher quels mots ?\n\nDes mots simples marchent souvent mieux :\n« gaspacho tomate » plutôt que « Gaspacho de tomates jaunes et concombre ».',
+      $('#f_nom').value.trim() || '');
+    if(!nom || !nom.trim()) return;
     patienter(`Recherche de « ${nom} » sur 750g…`);
     try{
       const d = await api('POST','/api/recette/chercher',{nom});
@@ -907,13 +915,16 @@ function brancherRecette(){
       const cands = (err.data && err.data.candidats) || [];
       $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(err.message)}</span>`
         + (cands.length ? `<div style="margin-top:8px">
-            <div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">Écartés faute de
-              ressemblance suffisante — clique si l'un d'eux est le bon :</div>
-            ${cands.map((c)=>`<button type="button" class="btn doux mini" data-cand="${e(c.url)}"
-              style="margin:0 6px 6px 0">${e(c.titre)} · ${c.score}%</button>`).join('')}
+            <div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">Écartés, et pourquoi —
+              clique si l'un d'eux est quand même le bon :</div>
+            ${cands.map((c)=>`<div style="margin-bottom:6px">
+              <button type="button" class="btn doux mini" data-cand="${e(c.url)}"
+                style="margin-right:6px">${e(c.titre)} · ${c.score}%</button>
+              <span style="color:var(--faint);font-size:12px">${e(c.raison||'')}</span></div>`).join('')}
           </div>` : '')
-        + `<div style="color:var(--faint);font-size:12.5px;margin-top:6px">Sinon : « 🔗 Depuis un lien »
-           avec l'adresse exacte, ou « ✨ Demander à l'IA » pour le texte seul (sans photo).</div>`;
+        + `<div style="color:var(--faint);font-size:12.5px;margin-top:6px">Sinon : relance « 🔎 Trouver
+           en ligne » avec <b>des mots plus simples</b>, ou « 🔗 Depuis un lien » avec l'adresse exacte.
+           « ✨ Demander à l'IA » donne le texte seul — jamais de photo.</div>`;
       document.querySelectorAll('[data-cand]').forEach((b)=>b.onclick = async ()=>{
         patienter('Lecture de la page choisie…');
         try{ appliquerRecette((await api('POST','/api/recette/lien',{url:b.dataset.cand})).recette); }

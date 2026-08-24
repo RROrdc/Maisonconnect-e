@@ -8,6 +8,7 @@ const A = require('./aide');
 const feries = require(path.join(__dirname, '..', '..', 'feries'));
 const rayons = require(path.join(__dirname, '..', '..', 'recettes', 'rayons'));
 const quantites = require(path.join(__dirname, '..', '..', 'recettes', 'quantites'));
+const recherche = require(path.join(__dirname, '..', '..', 'recettes', 'recherche'));
 
 /* Dates de Pâques connues : le seul moyen sérieux de valider l'algorithme est de
    le confronter à des valeurs établies ailleurs. */
@@ -29,6 +30,52 @@ const CAS_RAYONS = [
   ['citronnelle', ''],                    // pas « citron »
   ['raie', ''],                           // pas « raisin »
   ['un truc bizarre', ''], ['', ''],
+];
+
+/* Fautes réellement présentes dans la bibliothèque du foyer, et faux amis qui
+   les entourent de près. La tolérance doit passer les unes sans passer les
+   autres — d'où les deux colonnes. */
+const CAS_MOTS = [
+  ['bruchetta', 'bruschetta', true],   // faute au MILIEU du mot
+  ['baggels', 'bagels', true],         // consonne doublée + pluriel
+  ['sarazin', 'sarrasin', true],
+  ['rigatonni', 'rigatoni', true],
+  ['tomates', 'tomate', true],         // simple pluriel
+  ['galettes', 'galette', true],
+  ['poulet', 'poulpe', false],
+  ['creme', 'crepe', false],           // 5 lettres, 1 écart : trop court pour risquer
+  ['jambon', 'jambe', false],
+  ['risotto', 'rigatoni', false],
+  ['riz', 'ris', false],
+];
+
+/* Ce qu'il ne faut JAMAIS accepter comme photo. */
+const CAS_PHOTO_NON = [
+  ['pates carbo', 'pates au pesto', 'le faux ami historique du projet'],
+  ['tarte aux pommes', 'tarte aux poireaux', 'sucré ≠ salé'],
+  ['salade de quinoa a l orientale', 'salade d orange a l orientale', 'quinoa ≠ orange'],
+  ['rigatonni chorizo burrata', 'risotto au chorizo', 'le riz n’est pas des pâtes'],
+  ['baggels poulet', 'club sandwich au poulet', 'pain différent'],
+  ['barbecue', 'papillote de fruits dete au barbecue', 'un dessert, pas un barbecue'],
+  ['butter chicken', 'poulet tikka massala', 'plat indien voisin mais différent'],
+];
+
+/* Ce qu'il FAUT accepter : une photo n’a pas à être une preuve de recette. */
+const CAS_PHOTO_OUI = [
+  ['bruchetta', 'bruschetta tomates mozzarella', 'faute au milieu + titre plus précis'],
+  ['baggels Saumon', 'bagel de saumon fume et oeufs brouilles', 'faute + titre détaillé'],
+  ['Riz cantonais maison aux crevettes', 'riz cantonais', 'titre plus sobre, rien en trop'],
+  ['Bo bun express au poulet grillé', 'bo bun de poulet', 'qualificatifs ignorés'],
+  ['Fajitas de bœuf aux poivrons grillés', 'fajitas a la viande de boeuf et poivrons', 'ligature bœuf'],
+];
+
+/* Repères d’origine du mode « recette », calibrés le 19/08 : ils ne doivent pas
+   bouger quand on assouplit le mode « photo ». */
+const CAS_RECETTE = [
+  ['hachis parmentier', 'hachis parmentier', true],
+  ['Omelette / Tortillas', 'omelette epaisse ou tortilla', true],
+  ['pates carbo', 'pates au pesto', false],
+  ['galette sarazin jambon fromage', 'roule de galette de sarrasin a la spiruline', false],
 ];
 
 module.exports = async function (muet) {
@@ -68,6 +115,45 @@ module.exports = async function (muet) {
     'addition de deux lignes de même unité');
   t.dire(quantites.additionner('2 oeufs', '200 g de farine') === '2 oeufs',
     'unités différentes → on garde la première (incomplet vaut mieux que faux)');
+
+  /* ------------------------------------------------- photos de plats -------
+     Aucun appel réseau ici : on juge des COUPLES (nom du plat, titre trouvé)
+     relevés sur de vraies recherches. C'est ce qui rend le contrôle rejouable —
+     et la moitié « faux amis » compte plus que l'autre. Une vignette absente se
+     remarque à peine ; une vignette FAUSSE sur un mur fait douter de tout le
+     reste de l'écran. */
+  t.titre('Photos de plats — mots à une faute près');
+  for (const [a, b, attendu] of CAS_MOTS) {
+    const obtenu = recherche.proches(a, b) > 0;
+    t.dire(obtenu === attendu, `${a} ~ ${b}`, attendu ? 'doit correspondre' : 'ne doit PAS correspondre');
+  }
+  t.dire(recherche.motsUtiles('Fajitas de bœuf aux poivrons grillés').includes('boeuf'),
+    '🔑 la ligature « bœuf » survit (sinon on accepte des fajitas au poulet)');
+  /* « bo » fait deux lettres et reste écarté — sans conséquence, puisque le
+     titre trouvé perd le sien de la même façon : on compare « bun poulet » à
+     « bun poulet ». Ce qui comptait, c'est que « bun » (3 lettres) survive et
+     que les qualificatifs partent ; avec l'ancien seuil à 4 lettres, ce plat
+     cherchait littéralement [express, poulet]. */
+  t.dire(recherche.motsUtiles('Bo bun express au poulet grillé').join(' ') === 'bun poulet',
+    'les mots de 3 lettres restent, les qualificatifs partent',
+    recherche.motsUtiles('Bo bun express au poulet grillé').join(' '));
+
+  t.titre('Photos de plats — faux amis refusés');
+  for (const [plat, titre, pourquoi] of CAS_PHOTO_NON)
+    t.dire(!recherche.convientPourPhoto(recherche.detail(plat, titre, { photo: true })),
+      `« ${plat} » ≠ « ${titre} »`, pourquoi);
+
+  t.titre('Photos de plats — bons candidats acceptés');
+  for (const [plat, titre, pourquoi] of CAS_PHOTO_OUI)
+    t.dire(recherche.convientPourPhoto(recherche.detail(plat, titre, { photo: true })),
+      `« ${plat} » → « ${titre} »`, pourquoi);
+
+  t.titre('Photos de plats — le mode recette n’a pas bougé');
+  for (const [plat, titre, garde] of CAS_RECETTE) {
+    const s = recherche.detail(plat, titre).score;
+    t.dire((s >= recherche.SEUIL) === garde, `« ${plat} » → « ${titre} »`,
+      `${Math.round(s * 100)} % — ${garde ? 'à garder' : 'à jeter'}`);
+  }
 
   return t;
 };
