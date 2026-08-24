@@ -73,20 +73,37 @@ module.exports = async function (muet) {
 
   /* Un événement sur plusieurs jours doit apparaître sur CHAQUE journée qu'il
      couvre — un déplacement du vendredi au dimanche concerne bien le samedi. */
-  /* ⚠️ L'agenda remonte 45 jours en arrière : il faut chercher un événement qui
-     tombe dans les HUIT jours transmis, pas le premier venu — sinon le test
-     échoue sur des vacances passées, ce qui ne prouve rien. */
+  /* ⚠️ Deux pièges dans le CHOIX de l'événement à tester :
+     1. l'agenda remonte 45 jours en arrière — un événement passé ne prouve rien ;
+     2. pour une journée entière, **DTEND est EXCLUSIF** : un événement du 31 août
+        au 1er septembre ne couvre que le 31. Comparer les dates brutes le fait
+        passer pour un multi-jours, et le test échoue en accusant à tort le code.
+     On calcule donc le DERNIER jour réel avant de filtrer. */
+  const dernierJour = (e) => {
+    const fin = e.jourFin || (e.fin ? A.ymd(new Date(e.fin)) : '');
+    const debut = e.jour || A.ymd(new Date(e.start));
+    if (!fin || fin <= debut) return debut;
+    if (!e.journee) return fin;
+    const f = new Date(fin + 'T12:00:00'); f.setDate(f.getDate() - 1);
+    return A.ymd(f);
+  };
+
   const dansHuitJours = A.ymd(new Date(Date.now() + 8 * 864e5));
   const aujourdhui = A.ymd(new Date());
-  const longs = (etat.agenda || []).filter((e) => e.fin
-    && String(e.fin).slice(0, 10) > String(e.start).slice(0, 10)
-    && String(e.fin).slice(0, 10) >= aujourdhui
-    && String(e.start).slice(0, 10) <= dansHuitJours);
+  const longs = (etat.agenda || []).filter((e) => {
+    const debut = e.jour || A.ymd(new Date(e.start));
+    const fin = dernierJour(e);
+    return fin > debut && fin >= aujourdhui && debut <= dansHuitJours;
+  });
+
   if (longs.length) {
     const e = longs[0];
     const lignes = ctx.split('\n').filter((l) => /^\s{2}\S/.test(l) && l.includes(e.summary));
-    t.dire(lignes.length >= 2, '🔑 un événement sur plusieurs jours apparaît sur CHAQUE journée',
-      `${e.summary} sur ${lignes.length} jour(s)`);
+    const attendu = Math.min(8, Math.round(
+      (new Date(dernierJour(e)) - new Date(e.jour || A.ymd(new Date(e.start)))) / 864e5) + 1);
+    t.dire(lignes.length >= Math.min(2, attendu),
+      '🔑 un événement sur plusieurs jours apparaît sur CHAQUE journée',
+      `${e.summary} sur ${lignes.length} jour(s), ${attendu} attendu(s)`);
   } else {
     t.dire(true, 'aucun événement sur plusieurs jours dans la fenêtre (rien à vérifier)');
   }
