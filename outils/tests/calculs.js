@@ -9,6 +9,7 @@ const feries = require(path.join(__dirname, '..', '..', 'feries'));
 const rayons = require(path.join(__dirname, '..', '..', 'recettes', 'rayons'));
 const quantites = require(path.join(__dirname, '..', '..', 'recettes', 'quantites'));
 const recherche = require(path.join(__dirname, '..', '..', 'recettes', 'recherche'));
+const generiques = require(path.join(__dirname, '..', '..', 'recettes', 'generiques'));
 
 /* Dates de Pâques connues : le seul moyen sérieux de valider l'algorithme est de
    le confronter à des valeurs établies ailleurs. */
@@ -141,10 +142,11 @@ module.exports = async function (muet) {
   t.titre('Photos de plats — requêtes de repli');
   /* 🔑 Le plancher est le garde-fou : sans lui, « tarte aux pommes » se
      réduirait à « tarte » et accepterait une tarte aux poireaux. */
+  const requetes = (s) => recherche.variantes(s, { generiques: '' }).map((v) => v.q);
   for (const court of ['tarte aux pommes', 'pates carbo', 'salade de quinoa a l orientale'])
-    t.dire(recherche.variantes(court).length === 1,
-      `« ${court} » n’est PAS réduit (moins de 4 mots)`, recherche.variantes(court).join(' | '));
-  const vLong = recherche.variantes('Poulet mariné au citron et origan, pommes de terre grenaille au four extérieur');
+    t.dire(requetes(court).length === 1,
+      `« ${court} » n’est PAS réduit (moins de 4 mots)`, requetes(court).join(' | '));
+  const vLong = requetes('Poulet mariné au citron et origan, pommes de terre grenaille au four extérieur');
   t.dire(vLong.length === 2 && vLong[1] === 'poulet citron origan',
     'un nom d’assiette entière est réduit à son noyau', vLong.join(' | '));
   t.dire(recherche.motsUtiles('Taboulé libanais persil-menthe au Magimix').join(' ') === 'taboule libanais persil menthe',
@@ -152,6 +154,34 @@ module.exports = async function (muet) {
     recherche.motsUtiles('Taboulé libanais persil-menthe au Magimix').join(' '));
   t.dire(recherche.motsUtiles('Poêlée de légumes du soleil')[0] === 'poelee',
     'mais « poêlée » en TÊTE nomme bien le plat, on la garde');
+
+  t.titre('Photos de plats — noms qui désignent un GENRE');
+  const mots = (s) => recherche.motsUtiles(s);
+  t.dire(generiques.pour(mots('barbecue'), '') === 'brochettes au barbecue',
+    '« barbecue » cherche une image du genre', generiques.pour(mots('barbecue'), ''));
+  t.dire(generiques.pour(mots('Soupe & tartines'), '') === 'soupe de legumes',
+    '« Soupe & tartines » aussi', generiques.pour(mots('Soupe & tartines'), ''));
+  /* 🔑 Les garde-fous du générique : il ne doit JAMAIS déborder sur un vrai plat. */
+  t.dire(generiques.pour(mots('soupe de potimarron au lait de coco'), '') === '',
+    '🔑 un nom précis ne devient PAS générique (plus de 3 mots)');
+  t.dire(generiques.pour(mots('rigatonni chorizo burrata'), '') === '',
+    'un vrai plat n’a pas de substitution');
+  t.dire(generiques.pour(mots('Restaurant'), '') === '' && generiques.pour(mots('Restes du frigo'), '') === '',
+    '🔑 « Pas de cuisine » ne reçoit jamais de photo');
+  t.dire(generiques.pour(mots('barbecue'), 'barbecue = travers de porc') === 'travers de porc',
+    'le réglage /admin/ l’emporte sur la table par défaut');
+  /* Le générique arrive en DERNIER : un plat qui existe est trouvé avant. */
+  const vGen = recherche.variantes('barbecue', { generiques: '' });
+  t.dire(vGen.length === 2 && vGen[0].generique === false && vGen[1].generique === true,
+    'le vrai nom est essayé d’abord, le genre en dernier recours');
+  /* 🔑 Le trou trouvé par ce test avant les vraies données : « pâtes » EST un
+     genre, donc « pâtes carbo » se serait rabattu dessus et aurait accepté
+     « pâtes au pesto » — le faux ami historique, rentré par la porte de
+     derrière. Il faut que TOUS les mots soient des mots de genre. */
+  t.dire(recherche.variantes('pates carbo', { generiques: '' }).length === 1,
+    '🔑 un seul mot de genre ne suffit pas : « pâtes carbo » reste un plat précis');
+  t.dire(generiques.pour(mots('salade ebly'), '') === '',
+    '« salade ebly » non plus — « ebly » apporte une précision');
 
   t.titre('Photos de plats — faux amis refusés');
   for (const [plat, titre, pourquoi] of CAS_PHOTO_NON)

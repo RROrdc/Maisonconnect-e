@@ -68,6 +68,11 @@ const REGLAGES = {
      n'apparaissait nulle part sur l'écran mural. Rangés dans l'ordre d'un
      parcours de magasin, ce qui est aussi l'ordre utile en faisant les courses. */
   rayons: { env: 'RAYONS', defaut: 'Fruits & légumes, Frais, Surgelés, Épicerie, Boissons, Maison / hygiène, Autre' },
+  /* Noms de repas qui désignent un GENRE et non un plat : « barbecue » n'a pas
+     de recette, mais l'image du genre existe. Une ligne « generique = terme
+     cherché ». Vide = la table par défaut de `recettes/generiques.js` s'applique
+     seule ; ce champ ne fait que l'étendre ou la corriger. */
+  photos_generiques: { env: '', defaut: '' },
   /* Garde alternée. La source de vérité est le CALENDRIER (décision de Rémi :
      « garde-le en lecture, si on doit modifier c'est dans le calendrier ») ;
      ces réglages ne servent qu'à dire COMMENT le lire.
@@ -1262,7 +1267,7 @@ app.post('/api/admin/plats/photos', async (req, res) => {
 
     for (const plat of lot) {
       try {
-        const r = await recettes.photoPour(plat.nom);
+        const r = await recettes.photoPour(plat.nom, { generiques: config('photos_generiques') });
         /* Pas de correspondance assez nette : on le DIT, on ne prend rien.
            Une vignette fausse sur un mur de cuisine se remarque tout de suite,
            et fait douter de tout le reste. */

@@ -955,8 +955,22 @@ Mais leurs noms ont révélé un problème **que le projet s'est créé lui-mêm
 
 **Les 8 restants sont des refus assumés** et le resteront : intitulés qui ne désignent pas un plat (« barbecue », « Soupe & tartines »), nom anglais absent du site (« butter chicken »), plat inventé (« semoule orientale protéiné »), et des cas mixtes où le titre le plus proche est un autre plat. Pour eux : renommer dans /admin/ → Repas, chercher d'autres mots avec « 🔎 Trouver en ligne », coller un lien, ou poser un **emoji** — qui fait très bien l'affaire en vignette.
 
+### 🍲 « Soupe » et « barbecue » : un GENRE, pas un plat — `recettes/generiques.js`
+Remarque de Rémi, et elle est juste : « pour des noms comme soupe ou barbecue je comprends que ce soit compliqué pour une recette, mais c'est tellement commun qu'il y a des photos ».
+
+**La distinction est exactement là.** Pour « rigatoni chorizo burrata », une photo approximative serait **fausse** — c'est un plat précis, une autre assiette se remarque. Pour « barbecue », il n'existe aucune recette « barbecue » : le mot nomme un **genre**, et n'importe quelle image du genre est juste, parce qu'il n'y a rien de plus précis à trahir.
+- Table `generique → terme concret` (barbecue → « brochettes au barbecue », soupe → « soupe de légumes »…), **surchargeable** par le réglage `photos_generiques` dans /admin/ : aucun foyer codé en dur (§ 5 quater).
+- **Aucun garde-fou n'est relâché** : le résultat est jugé normalement, simplement contre le terme substitué. Et c'est tenté **en dernier recours**, après l'échec du nom réel — un plat qui existe vraiment est trouvé avant et ne reçoit jamais une image de catégorie à la place de la sienne.
+- Les options « Pas de cuisine » (Restaurant, Sortie, Livraison, Restes, Chacun pour soi) sont sur une liste `JAMAIS` : leur coller une image serait absurde.
+
+🐞 **Trou trouvé par le test AVANT les vraies données**, et il était sérieux : ma première règle se déclenchait dès qu'**un** mot était générique. Or « pâtes » en est un ⇒ « pâtes carbo » se serait rabattu sur « pâtes », et aurait accepté **« pâtes au pesto »** — le faux ami historique du projet, rentré par la porte de derrière. La règle juste est que **TOUS** les mots significatifs doivent être des mots de genre : dès qu'un mot apporte une précision (« carbo », « ebly », « potimarron »), le plat est précis.
+
+**Résultat : 34 → 36 photos sur 42.** « barbecue » → brochettes au barbecue, « Soupe & tartines » → soupe de légumes. L'outil marque ces photos « **photo du GENRE** » : une image générique passe très bien sur un mur, à condition de ne pas la faire passer pour la photo du plat.
+
+**Les 6 restants sont des refus définitifs et assumés** : « butter chicken » (nom anglais absent de 750g), « semoule orientale protéiné » (plat inventé), « rigatoni chorizo burrata », « galette sarazin jambon fromage », « Gnocchis poêlés… » et « Brochettes de porc… » (le titre le plus proche est un autre plat). Pour eux : chercher d'autres mots avec « 🔎 Trouver en ligne », coller un lien, ou poser un **emoji**.
+
 ### Vérifié
-**230 tests, 0 échec** (les 195 précédents + 35 sur les photos, les fautes d'orthographe et les requêtes de repli — tous hors réseau, donc rejouables). Sauvegarde faite avant écriture. 9 photos ajoutées aux vraies données, aucune écrasée.
+**239 tests, 0 échec** (les 195 précédents + 44 sur les photos : fautes d'orthographe, requêtes de repli, noms de genre — tous hors réseau, donc rejouables). Sauvegarde faite avant écriture. 11 photos ajoutées aux vraies données, aucune écrasée.
 
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).

@@ -16,6 +16,7 @@
    titre trouvé au nom du plat, et on REFUSE quand ça ne colle pas. Ne rien
    ramener est un bon résultat ; ramener la mauvaise photo n'en est pas un. */
 const { nettoyerTexte } = require('./commun');
+const gen = require('./generiques');
 
 const ENTETES = {
   'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
@@ -327,18 +328,27 @@ const convientPourPhoto = (d) => !!d.teteOk
    ⚠️ Et on ne réduit qu'à partir de 4 mots significatifs, jamais en dessous de
    3. Sans ce plancher, « tarte aux pommes » se réduirait à « tarte » et
    accepterait une tarte aux poireaux — exactement ce qu'on interdit. */
-function variantes(nomPlat) {
+function variantes(nomPlat, { generiques = '' } = {}) {
   const mots = motsUtiles(nomPlat);
-  const out = [nettoyerTexte(nomPlat)];
-  if (mots.length >= 4) out.push(mots.slice(0, 3).join(' '));
+  const out = [{ q: nettoyerTexte(nomPlat), generique: false }];
+  if (mots.length >= 4) out.push({ q: mots.slice(0, 3).join(' '), generique: false });
+  /* DERNIER recours : le nom ne désigne pas un plat mais un GENRE (« barbecue »,
+     « Soupe & tartines »). On cherche alors un terme concret qui le représente.
+     Placé en dernier exprès : un plat qui existe vraiment est trouvé avant, et
+     ne récupère donc jamais une image de catégorie à la place de la sienne. */
+  const g = gen.pour(mots, generiques);
+  if (g) out.push({ q: g, generique: true });
   return out;
 }
 
-async function meilleurPourPhoto(nomPlat) {
-  for (const requete of variantes(nomPlat)) {
-    const candidats = await chercher(requete, { photo: true });
+async function meilleurPourPhoto(nomPlat, { generiques = '' } = {}) {
+  for (const v of variantes(nomPlat, { generiques })) {
+    const candidats = await chercher(v.q, { photo: true });
     const bon = candidats.find(convientPourPhoto);
-    if (bon) return { ...bon, requete };
+    /* On DIT quand la photo illustre le GENRE et non le plat : sur un mur, une
+       image générique passe très bien — à condition de ne pas la faire passer
+       pour la photo du plat. */
+    if (bon) return { ...bon, requete: v.q, generique: v.generique };
   }
   return null;
 }

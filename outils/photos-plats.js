@@ -22,6 +22,7 @@ const recherche = require(path.join(__dirname, '..', 'recettes', 'recherche'));
 const args = process.argv.slice(2);
 const VRAIMENT = args.includes('--vraiment');
 const TOUT = args.includes('--tout');
+const GEN = donnees.reglage('photos_generiques', '');
 
 (async () => {
   const plats = donnees.listePlatsAdmin()
@@ -35,7 +36,7 @@ const TOUT = args.includes('--tout');
   for (const plat of plats) {
     if (String(plat.photo || '').trim()) { console.log(`  = ${plat.nom} — a déjà une photo, laissée telle quelle`); continue; }
     try {
-      const t = await recherche.meilleurPourPhoto(plat.nom);
+      const t = await recherche.meilleurPourPhoto(plat.nom, { generiques: GEN });
       if (!t) {
         /* Dire POURQUOI. « Rien trouvé » n'oriente vers aucune action ; « ce
            n'est pas le même plat » invite à vérifier l'orthographe du nom. */
@@ -51,12 +52,13 @@ const TOUT = args.includes('--tout');
       /* Dire avec QUELS mots on a fini par trouver : quand le nom complet
          échoue et que le noyau réussit, c'est la première chose à savoir — et
          souvent le signe qu'il vaut mieux raccourcir le nom du plat. */
-      const via = t.requete && t.requete !== plat.nom ? `  (cherché « ${t.requete} »)` : '';
+      const via = t.generique ? `  (photo du GENRE, cherchée « ${t.requete} »)`
+        : (t.requete && t.requete !== plat.nom ? `  (cherché « ${t.requete} »)` : '');
       if (!VRAIMENT) {
         console.log(`  ✓ ${plat.nom}\n       → « ${t.titre} »  ${Math.round(t.score * 100)} %${via}`);
         trouvees++;
       } else {
-        const r = await recettes.photoPour(plat.nom);
+        const r = await recettes.photoPour(plat.nom, { generiques: GEN });
         if (!r) { refuses.push(plat.nom); console.log(`  · ${plat.nom} — page trouvée mais aucune image exploitable`); continue; }
         donnees.enregistrerPlat({ ...plat, photo: r.photo, source_url: plat.source_url || r.url });
         trouvees++;
