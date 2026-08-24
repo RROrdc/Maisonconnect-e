@@ -1,0 +1,1882 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Écran Maison — bento (prototype)</title>
+<!--
+  PROTOTYPE VISUEL « bento » — inspiration : Blackview NEST 10 (mur de widgets).
+  Page SÉPARÉE de index.html, volontairement : la mise en page paysage de index.html
+  a été validée « parfait » et ne doit pas être perdue si ce style ne convainc pas.
+  Mêmes données (/api/data), mêmes écritures : c'est comparable à l'usage, pas une maquette morte.
+
+  Ce qui change par rapport à index.html :
+   - fond clair uni, cartes BLANCHES SANS BORDURE, ombre diffuse (le contraste vient de l'ombre)
+   - disposition en mosaïque (widgets de tailles inégales) plutôt qu'en rangées régulières
+   - lignes de liste en PILULES pastel teintées par module
+   - rail d'icônes à gauche pour la navigation
+   - phrase d'accueil contextuelle, horloge analogique, météo horaire, mini-calendrier du mois
+   - icônes en SVG maison (l'emoji 🍽️ se rend comme un carré sous Windows)
+  Cible de calibrage : dalle tactile 20 à 24" en PORTRAIT (voir @media orientation:portrait).
+  La mise en page paysage sert à la prévisualisation sur le PC.
+-->
+<script>try{document.documentElement.setAttribute('data-theme',localStorage.getItem('theme-bento')||'light')}catch(e){}</script>
+<style>
+  /* =======================================================================
+     COULEURS — règle du projet : AUCUNE couleur en dur hors de ces deux blocs.
+     ======================================================================= */
+  :root{
+    --bg:#eef1f7; --card:#ffffff; --card2:#f4f6fb; --rail:#ffffff;
+    --line:#e6eaf2; --line2:#d3dae7;
+    --txt:#141a24; --muted:#5d6980; --faint:#8b96aa;
+    --onac:#ffffff;                       /* texte posé SUR un aplat d'accent */
+    --menu:#c9740a; --course:#0d9464; --todo:#2563eb; --agenda:#7739e0;
+    --post:#a3780a; --temp:#d4451f; --music:#d6336c;
+    --r:26px; --r2:16px; --r3:12px;
+    --sh:0 1px 2px rgba(24,38,64,.05), 0 10px 26px rgba(24,38,64,.07);
+    --sh-haut:0 2px 4px rgba(24,38,64,.06), 0 18px 40px rgba(24,38,64,.13);
+    --alerte:#c2253f; --alerte-fond:#fdeaee;
+    --sv-bg:#04060a; --sv-card:rgba(255,255,255,.055); --sv-line:rgba(255,255,255,.10);
+    --sv-txt:#ffffff; --sv-txt2:#c6cfdd; --sv-txt3:#8c98ac;
+  }
+  :root[data-theme="dark"]{
+    --bg:#080b11; --card:#141922; --card2:#1b2130; --rail:#111620;
+    --line:#232b39; --line2:#333d4f;
+    --txt:#f1f5fb; --muted:#98a4b8; --faint:#66728a;
+    --onac:#0a0d13;
+    --menu:#ffb340; --course:#3ddc97; --todo:#5b9bff; --agenda:#b388ff;
+    --post:#ffd23c; --temp:#ff7a59; --music:#ff6ba3;
+    --sh:0 1px 0 rgba(255,255,255,.03) inset, 0 10px 26px rgba(0,0,0,.45);
+    --sh-haut:0 1px 0 rgba(255,255,255,.05) inset, 0 20px 44px rgba(0,0,0,.6);
+    --alerte:#ffb3bd; --alerte-fond:#3a1420;
+    --sv-bg:#04060a; --sv-card:rgba(255,255,255,.05); --sv-line:rgba(255,255,255,.09);
+    --sv-txt:#ffffff; --sv-txt2:#c6cfdd; --sv-txt3:#8c98ac;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--txt);overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  button,select,input{font-family:inherit}
+  /* icônes SVG : elles suivent la taille de police et la couleur du texte */
+  .i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;display:block}
+  .i.plein{fill:currentColor;stroke:none}
+
+  /* ---------- coquille : rail + mosaïque ---------- */
+  .app{height:100vh;width:100vw;display:flex;gap:14px;padding:14px}
+  .rail{flex:0 0 88px;background:var(--rail);border-radius:var(--r);box-shadow:var(--sh);
+    display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 0}
+  .rail button{width:54px;height:54px;border-radius:18px;border:none;background:transparent;color:var(--faint);
+    font-size:23px;cursor:pointer;display:grid;place-items:center;position:relative}
+  .rail button:active{transform:scale(.9)}
+  .rail button.on{background:color-mix(in srgb,var(--ac) 15%,var(--card));color:var(--ac)}
+  .rail .sep{flex:1}
+  .rail .lg{width:54px;height:54px;border-radius:18px;display:grid;place-items:center;font-size:24px;
+    background:color-mix(in srgb,var(--todo) 14%,var(--card));color:var(--todo);margin-bottom:10px}
+
+  /* mosaïque — PAYSAGE (prévisualisation sur le PC).
+     Colonne 1 = horloge / météo / maison / post-it ; colonne 2 = menu + courses ; colonne 3 = agenda + à faire. */
+  .bento{flex:1;min-width:0;display:grid;gap:14px;
+    grid-template-columns:minmax(0,.95fr) minmax(0,1.2fr) minmax(0,1.2fr);
+    /* l'horloge se contente de peu, la météo a 3 étages (actuel + heures + jours) :
+       en .8fr elle était rognée et la prévision disparaissait purement et simplement */
+    grid-template-rows:auto minmax(0,.72fr) minmax(0,1.22fr) minmax(0,1fr) minmax(0,1.06fr) auto;
+    grid-template-areas:
+      "hello  hello  hello"
+      "clock  menu   agenda"
+      "wx     menu   agenda"
+      "maison course todo"
+      "post   course todo"
+      "news   news   news";}
+
+  /* ---------- carte générique ---------- */
+  .w{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:18px 20px;
+    display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .w.clic{cursor:pointer}
+  .w.clic:active{box-shadow:var(--sh-haut);transform:translateY(1px)}
+  .wh{display:flex;align-items:center;gap:10px;margin-bottom:13px;flex:0 0 auto}
+  .wh .ic{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:18px;
+    background:color-mix(in srgb,var(--ac) 14%,var(--card));color:var(--ac)}
+  .wh .ti{font-size:15px;font-weight:700;letter-spacing:-.2px}
+  .wh .cnt{margin-left:auto;font-size:12.5px;font-weight:650;color:var(--ac);
+    background:color-mix(in srgb,var(--ac) 12%,var(--card));border-radius:20px;padding:4px 11px}
+  .wh .add{width:34px;height:34px;border-radius:12px;border:none;background:var(--card2);color:var(--ac);
+    font-size:17px;cursor:pointer;display:grid;place-items:center;margin-left:8px;flex:0 0 auto}
+  .wh .add:active{transform:scale(.9)}
+  .wb{flex:1;min-height:0;overflow:auto}
+  .wb::-webkit-scrollbar{width:0}
+  .vide{color:var(--faint);font-size:14px;padding:8px 2px}
+
+  .menu{grid-area:menu;--ac:var(--menu)}      .course{grid-area:course;--ac:var(--course)}
+  .todo{grid-area:todo;--ac:var(--todo)}      .agenda{grid-area:agenda;--ac:var(--agenda)}
+  .post{grid-area:post;--ac:var(--post)}      .maison{grid-area:maison;--ac:var(--temp)}
+  .clock{grid-area:clock;--ac:var(--todo)}    .wx{grid-area:wx;--ac:var(--agenda)}
+
+  /* ---------- accueil ---------- */
+  .hello{grid-area:hello;background:transparent;box-shadow:none;padding:2px 6px 0;
+    flex-direction:row;align-items:center;gap:20px;overflow:visible}
+  .hello .bonjour{font-size:26px;font-weight:750;letter-spacing:-.6px}
+  .hello .sous{font-size:14px;color:var(--muted);margin-top:3px}
+  /* capitale sur la SEULE première lettre : `text-transform:capitalize` donnait
+     « Vendredi 14 Août · Fête Du Jour : … » — en français, seul le jour prend la majuscule */
+  .hello .sous #dateTxt{display:inline-block}
+  .hello .sous #dateTxt::first-letter{text-transform:uppercase}
+  .hello .sous b{color:var(--post);font-weight:700}
+  .hello .kids{margin-left:auto;display:flex;gap:9px}
+  .kid{display:flex;align-items:center;gap:9px;background:var(--card);border-radius:20px;padding:7px 15px 7px 7px;
+    box-shadow:var(--sh);border:none;cursor:pointer;max-width:230px}
+  .kid .av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+    font-size:14px;font-weight:800;color:#0f1620}   /* fond pastel dans les 2 thèmes → initiale sombre */
+  /* .tx / .n / .s sont des <span> : sans display:block ils se collaient sur une seule ligne
+     (« Enora08:00 Collège ») */
+  .kid .tx{min-width:0;text-align:left;display:block}
+  .kid .n{display:block;font-size:13px;font-weight:700;color:var(--txt);line-height:1.2}
+  .kid .s{display:block;font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ---------- horloge ---------- */
+  /* en paysage l'horloge est côte à côte (numérique | aiguilles) : empilée, elle réclamait
+     250 px de haut et rognait le numérique. En portrait la place ne manque pas. */
+  .clock{flex-direction:row;align-items:center;justify-content:space-around;gap:14px}
+  .clock .num{font-size:42px;font-weight:800;letter-spacing:-2px;line-height:1;font-variant-numeric:tabular-nums}
+  .clock .jour{font-size:13.5px;color:var(--muted);margin-top:5px;text-align:center}
+  .clock .jour::first-letter{text-transform:uppercase}
+  .analog{position:relative;width:104px;height:104px;border-radius:50%;background:var(--card2);flex:0 0 auto}
+  .tick{position:absolute;inset:0;transform:rotate(calc(var(--k) * 30deg))}
+  .tick::before{content:"";position:absolute;left:50%;top:9px;width:2px;height:7px;margin-left:-1px;
+    border-radius:2px;background:var(--line2)}
+  .tick.q::before{height:11px;width:3px;margin-left:-1.5px;background:var(--faint)}
+  .hand{position:absolute;left:50%;bottom:50%;transform-origin:50% 100%;border-radius:4px;background:var(--txt)}
+  .hand.h{width:5px;height:27px;margin-left:-2.5px}
+  .hand.m{width:3.5px;height:38px;margin-left:-1.75px}
+  .hand.s{width:1.5px;height:41px;margin-left:-.75px;background:var(--temp)}
+  .pin{position:absolute;left:50%;top:50%;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;
+    background:var(--card);box-shadow:0 0 0 3px var(--txt)}
+
+  /* ---------- météo ---------- */
+  .wx .haut{display:flex;align-items:center;gap:14px}
+  .wx .ico{font-size:44px;line-height:1}
+  .wx .deg{font-size:40px;font-weight:750;line-height:1;font-variant-numeric:tabular-nums}
+  .wx .desc{font-size:13.5px;color:var(--muted);margin-top:3px}
+  .wx .ville{font-size:12px;color:var(--faint);display:flex;align-items:center;gap:5px}
+  .heures{display:flex;gap:7px;margin-top:14px}
+  .heures div{flex:1;background:var(--card2);border-radius:var(--r3);padding:9px 3px;text-align:center;min-width:0}
+  .heures .hh{font-size:11px;color:var(--faint)}
+  .heures .hi{font-size:17px;margin:3px 0 1px}
+  .heures .ht{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .jours{margin-top:11px;display:flex;flex-direction:column;gap:5px}
+  .jours div{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}
+  .jours .jn{flex:1;text-transform:capitalize}
+  .jours b{color:var(--txt);font-variant-numeric:tabular-nums}
+
+  /* ---------- pilules de liste (le motif central du style) ---------- */
+  .pill{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--r2);
+    background:color-mix(in srgb,var(--ac) 9%,var(--card));margin-bottom:7px;font-size:15px}
+  .pill:last-child{margin-bottom:0}
+  /* Le texte passe à la ligne plutôt que d'être coupé : sur un écran mural, une tâche
+     illisible (« Réceptionner la livrai… ») ne sert à rien. Les pilules grandissent au besoin. */
+  .pill .lt{flex:1;min-width:0;line-height:1.25}
+  .box{width:24px;height:24px;border-radius:8px;flex:0 0 auto;cursor:pointer;background:var(--card);
+    box-shadow:inset 0 0 0 2px var(--line2);display:grid;place-items:center;color:transparent}
+  .todo .box,.sheet .todo .box{border-radius:50%}
+  .pill.fait{background:var(--card2)}
+  .pill.fait .box{background:var(--ac);box-shadow:none;color:var(--onac)}
+  /* case cochée hors « fait » : sert aux suggestions d'ingrédients, qu'on coche avant
+     de les ajouter — elles ne sont pas encore des articles de la liste */
+  .box.on{background:var(--ac,var(--course));box-shadow:none;color:var(--onac)}
+  .pill.fait .lt{color:var(--faint);text-decoration:line-through}
+  .tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;flex:0 0 auto;
+    background:var(--card);color:var(--muted)}
+  .tag.ac{background:color-mix(in srgb,var(--ac) 16%,var(--card));color:var(--ac)}
+  .tag.urgent{background:color-mix(in srgb,var(--temp) 16%,var(--card));color:var(--temp)}
+
+  /* ---------- menu ---------- */
+  .repas{display:flex;align-items:center;gap:12px;padding:9px 13px;border-radius:var(--r2);margin-bottom:6px;
+    background:var(--card2)}
+  .repas:last-child{margin-bottom:0}
+  .repas.today{background:color-mix(in srgb,var(--menu) 13%,var(--card));
+    box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--menu) 35%,transparent)}
+  .repas .j{flex:0 0 42px;font-size:12.5px;font-weight:800;color:var(--menu);text-transform:uppercase;letter-spacing:.4px}
+  .repas .pic{font-size:20px;line-height:1;flex:0 0 auto}
+  .repas .tx{flex:1;min-width:0;display:block}
+  .repas .p{display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .repas .m{display:block;font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .repas .p.rien{color:var(--faint);font-weight:400}
+
+  /* ---------- agenda ---------- */
+  /* Cases à HAUTEUR FIXE, surtout pas `aspect-ratio:1` : sur une carte large, six rangées
+     de cases carrées mangeaient toute la hauteur et « Aujourd'hui » disparaissait sous le pli. */
+  .mm{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:12px;flex:0 0 auto}
+  .mm .mh{text-align:center;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.3px;padding-bottom:2px}
+  .mc{height:28px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-size:12.5px;color:var(--txt);cursor:pointer;background:transparent;border:none;padding:0;font-weight:600}
+  .mc.out{color:var(--faint);opacity:.45}
+  .mc.today{background:var(--agenda);color:var(--onac);font-weight:800}
+  .mc .pt{width:4px;height:4px;border-radius:50%;background:var(--agenda);margin-top:2px}
+  .mc.today .pt{background:var(--onac)}
+  .mc .pt.vide{background:transparent}
+  .evt{display:flex;gap:11px;align-items:flex-start;padding:9px 13px;border-radius:var(--r2);margin-bottom:6px;
+    background:color-mix(in srgb,var(--agenda) 9%,var(--card));font-size:14.5px}
+  .evt:last-child{margin-bottom:0}
+  .evt .h{flex:0 0 84px;color:var(--agenda);font-weight:750;font-variant-numeric:tabular-nums;font-size:13.5px;padding-top:1px}
+  .evt .s{flex:1;min-width:0}
+  .evt .s em{display:block;font-style:normal;font-size:11.5px;color:var(--faint);margin-top:1px}
+  .stitre{font-size:11px;font-weight:750;letter-spacing:.8px;color:var(--faint);text-transform:uppercase;margin:0 0 8px}
+
+  /* ---------- post-it ---------- */
+  .note{position:relative;background:color-mix(in srgb,var(--post) 15%,var(--card));border-radius:var(--r2);
+    padding:12px 14px;margin-bottom:8px;font-size:14.5px;line-height:1.35}
+  .note:last-child{margin-bottom:0}
+  .note b{display:block;margin-top:5px;font-size:12px;color:var(--post)}
+
+  /* ---------- maison (Netatmo + musique) : les emplacements du différenciateur ---------- */
+  .maison .wb{display:flex;flex-direction:column;gap:10px}
+  .bloc{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:var(--r2);background:var(--card2)}
+  .bloc .ic{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:17px;flex:0 0 auto;
+    background:color-mix(in srgb,var(--c) 15%,var(--card));color:var(--c)}
+  .bloc .tx{flex:1;min-width:0}
+  .bloc .k{font-size:13.5px;font-weight:700}
+  .bloc .v{font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bloc .big{font-size:22px;font-weight:750;color:var(--c);font-variant-numeric:tabular-nums}
+  .bloc.att{--c:var(--temp)} .bloc.mus{--c:var(--music)}
+  .lecteur{display:flex;gap:6px}
+  .lecteur button{width:32px;height:32px;border-radius:50%;border:none;background:var(--card);color:var(--txt);
+    font-size:12px;cursor:pointer;display:grid;place-items:center;box-shadow:var(--sh)}
+  .lecteur button.p{background:var(--music);color:var(--onac)}
+
+  /* ---------- bandeau actus ---------- */
+  .news{grid-area:news;background:var(--card);border-radius:20px;box-shadow:var(--sh);height:44px;
+    display:flex;align-items:center;overflow:hidden}
+  /* .et / .vp ne sont pas préfixés : le bandeau de veille (.sv-news) réutilise la même mécanique */
+  .et{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+    color:var(--temp);padding:0 16px;display:flex;align-items:center;gap:7px}
+  .et::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .vp{flex:1;overflow:hidden;position:relative;height:100%}
+  .track{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;
+    will-change:transform;animation:defile linear infinite}
+  /* Pastilles « articles habituels » : cibles tactiles franches, on les touche
+     debout avec une liste en main. */
+  /* Jours fériés : teinte discrète mais lisible de loin. Le bleu-gris évite de
+     crier « alerte » — un férié est une bonne nouvelle. */
+  .ferie{background:color-mix(in srgb,var(--agenda) 14%,var(--card));color:var(--txt);
+    border-radius:12px;padding:10px 14px;margin-bottom:10px;font-weight:600}
+  .ferie-tag{background:color-mix(in srgb,var(--agenda) 22%,transparent);color:var(--agenda);
+    font-weight:700}
+  .jferie{background:color-mix(in srgb,var(--agenda) 8%,transparent)}
+  /* Repère semaine A / B des collèges, dans l'en-tête du planning. */
+  .quinz{display:inline-flex;align-items:center;gap:7px;background:color-mix(in srgb,var(--ac) 16%,var(--card2));
+    color:var(--ac);border-radius:20px;padding:6px 13px;font-size:13.5px;font-weight:700;margin-bottom:12px}
+  .quinz b{font-size:16px}
+  .quinz button{background:none;border:none;color:var(--faint);font-size:12.5px;cursor:pointer;
+    font-family:inherit;text-decoration:underline}
+  /* Suggestion de couverts venue de la garde : visible, mais clairement une
+     proposition — pas une valeur déjà appliquée. */
+  .cvt-prop{background:color-mix(in srgb,var(--course) 18%,var(--card2));color:var(--course);
+    border:1px solid color-mix(in srgb,var(--course) 40%,transparent);border-radius:14px;
+    padding:5px 11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:7px}
+  .hab{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:22px;
+    padding:11px 16px;font-size:15px;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .hab span{color:var(--faint);font-size:12.5px}
+  .hab:disabled,.hab.fait{opacity:.4}
+  @keyframes defile{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .track .it{padding:0 26px;font-size:14px;color:var(--txt)}
+  .track .it i{color:var(--faint);font-style:normal;font-size:11.5px;margin-right:8px}
+  .track .sp{color:var(--line2);font-size:10px}
+
+  /* ---------- panneau ---------- */
+  .overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--txt) 45%,transparent);display:none;
+    align-items:center;justify-content:center;z-index:50;padding:24px}
+  .overlay.on{display:flex}
+  .sheet{width:100%;max-width:900px;max-height:88vh;overflow:auto;background:var(--bg);
+    border-radius:32px;padding:24px 26px 28px;box-shadow:var(--sh-haut)}
+  .sheet h2{display:flex;align-items:center;gap:13px;margin:0 0 18px;font-size:22px;letter-spacing:-.4px}
+  .sheet h2 .ic{width:46px;height:46px;border-radius:16px;display:grid;place-items:center;font-size:22px;
+    background:color-mix(in srgb,var(--ac) 14%,var(--card));color:var(--ac)}
+  .sheet .pill,.sheet .repas,.sheet .evt,.sheet .note{background:var(--card)}
+  .sheet .pill{margin-bottom:8px;padding:13px 16px;font-size:16px}
+  .sheet .box{width:27px;height:27px}
+  .home{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:60;background:var(--txt);
+    color:var(--card);border:none;border-radius:40px;padding:15px 32px;font-size:15px;font-weight:750;
+    display:none;cursor:pointer;box-shadow:var(--sh-haut)}
+  .home.on{display:inline-flex;align-items:center;gap:9px}
+  .form{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px;padding:15px;background:var(--card);border-radius:22px}
+  .form input[type=text],.form select,.form input[type=date],.inline{background:var(--card2);border:none;
+    color:var(--txt);border-radius:13px;padding:12px 14px;font-size:15px}
+  .form input[type=text]{flex:1;min-width:160px}
+  .form button{background:var(--ac);color:var(--onac);border:none;border-radius:13px;padding:12px 20px;
+    font-weight:750;font-size:15px;cursor:pointer}
+  select.inline{padding:9px 11px;font-size:14px}
+  .bar{display:flex;gap:9px;align-items:center;margin:0 0 14px;flex-wrap:wrap}
+  .bar button{background:var(--card);border:none;color:var(--muted);border-radius:14px;padding:11px 16px;
+    font-size:13.5px;cursor:pointer;box-shadow:var(--sh)}
+  .del{flex:0 0 auto;width:34px;height:34px;border-radius:12px;border:none;background:var(--card2);
+    color:var(--faint);font-size:14px;cursor:pointer;display:grid;place-items:center}
+  .sheet .pill .del{background:var(--card2)}
+  .del.arm{width:auto;padding:0 14px;background:var(--alerte-fond);color:var(--alerte);font-weight:700;font-size:12.5px}
+  .note .del{position:absolute;top:-7px;right:-7px;width:26px;height:26px;border-radius:50%;background:var(--card);
+    box-shadow:var(--sh)}
+  .demo{display:inline-block;background:var(--card);color:var(--muted);border-radius:14px;padding:9px 14px;
+    font-size:12.5px;margin-bottom:14px;box-shadow:var(--sh)}
+  .mrow{display:flex;gap:9px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .mrow .ml{color:var(--faint);width:44px;flex:0 0 auto;font-size:13px}
+  .jsep{font-size:15px;font-weight:750;color:var(--menu);margin-bottom:2px}
+
+  /* agenda : navigation + vues */
+  .agnav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:16px}
+  .agnav button{background:var(--card);border:none;color:var(--txt);border-radius:14px;padding:11px 15px;
+    font-size:15px;cursor:pointer;box-shadow:var(--sh);display:grid;place-items:center}
+  .agnav .per{font-weight:750;font-size:17px;min-width:190px;box-shadow:none;background:none}
+  .agnav .per::first-letter{text-transform:uppercase}
+  .agnav .vues{margin-left:auto;display:flex;gap:4px;background:var(--card);border-radius:16px;padding:4px;box-shadow:var(--sh)}
+  .agnav .vues button{box-shadow:none;background:transparent;color:var(--muted);padding:9px 17px;border-radius:12px}
+  .agnav .vues button.on{background:var(--agenda);color:var(--onac);font-weight:750}
+  .agj{display:flex;gap:14px;padding:10px 14px;border-radius:var(--r2);background:var(--card);margin-bottom:8px}
+  .agj.today{background:color-mix(in srgb,var(--agenda) 12%,var(--card))}
+  .agj .jn{flex:0 0 100px;font-weight:750;text-transform:capitalize;font-size:14.5px}
+  .agj .jn small{display:block;color:var(--faint);font-weight:400;text-transform:none}
+  .agj .jl{flex:1;min-width:0}
+  .agj .evt{background:transparent;padding:4px 0;margin:0}
+  .grille{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+  .grille .mh{text-align:center;color:var(--faint);font-size:11px;text-transform:uppercase;padding-bottom:2px}
+  .gc{min-height:84px;background:var(--card);border-radius:var(--r3);padding:7px 8px;cursor:pointer;overflow:hidden}
+  .gc.out{opacity:.4}
+  .gc.today{background:color-mix(in srgb,var(--agenda) 13%,var(--card));box-shadow:inset 0 0 0 1.5px var(--agenda)}
+  .gc .n{font-size:13px;font-weight:750;margin-bottom:3px}
+  .gc .e{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.55}
+  .gc .e b{color:var(--agenda)}
+  /* planning enfants */
+  .pday{display:flex;gap:14px;padding:10px 14px;border-radius:var(--r2);background:var(--card);margin-bottom:8px}
+  .pday.today{background:color-mix(in srgb,var(--ac) 12%,var(--card))}
+  .pday .pd{flex:0 0 48px;font-weight:750;color:var(--ac)}
+  .pday .pl{flex:1;min-width:0}
+  .ks{display:flex;align-items:center;gap:11px;font-size:14px;padding:3px 0}
+  .ks .kt{flex:0 0 96px;font-weight:750;font-variant-numeric:tabular-nums;color:var(--ac)}
+  .ks .kq{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ks .ko{color:var(--faint);font-size:12px}
+
+  /* ---------- écran de veille : mur de widgets, toujours sombre ---------- */
+  .saver{position:fixed;inset:0;z-index:80;display:none;background:var(--sv-bg);color:var(--sv-txt);
+    padding:52px 56px;flex-direction:column;justify-content:space-between}
+  .saver.on{display:flex}
+  .sv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:30px}
+  .sv-time{font-size:118px;font-weight:800;letter-spacing:-6px;line-height:.85}
+  .sv-date{font-size:22px;color:var(--sv-txt2);margin-top:12px}
+  .sv-date::first-letter{text-transform:uppercase}
+  .sv-saint{font-size:15px;color:var(--sv-txt3);margin-top:5px}
+  .sv-wx{display:flex;align-items:center;gap:16px}
+  .sv-wx .i2{font-size:58px} .sv-wx .t{font-size:54px;font-weight:750;line-height:1}
+  .sv-wx .d{font-size:15px;color:var(--sv-txt3);margin-top:4px}
+  .sv-grid{display:flex;gap:20px}
+  .sv-w{flex:1;background:var(--sv-card);border:1px solid var(--sv-line);border-radius:26px;padding:20px 22px;min-width:0}
+  .sv-w .wt{font-size:11.5px;letter-spacing:1.2px;color:var(--sv-txt3);text-transform:uppercase;margin-bottom:12px}
+  .sv-w .wm{font-size:20px;font-weight:700;line-height:1.35}
+  .sv-w .ws{font-size:14px;color:var(--sv-txt3);margin-top:7px}
+  .sv-w .row{display:flex;gap:11px;font-size:16px;color:var(--sv-txt2);padding:4px 0}
+  .sv-w .row b{color:var(--sv-txt);font-weight:750;flex:0 0 88px;font-variant-numeric:tabular-nums}
+  .saver .hint{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--sv-txt3);font-size:13px}
+  /* bandeau actus version veille : même mécanique, palette sombre */
+  .sv-news{margin-top:20px;height:44px;border-radius:20px;background:var(--sv-card);
+    border:1px solid var(--sv-line);overflow:hidden;display:flex;align-items:center}
+  .sv-news .et{color:var(--temp)}
+  .sv-news .track .it{color:var(--sv-txt2)}
+  .sv-news .track .sp{color:var(--sv-line)}
+
+  .err{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:var(--alerte-fond);color:var(--alerte);
+    padding:10px 20px;border-radius:22px;font-size:13.5px;font-weight:600;display:none;z-index:90;box-shadow:var(--sh-haut)}
+
+  /* =======================================================================
+     PORTRAIT — la cible réelle : dalle tactile 20 à 24" dressée à la verticale.
+     Lecture debout, à 1–2 m : tout grossit, une seule colonne de fond.
+     ======================================================================= */
+  @media (orientation:portrait){
+    .app{gap:18px;padding:18px}
+    .rail{flex:0 0 104px;padding:20px 0;gap:10px}
+    .rail button,.rail .lg{width:66px;height:66px;border-radius:22px;font-size:28px}
+    /* Répartition des rangées : les poids sont proportionnels au CONTENU RÉEL de chaque carte
+       (7 repas, 6 rangées de mois + les événements du jour, les listes). En 1,15 / 1,3 / 1,05
+       le menu s'arrêtait à mercredi et « Aujourd'hui » passait sous le pli. */
+    .bento{gap:18px;
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      grid-template-rows:auto auto minmax(0,1.08fr) minmax(0,1.05fr) minmax(0,1.05fr) minmax(0,.85fr) auto;
+      grid-template-areas:
+        "hello  hello"
+        "clock  wx"
+        "menu   menu"
+        "agenda agenda"
+        "course todo"
+        "post   maison"
+        "news   news";}
+    .w{padding:20px 22px;border-radius:30px}
+    /* Menu sur 2 colonnes (Lun→Jeu / Ven→Dim) : en portrait la carte est large et la hauteur
+       est la ressource rare — les 7 jours tiennent ainsi sans défilement. Astuce déjà validée
+       sur index.html, ici c'est l'inverse (portrait au lieu de paysage) car la largeur y est pleine. */
+    #menuBody{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,auto);
+      grid-auto-flow:column;gap:0 20px;align-content:start}
+    .hello .bonjour{font-size:34px} .hello .sous{font-size:18px}
+    .kid{padding:9px 19px 9px 9px} .kid .av{width:40px;height:40px;font-size:17px}
+    .kid .n{font-size:15px} .kid .s{font-size:13px}
+    .wh{margin-bottom:15px}
+    .wh .ic{width:42px;height:42px;border-radius:15px;font-size:22px}
+    .wh .ti{font-size:19px} .wh .cnt{font-size:14px;padding:5px 13px}
+    .wh .add{width:42px;height:42px;font-size:21px;border-radius:15px}
+    .clock .num{font-size:62px} .clock .jour{font-size:17px}
+    .analog{width:132px;height:132px}
+    .hand.h{height:35px;width:6px;margin-left:-3px} .hand.m{height:49px} .hand.s{height:53px}
+    .wx .ico{font-size:50px} .wx .deg{font-size:50px} .wx .desc{font-size:16px} .wx .ville{font-size:14px}
+    .heures{margin-top:12px} .heures div{padding:9px 3px}
+    .heures .hh{font-size:13px} .heures .hi{font-size:19px} .heures .ht{font-size:17px}
+    .jours{margin-top:9px} .jours div{font-size:15px}
+    .pill{font-size:18px;padding:14px 17px;gap:15px;margin-bottom:9px}
+    .box{width:30px;height:30px}
+    .tag{font-size:13px;padding:5px 12px}
+    .repas{padding:8px 14px;margin-bottom:6px} .repas .j{flex:0 0 44px;font-size:13.5px}
+    .repas .pic{font-size:23px} .repas .p{font-size:17px} .repas .m{font-size:13px}
+    .mm{gap:4px;margin-bottom:0} .mm .mh{font-size:12px} .mc{height:33px;font-size:16px;border-radius:11px}
+    /* Agenda en DEUX COLONNES : mini-mois à gauche, événements du jour à droite.
+       Empilés, le mois consommait ~260 px et « Aujourd'hui » n'avait plus de place ;
+       côte à côte, la carte fait la moitié de la hauteur pour la même information. */
+    .agenda{display:grid;column-gap:24px;align-content:start;
+      grid-template-columns:340px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
+    .agenda .wh{grid-area:1/1/2/3}
+    .agenda .mm{grid-area:2/1/4/2;align-self:start}
+    .agenda .stitre{grid-area:2/2/3/3}
+    .agenda .wb{grid-area:3/2/4/3}
+    .mc .pt{width:5px;height:5px}
+    .evt{font-size:17.5px;padding:11px 16px} .evt .h{flex:0 0 100px;font-size:16px}
+    .evt .s em{font-size:13.5px}
+    .stitre{font-size:12.5px}
+    .note{font-size:17px;padding:14px 17px} .note b{font-size:13.5px}
+    .bloc{padding:13px 16px} .bloc .ic{width:42px;height:42px;font-size:21px}
+    .bloc .k{font-size:16px} .bloc .v{font-size:13.5px} .bloc .big{font-size:27px}
+    .lecteur button{width:42px;height:42px;font-size:15px}
+    .news{height:56px;border-radius:24px} .news .et{font-size:13px;padding:0 20px}
+    .track .it{font-size:17.5px;padding:0 32px}
+    .vide{font-size:16px}
+    /* panneau : presque plein écran */
+    .overlay{padding:20px}
+    .sheet{max-width:none;max-height:93vh;padding:26px 28px 32px;border-radius:34px}
+    .sheet h2{font-size:26px} .sheet h2 .ic{width:54px;height:54px;font-size:26px}
+    .sheet .pill{font-size:18.5px;padding:15px 18px} .sheet .box{width:32px;height:32px}
+    .form{padding:18px;border-radius:26px}
+    .form input[type=text],.form select,.form input[type=date],.inline{font-size:17px;padding:15px 17px}
+    .form button{font-size:17px;padding:15px 24px}
+    .bar button{font-size:15px;padding:14px 19px}
+    .del{width:44px;height:44px;font-size:17px}
+    .agnav button{font-size:17px;padding:14px 19px}
+    .agnav .per{font-size:20px;min-width:100%;order:-1}
+    .agnav .vues{margin-left:0} .agnav .vues button{font-size:16px;padding:11px 21px}
+    .agj .jn{flex:0 0 118px;font-size:17px}
+    .gc{min-height:106px} .gc .n{font-size:16px} .gc .e{font-size:12px}
+    .pday .pd{flex:0 0 58px;font-size:17px} .ks{font-size:17px} .ks .kt{flex:0 0 112px}
+    /* veille en colonne */
+    .saver{padding:60px 46px}
+    .sv-time{font-size:148px;letter-spacing:-8px} .sv-date{font-size:27px} .sv-saint{font-size:17px}
+    .sv-wx .i2{font-size:68px} .sv-wx .t{font-size:62px} .sv-wx .d{font-size:17px}
+    /* en portrait le bloc du bas se centre dans la hauteur restante — sinon il tombe
+       tout en bas et laisse un grand trou noir sous l'horloge */
+    .sv-grid{flex-direction:column;gap:16px}
+    .sv-bas{margin:auto 0}
+    .sv-w{padding:22px 24px} .sv-w .wm{font-size:24px} .sv-w .ws{font-size:16px}
+    .sv-w .row{font-size:19px} .sv-w .row b{flex:0 0 106px}
+  }
+
+  /* portrait étroit (tablette ~800 px de large — ex. Blackview NEST 10) */
+  @media (orientation:portrait) and (max-width:900px){
+    .app{gap:12px;padding:12px}
+    .rail{flex:0 0 74px} .rail button,.rail .lg{width:52px;height:52px;border-radius:17px;font-size:22px}
+    .bento{gap:12px}
+    .w{padding:16px 17px;border-radius:24px}
+    .hello .bonjour{font-size:25px} .hello .sous{font-size:14px}
+    .kid .s{display:none}
+    #menuBody{grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row}  /* trop étroit pour 2 colonnes */
+    .clock .num{font-size:44px} .analog{width:112px;height:112px}
+    .hand.h{height:29px} .hand.m{height:41px} .hand.s{height:45px}
+    .wx .deg{font-size:40px} .wx .ico{font-size:40px}
+    .pill{font-size:16px;padding:11px 14px} .repas .p{font-size:16px}
+    .evt{font-size:15.5px} .evt .h{flex:0 0 82px;font-size:14px}
+    .mc{height:30px}
+    .agenda{grid-template-columns:262px minmax(0,1fr);column-gap:16px}
+    .gc{min-height:76px} .gc .e~.e{display:none}   /* mois étroit : un seul événement par jour */
+    .sv-time{font-size:100px;letter-spacing:-5px}
+  }
+
+  /* ---------- Mode cuisine ----------
+     Lu debout, à un ou deux mètres, les mains dans la préparation : tout est plus
+     gros qu'ailleurs dans l'application, et chaque ligne se coche au doigt. */
+  .rec-tete{display:flex;gap:18px;align-items:flex-start}
+  .rec-photo{width:180px;height:180px;border-radius:var(--r2);object-fit:cover;
+    flex:0 0 auto;background:var(--card2);box-shadow:var(--sh)}
+  .rec-info{flex:1 1 auto;min-width:0;padding-top:4px}
+  .rec-meta{font-size:19px;font-weight:700;color:var(--muted)}
+  .rec-app{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .rec-app span{font-size:14px;font-weight:700;padding:5px 13px;border-radius:999px;
+    background:color-mix(in srgb,var(--menu) 18%,var(--card2));color:var(--menu)}
+  .rec-src{font-size:13.5px;color:var(--faint);margin-top:10px}
+  .rec-courses{border:0;background:var(--card2);color:var(--course);font-weight:700;
+    font-size:14px;padding:6px 14px;border-radius:999px;cursor:pointer;margin-left:12px}
+
+  /* Choix du nombre de convives : des boutons plutôt qu'une liste déroulante —
+     on l'utilise les mains occupées, et un doigt vise mal un menu qui se déplie. */
+  .rec-cvt{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:18px;
+    font-size:16px;color:var(--muted)}
+  .rec-cvt button{border:0;min-width:42px;height:42px;border-radius:13px;cursor:pointer;
+    background:var(--card2);color:var(--txt);font-size:17px;font-weight:700}
+  .rec-cvt button.on{background:var(--menu);color:var(--onac)}
+  .rec-cvt em{flex-basis:100%;font-style:normal;font-size:13.5px;color:var(--faint)}
+
+  /* Couverts dans la ligne de menu */
+  .cvt{max-width:130px}
+  .cvt-def{font-size:12px;color:var(--faint);margin-left:-4px}
+
+  .rec-ing{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px}
+  .rec-i{display:flex;align-items:center;gap:12px;padding:12px 15px;border-radius:var(--r2);
+    background:var(--card2);font-size:18px;cursor:pointer;transition:.12s}
+  .rec-i .rec-case{width:26px;height:26px;border-radius:9px;flex:0 0 auto;background:var(--card);
+    box-shadow:inset 0 0 0 2px var(--line2);display:grid;place-items:center;color:transparent}
+  .rec-i.ok{opacity:.45}
+  .rec-i.ok .rec-case{background:var(--course);box-shadow:none;color:var(--onac)}
+  .rec-i.ok{text-decoration:line-through}
+
+  .rec-et{list-style:none;counter-reset:etape;padding:0;margin:0}
+  .rec-et li{counter-increment:etape;display:flex;gap:16px;padding:15px 17px;margin-bottom:10px;
+    border-radius:var(--r2);background:var(--card2);font-size:19px;line-height:1.45;cursor:pointer;
+    transition:.12s}
+  .rec-et li::before{content:counter(etape);flex:0 0 auto;width:34px;height:34px;border-radius:50%;
+    background:var(--menu);color:var(--onac);display:grid;place-items:center;
+    font-size:16px;font-weight:800}
+  .rec-et li.ok{opacity:.4}
+  .rec-et li.ok::before{background:var(--line2)}
+
+  @media (orientation:portrait){
+    .rec-photo{width:210px;height:210px}
+    .rec-meta{font-size:22px} .rec-i{font-size:20px} .rec-et li{font-size:22px}
+    .rec-et li::before{width:40px;height:40px;font-size:18px}
+  }
+
+  /* Vignette du plat dans la carte Menu — c'est elle qui ouvre la recette.
+     Le gabarit d'origine était calibré pour un emoji : une photo y était réduite à
+     un timbre-poste illisible. Quand il y a une vraie photo, on lui donne un carré
+     franc — c'est elle qui doit donner envie, c'est tout l'intérêt de l'avoir. */
+  .repas .pic.aphoto{width:36px;height:36px;padding:0;overflow:hidden;border-radius:11px;
+    box-shadow:var(--sh);flex:0 0 auto}
+  .repas .pic.aphoto img{width:100%;height:100%;object-fit:cover;display:block}
+  .repas .pic.clic{cursor:pointer;transition:transform .12s}
+  .repas .pic.clic:active{transform:scale(.94)}
+  /* ⚠️ La taille est contrainte par la hauteur de la carte Menu, pas par l'esthétique :
+     à 46 px les sept jours ne tenaient plus et le jeudi passait sous le pli. La mise en
+     page a été validée par Rémi, c'est la vignette qui s'adapte, pas la grille. */
+  @media (orientation:portrait){ .repas .pic.aphoto{width:44px;height:44px;border-radius:13px} }
+
+  /* ---------- Planning enfants : grille horaire ----------
+     Même principe que dans le back-office : l'axe vertical est le TEMPS RÉEL, donc la
+     hauteur d'un bloc est sa durée. Sur un mur, ça se lit d'un coup d'œil — « la journée
+     est chargée » se voit sans lire une seule heure. */
+  .pgrille{display:grid;gap:5px;margin-top:4px}
+  .pjour{
+    font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--muted);text-align:center;padding:7px 3px;background:var(--card2);
+    border-radius:10px
+  }
+  .pjour.today{background:var(--agenda);color:var(--onac)}
+  .pgut{position:relative}
+  .pgut .hl{position:absolute;right:7px;transform:translateY(-50%);font-size:12px;
+    font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums}
+  .pcol{position:relative;background:var(--card2);border-radius:10px}
+  .pcol.today{background:color-mix(in srgb,var(--agenda) 9%,var(--card2))}
+  .pcol .ln{position:absolute;left:0;right:0;height:1px;background:var(--line2);opacity:.5}
+  .pcol .lnd{opacity:.2}
+  .pbloc{
+    position:absolute;border-radius:9px;padding:5px 8px;overflow:hidden;background:var(--pc);
+    color:#16202c;display:flex;flex-direction:column;gap:1px;min-height:20px
+  }
+  .pbloc.act{background:color-mix(in srgb,var(--pc) 26%,var(--card));color:var(--txt);
+    box-shadow:inset 0 0 0 2px var(--pc)}
+  .pbloc .pn{font-size:14px;font-weight:800;line-height:1.15;overflow-wrap:anywhere}
+  .pbloc .ph{font-size:11.5px;font-weight:700;opacity:.75;font-variant-numeric:tabular-nums}
+  .pbloc .pd{font-size:11.5px;opacity:.75;overflow-wrap:anywhere}
+  .pbloc.pcourt{flex-direction:row;align-items:center;gap:7px;padding:2px 8px}
+  .pbloc.pcourt .pd{display:none}
+  .plegende{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .plegende span{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;color:#16202c}
+  @media (orientation:portrait){
+    .pjour{font-size:14px} .pbloc .pn{font-size:15px}
+    .pbloc .ph,.pbloc .pd{font-size:12.5px} .pgut .hl{font-size:13px}
+  }
+
+  /* ---------- Bandeau de notification ----------
+     Doit se lire debout à 1–2 m : gros texte, fort contraste, et un aplat de couleur
+     qui dit le niveau sans avoir à lire. Il passe AU-DESSUS de l'écran de veille
+     (z-index supérieur) — une notification qui n'apparaît pas quand l'écran dort ne
+     sert à rien dans une cuisine. */
+  .notif{
+    position:fixed; left:50%; top:22px; transform:translate(-50%,-160%);
+    z-index:120; display:flex; align-items:center; gap:16px; cursor:pointer;
+    width:min(680px, calc(100vw - 32px)); padding:17px 20px;
+    background:var(--card); color:var(--txt);
+    border-radius:var(--r2); box-shadow:var(--sh-haut);
+    border-left:7px solid var(--todo);
+    transition:transform .38s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .notif.on{transform:translate(-50%,0)}
+  .notif.important{border-left-color:var(--post)}
+  .notif.urgent{border-left-color:var(--temp)}
+  .notif .ico{font-size:31px;line-height:1;flex:0 0 auto}
+  .notif .txt{flex:1 1 auto;min-width:0}
+  .notif .t{font-size:20px;font-weight:800;letter-spacing:-.01em;overflow-wrap:anywhere}
+  .notif .m{font-size:16px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+  .notif .fermer{color:var(--faint);font-size:19px;flex:0 0 auto;padding:0 3px}
+  @media (orientation:portrait){
+    .notif{top:26px; padding:21px 24px}
+    .notif .t{font-size:25px} .notif .m{font-size:19px} .notif .ico{font-size:38px}
+  }
+</style>
+</head>
+<body>
+
+<!-- Jeu d'icônes maison : SVG plutôt qu'emoji. L'emoji 🍽️ se rend comme un carré
+     sous Windows, et les emoji varient d'un système à l'autre — ici, rendu identique partout. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-home" viewBox="0 0 24 24"><path d="M3.5 11.2 12 3.8l8.5 7.4V20a1 1 0 0 1-1 1h-4.6v-6H9.1v6H4.5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M6.5 3v6a2.2 2.2 0 0 0 4.4 0V3M8.7 11.2V21M18 21V3c-2.4 2-3.4 5.4-2.8 9H18"/></symbol>
+  <symbol id="ic-cart" viewBox="0 0 24 24"><path d="M2.6 3.6h2.6l2.5 10.9a2 2 0 0 0 2 1.5h7.5a2 2 0 0 0 1.9-1.4L21 7.4H6"/><circle cx="9.6" cy="20" r="1.4"/><circle cx="17.8" cy="20" r="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="m8.2 12.4 2.7 2.7 5-5.4"/></symbol>
+  <symbol id="ic-cal" viewBox="0 0 24 24"><rect x="3.2" y="5" width="17.6" height="15.8" rx="3.4"/><path d="M3.2 10h17.6M8 3.2v3.4M16 3.2v3.4"/></symbol>
+  <symbol id="ic-note" viewBox="0 0 24 24"><path d="M9 3.2h6v5.6l2.6 2.8v1.6H6.4v-1.6L9 8.8zM12 13.2V21"/></symbol>
+  <symbol id="ic-temp" viewBox="0 0 24 24"><path d="M14 14.9V5.2a2 2 0 1 0-4 0v9.7a4 4 0 1 0 4 0z"/></symbol>
+  <symbol id="ic-music" viewBox="0 0 24 24"><path d="M9 18.2V5.6l9.4-1.9v12.6"/><circle cx="6.6" cy="18.4" r="2.5"/><circle cx="16" cy="16.3" r="2.5"/></symbol>
+  <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.4 14.6A8.6 8.6 0 0 1 9.4 3.6a8.8 8.8 0 1 0 11 11z"/></symbol>
+  <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.4 19.6 6 18M18 6l1.6-1.6"/></symbol>
+  <symbol id="ic-bag" viewBox="0 0 24 24"><rect x="4" y="7.2" width="16" height="13.6" rx="4"/><path d="M8.4 7.2V5.8a3.6 3.6 0 0 1 7.2 0v1.4M9 13.4h6"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5.2v13.6M5.2 12h13.6"/></symbol>
+  <symbol id="ic-pen" viewBox="0 0 24 24"><path d="M15.8 4.6a2.1 2.1 0 0 1 3 3L9.2 17.2l-4 1 1-4z"/></symbol>
+  <symbol id="ic-grow" viewBox="0 0 24 24"><path d="M4 9.6V4.4h5.2M20 14.4v5.2h-5.2M4.4 4.4 10 10M19.6 19.6 14 14"/></symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></symbol>
+  <symbol id="ic-ok" viewBox="0 0 24 24"><path d="m5.5 12.6 4 4 9-9.4" stroke-width="2.6"/></symbol>
+  <symbol id="ic-prev" viewBox="0 0 24 24"><path class="f" d="M18 5.5v13L8.8 12z"/><path d="M6.4 5.5v13"/></symbol>
+  <symbol id="ic-next" viewBox="0 0 24 24"><path class="f" d="M6 5.5v13L15.2 12z"/><path d="M17.6 5.5v13"/></symbol>
+  <symbol id="ic-play" viewBox="0 0 24 24"><path class="f" d="M7.5 4.8 19 12 7.5 19.2z"/></symbol>
+  <symbol id="ic-left" viewBox="0 0 24 24"><path d="M14.5 5 8 12l6.5 7"/></symbol>
+  <symbol id="ic-right" viewBox="0 0 24 24"><path d="M9.5 5 16 12l-6.5 7"/></symbol>
+  <symbol id="ic-ecran" viewBox="0 0 24 24"><rect x="2.8" y="4.4" width="18.4" height="12.8" rx="2.6"/><path d="M8.4 20.6h7.2M12 17.2v3.4"/></symbol>
+  <symbol id="ic-pin" viewBox="0 0 24 24"><circle cx="12" cy="10.2" r="3"/><path d="M12 21.4c4.2-5 6.4-8.3 6.4-11.2a6.4 6.4 0 1 0-12.8 0c0 2.9 2.2 6.2 6.4 11.2z"/></symbol>
+</defs></svg>
+<style>.i .f{fill:currentColor;stroke:none}</style>
+
+<div class="err" id="err"></div>
+
+<div class="app">
+  <!-- rail de navigation (inspiration directe du NEST 10) -->
+  <nav class="rail">
+    <div class="lg"><svg class="i"><use href="#ic-home"/></svg></div>
+    <button data-k="menu"   style="--ac:var(--menu)"   onclick="openTile('menu')"   title="Menu"><svg class="i"><use href="#ic-menu"/></svg></button>
+    <button data-k="course" style="--ac:var(--course)" onclick="openTile('course')" title="Courses"><svg class="i"><use href="#ic-cart"/></svg></button>
+    <button data-k="todo"   style="--ac:var(--todo)"   onclick="openTile('todo')"   title="À faire"><svg class="i"><use href="#ic-check"/></svg></button>
+    <button data-k="agenda" style="--ac:var(--agenda)" onclick="openTile('agenda')" title="Agenda"><svg class="i"><use href="#ic-cal"/></svg></button>
+    <button data-k="post"   style="--ac:var(--post)"   onclick="openTile('post')"   title="Post-it"><svg class="i"><use href="#ic-note"/></svg></button>
+    <div class="sep"></div>
+    <!-- Jarvis : masqué par défaut. Le script ne le révèle QUE si le micro peut
+         réellement s'ouvrir (contexte sécurisé + reconnaissance disponible).
+         Un bouton mort sur un mur de cuisine est pire que pas de bouton. -->
+    <button id="btnVoix" style="--ac:var(--course);display:none" onclick="basculeVoix()" title="Parler à la maison">
+      <svg class="i" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path fill="currentColor" d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 0 0 2 0v-3.08A7 7 0 0 0 19 11z"/></svg></button>
+    <button id="btnTheme" style="--ac:var(--todo)" onclick="basculeTheme()" title="Thème"><svg class="i"><use href="#ic-moon" id="useTheme"/></svg></button>
+    <button style="--ac:var(--agenda)" onclick="showSaver()" title="Mettre en veille"><svg class="i"><use href="#ic-ecran"/></svg></button>
+  </nav>
+
+  <main class="bento">
+    <!-- accueil : salutation contextuelle + plannings enfants -->
+    <header class="w hello">
+      <div>
+        <div class="bonjour" id="bonjour">Bonjour</div>
+        <div class="sous"><span id="dateTxt"></span><span id="saintTxt"></span></div>
+      </div>
+      <div class="kids" id="kids"></div>
+    </header>
+
+    <section class="w clock">
+      <div>
+        <div class="num" id="hNum">--:--</div>
+        <div class="jour" id="hJour"></div>
+      </div>
+      <div class="analog" id="analog">
+        <div class="hand h" id="aH"></div><div class="hand m" id="aM"></div>
+        <div class="hand s" id="aS"></div><div class="pin"></div>
+      </div>
+    </section>
+
+    <section class="w wx" id="wxCard" style="visibility:hidden"></section>
+
+    <section class="w menu clic" onclick="openTile('menu')">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-menu"/></svg></span>
+        <span class="ti">Menu de la semaine</span>
+        <button class="add" onclick="event.stopPropagation();openTile('menu')"><svg class="i"><use href="#ic-pen"/></svg></button></div>
+      <div class="wb" id="menuBody"></div>
+    </section>
+
+    <section class="w agenda clic" onclick="openTile('agenda')">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-cal"/></svg></span>
+        <span class="ti">Agenda</span><span class="cnt" id="agCnt"></span>
+        <button class="add" onclick="event.stopPropagation();openTile('agenda')"><svg class="i"><use href="#ic-grow"/></svg></button></div>
+      <div class="mm" id="mois"></div>
+      <div class="stitre">Aujourd'hui</div>
+      <div class="wb" id="agendaBody"></div>
+    </section>
+
+    <section class="w course">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-cart"/></svg></span>
+        <span class="ti">Courses</span><span class="cnt" id="courseCnt"></span>
+        <button class="add" onclick="openTile('course')"><svg class="i"><use href="#ic-plus"/></svg></button></div>
+      <div class="wb" id="courseBody"></div>
+    </section>
+
+    <section class="w todo">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-check"/></svg></span>
+        <span class="ti">À faire</span><span class="cnt" id="todoCnt"></span>
+        <button class="add" onclick="openTile('todo')"><svg class="i"><use href="#ic-plus"/></svg></button></div>
+      <div class="wb" id="todoBody"></div>
+    </section>
+
+    <section class="w post clic" onclick="openTile('post')">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-note"/></svg></span>
+        <span class="ti">Post-it</span>
+        <button class="add" onclick="event.stopPropagation();openTile('post')"><svg class="i"><use href="#ic-plus"/></svg></button></div>
+      <div class="wb" id="postBody"></div>
+    </section>
+
+    <!-- Maison : les deux emplacements du différenciateur (le NEST 10 ne sait pas les faire) -->
+    <section class="w maison">
+      <div class="wh"><span class="ic"><svg class="i"><use href="#ic-home"/></svg></span>
+        <span class="ti">Maison</span></div>
+      <div class="wb">
+        <div class="bloc att"><span class="ic"><svg class="i"><use href="#ic-temp"/></svg></span>
+          <div class="tx"><div class="k">Température</div><div class="v">Netatmo · à brancher sur le Mac</div></div>
+          <div class="big">—</div></div>
+        <div class="bloc mus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
+          <div class="tx"><div class="k">Musique</div><div class="v">AirPlay · Salon</div></div>
+          <div class="lecteur">
+            <button><svg class="i"><use href="#ic-prev"/></svg></button>
+            <button class="p"><svg class="i"><use href="#ic-play"/></svg></button>
+            <button><svg class="i"><use href="#ic-next"/></svg></button></div></div>
+      </div>
+    </section>
+
+    <div class="news" id="news" style="display:none"><div class="et">Actus</div><div class="vp" id="newsVp"></div></div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<button class="home" id="homeBtn" onclick="closeTile()"><svg class="i"><use href="#ic-home"/></svg> Accueil</button>
+
+<!-- Bandeau de notification : posé au-dessus de tout, y compris de l'écran de veille,
+     puisque son intérêt est justement de réveiller l'écran de la cuisine. -->
+<div class="notif" id="notif" onclick="fermerNotif()">
+  <div class="ico" id="notifIco">🔔</div>
+  <div class="txt"><div class="t" id="notifTitre"></div><div class="m" id="notifMsg"></div></div>
+  <div class="fermer">✕</div>
+</div>
+
+<div class="saver" id="saver">
+  <div class="hint">Touchez l'écran pour revenir</div>
+  <div class="sv-top">
+    <div><div class="sv-time" id="svTime"></div><div class="sv-date" id="svDate"></div><div class="sv-saint" id="svSaint"></div></div>
+    <div class="sv-wx" id="svWx"></div>
+  </div>
+  <div class="sv-bas">
+    <div class="sv-grid" id="svGrid"></div>
+    <div class="sv-news" id="svNews" style="display:none"><div class="et">Actus</div><div class="vp" id="svNewsVp"></div></div>
+  </div>
+</div>
+
+<script src="/voix.js"></script>
+<script>
+const FAMILY=['Rémi','Amandine','Enora','Martial','Garçons','Toute la famille'];
+const DAYS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const JOURS_LONG=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+const RAYONS=['Frais','Épicerie','Maison / hygiène','Boissons','Divers'];
+const SPECIAL=['Restaurant','Sortie','Livraison','Restes du frigo','Chacun pour soi'];
+const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+/* « mai », « juin », « août » font 4 lettres ou moins : pas de point abréviatif (« août. » était faux) */
+const moisCourt=i=>MOIS[i].length<=4?MOIS[i]:MOIS[i].slice(0,4)+'.';
+
+let S={dishes:[],plats:[],menu:[],courses:[],todos:[],postits:[],agenda:[],plannings:{exemple:false,personnes:[]},meteo:null,saint:'',news:[],feries:[],anniversaires:{aujourdhui:[],prochains:[]}};
+
+/* Jours fériés, indexés par date. Calculés par le serveur, sans réseau. */
+let FERIES={};
+const majFeries=()=>{FERIES={};for(const f of S.feries||[])FERIES[f.date]=f.nom;};
+const ferieDe=d=>FERIES[typeof d==='string'?d:ymd(d)]||'';
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const ico=(n,cls)=>`<svg class="i ${cls||''}"><use href="#ic-${n}"/></svg>`;
+
+/* Pictogramme du plat — déduit du NOM, faute de champ dédié dans Notion.
+   Palliatif assumé : la vraie solution est un champ `Emoji` ou `Photo` dans la
+   Bibliothèque de plats (§ 5 bis « du visuel sur les repas »). 🍽️ est évité :
+   il se rend comme un carré sous Windows. */
+const PICTOS=[
+  [/p[âa]tes|spaghetti|lasagne|tagliatelle|ravioli|gnocchi/,'🍝'],[/pizza/,'🍕'],
+  [/poulet|volaille|dinde/,'🍗'],[/b[œoe]uf|steak|bourguignon|rosbif/,'🥩'],
+  [/poisson|saumon|cabillaud|colin|truite|merlu/,'🐟'],[/moule|hu[îi]tre/,'🦪'],[/crevette|gambas/,'🦐'],
+  [/salade|crudit/,'🥗'],[/soupe|potage|velout/,'🍲'],[/riz|risotto|paella/,'🍚'],
+  [/burger|hamburger/,'🍔'],[/cr[êe]pe|galette|pancake/,'🥞'],[/[œoe]uf|omelette|brouill/,'🍳'],
+  [/sandwich|croque|wrap|panini/,'🥪'],[/tarte|quiche|tourte/,'🥧'],
+  [/gratin|raclette|fondue|tartiflette|croziflette|fromage/,'🧀'],[/frite/,'🍟'],
+  [/curry|couscous|tajine|chili|colombo/,'🍛'],[/sushi|maki/,'🍣'],[/kebab|tacos|burrito|fajita/,'🌯'],
+  [/l[ée]gume|ratatouille|courgette|haricot|brocoli/,'🥦'],[/jambon|r[ôo]ti|porc|c[ôo]telette|agneau/,'🍖'],
+  [/saucisse|merguez|hot ?dog/,'🌭'],[/pur[ée]e|patate|pomme de terre|hachis/,'🥔'],
+  [/restaurant/,'🍴'],[/sortie/,'🚗'],[/livraison/,'🛵'],[/reste/,'🥡'],[/chacun/,'🤷'],
+  [/p[âa]t[ée]|charcuterie|ap[ée]ro/,'🥖'],
+];
+function picto(nom){const n=(nom||'').toLowerCase();
+  for(const [re,e] of PICTOS) if(re.test(n)) return e;
+  return n?'🍲':'·';}
+
+/* ---------- thème ---------- */
+function appliqueTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  const u=document.getElementById('useTheme');
+  if(u)u.setAttribute('href',t==='dark'?'#ic-sun':'#ic-moon');   // l'icône annonce la destination
+  const b=document.getElementById('btnTheme');
+  if(b)b.title=t==='dark'?'Passer en clair':'Passer en sombre';
+  try{localStorage.setItem('theme-bento',t);}catch(e){}
+}
+function basculeTheme(){appliqueTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
+try{appliqueTheme(localStorage.getItem('theme-bento')||'light');}catch(e){appliqueTheme('light');}
+
+const todayIdx=()=>{const d=new Date().getDay();return d===0?6:d-1;};
+function showErr(m){const e=document.getElementById('err');e.textContent=m;e.style.display='block';
+  clearTimeout(showErr._t);showErr._t=setTimeout(()=>e.style.display='none',4000);}
+
+async function api(url,method,body){
+  const r=await fetch(url,{method:method||'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||('HTTP '+r.status));}
+  return r.json();
+}
+async function load(){try{S=await api('/api/data');render();if(saver.classList.contains('on'))renderSaver();
+  /* Les réglages de voix arrivent avec les données : on les ré-applique à chaque
+     fois, pour qu'un changement fait dans /admin/ prenne effet sans recharger
+     l'écran mural — qu'on ne recharge jamais à la main. */
+  if(typeof appliquerReglagesVoix==='function')appliquerReglagesVoix();}
+  catch(e){showErr('⚠ Chargement : '+e.message);}}
+
+/* ---------- horloge (numérique + aiguilles) ---------- */
+function tick(){
+  const d=new Date();
+  const hh=String(d.getHours()).padStart(2,'0'),mm=String(d.getMinutes()).padStart(2,'0'),ss=d.getSeconds();
+  document.getElementById('hNum').textContent=hh+':'+mm;
+  document.getElementById('hJour').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'short'});
+  const m=d.getMinutes()+ss/60, h=(d.getHours()%12)+m/60;
+  document.getElementById('aH').style.transform=`rotate(${h*30}deg)`;
+  document.getElementById('aM').style.transform=`rotate(${m*6}deg)`;
+  document.getElementById('aS').style.transform=`rotate(${ss*6}deg)`;
+  document.getElementById('svTime').textContent=hh+':'+mm;
+  document.getElementById('svDate').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('dateTxt').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  const H=d.getHours();
+  document.getElementById('bonjour').textContent=
+    H<5?'Bonne nuit':H<11?'Bonjour':H<14?'Bon appétit':H<18?'Bel après-midi':H<22?'Bonne soirée':'Bonne nuit, dormez bien';
+}
+/* cadran : 12 traits, les 4 quarts plus marqués */
+document.getElementById('analog').insertAdjacentHTML('afterbegin',
+  Array.from({length:12},(_,k)=>`<div class="tick ${k%3===0?'q':''}" style="--k:${k}"></div>`).join(''));
+setInterval(tick,1000);tick();
+
+/* ---------- helpers agenda ---------- */
+const hhmm=iso=>{const d=new Date(iso);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const memeJour=(a,b)=>ymd(a)===ymd(b);
+function lundi(ref){const d=new Date(ref||new Date());d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d;}
+function joursDe(e){
+  const s=new Date(e.start);s.setHours(0,0,0,0);
+  if(!e.fin)return [ymd(s)];
+  let f=new Date(e.fin);
+  if(e.journee)f=new Date(f.getTime()-1);            // DTEND d'une journée entière est exclusif
+  f.setHours(0,0,0,0);
+  const out=[],cur=new Date(s);
+  for(let i=0;cur<=f&&i<90;i++){out.push(ymd(cur));cur.setDate(cur.getDate()+1);}
+  return out.length?out:[ymd(s)];
+}
+function evtsDuJour(d){const k=ymd(d);return (S.agenda||[]).filter(e=>(e._j||(e._j=joursDe(e))).includes(k));}
+function heureEvt(e){
+  if(e.journee)return 'journée';
+  const h=hhmm(e.start);
+  if(!e.fin)return h;
+  return memeJour(new Date(e.start),new Date(e.fin))?`${h}–${hhmm(e.fin)}`:h;
+}
+const ligneEvt=e=>`<div class="evt"><span class="h">${heureEvt(e)}</span><span class="s">${esc(e.summary)}${e.lieu?`<em>${esc(e.lieu)}</em>`:''}</span></div>`;
+const dueLabel=d=>{if(!d)return '';const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;};
+const enRetard=d=>!!d&&d<ymd(new Date());
+const triFait=(arr,champ)=>[...arr].sort((a,b)=>(a[champ]?1:0)-(b[champ]?1:0));
+const triTodos=arr=>[...arr].sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.due||'9999').localeCompare(b.due||'9999'));
+const personne=n=>((S.plannings&&S.plannings.personnes)||[]).find(p=>p.nom===n);
+function creneauxDuJour(p,i){return (p.semaine&&p.semaine[DAYS[i===undefined?todayIdx():i]])||[];}
+const slotLine=c=>`<div class="ks"><span class="kt">${c.fin?`${esc(c.h)}–${esc(c.fin)}`:esc(c.h)}</span>
+  <span class="kq">${esc(c.quoi)}${c.ou?` <span class="ko">· ${esc(c.ou)}</span>`:''}</span></div>`;
+
+/* ---------- rendu ---------- */
+function render(){
+  const ti=todayIdx();
+  majFeries();
+
+  // délai de veille : réglé en base, relu à chaque chargement
+  const vm=Number(S.reglages&&S.reglages.veille_minutes);
+  if(vm>0)veilleMs=vm*60*1000;
+
+  // anniversaire du jour, puis fête du jour
+  /* L'anniversaire passe AVANT la fête : c'est l'information qui compte
+     vraiment dans une maison, et elle n'a qu'un jour pour être vue. */
+  const anniv=(S.anniversaires&&S.anniversaires.aujourdhui)||[];
+  const fete=S.saint||'';
+  const perso=FAMILY.find(f=>f.toLowerCase()===fete.toLowerCase());
+  const txtFete=fete?(perso?` · 🎉 Bonne fête <b>${esc(fete)}</b> !`:` · fête du jour : ${esc(fete)}`):'';
+  const ferieAuj=ferieDe(new Date());
+  /* Qui est là aujourd'hui : sur un écran familial, savoir que les garçons
+     arrivent ce soir change la journée. Affiché seulement quand ça sort de
+     l'ordinaire — sinon ce serait du bruit permanent. */
+  const pr=S.presence;
+  const gardeTxt=pr&&pr.prochaine
+    ? ` · 👦 ${esc(pr.type)} · les enfants arrivent ${esc(dateCourte(pr.prochaine.du))}`
+    : (pr?` · 👦 ${esc(pr.type)}`:'');
+  document.getElementById('saintTxt').innerHTML=
+    (ferieAuj?` · 🇫🇷 <b>${esc(ferieAuj)}</b> — jour férié`:'')+gardeTxt
+    +(anniv.length?` · 🎂 <b>Anniversaire de ${anniv.map(a=>esc(a.nom)+(a.age!=null?` (${a.age} ans)`:'')).join(', ')}</b>`:'')
+    +txtFete;
+
+  // météo : grande valeur + prochaines heures + jours suivants
+  const M=S.meteo;
+  if(M&&M.temp!=null){
+    const c=document.getElementById('wxCard');c.style.visibility='visible';
+    c.innerHTML=`<div class="haut"><div class="ico">${M.icone||''}</div>
+        <div style="flex:1;min-width:0"><div class="deg">${M.temp}°</div><div class="desc">${esc(M.texte)}</div></div>
+        <div style="text-align:right"><div class="ville">${ico('pin')} ${esc(M.ville||'')}</div>
+          <div class="desc" style="margin-top:4px">${M.min}° / ${M.max}°</div></div></div>`
+      +((M.heures||[]).length?`<div class="heures">${M.heures.map(h=>
+        `<div><div class="hh">${esc(h.h)}</div><div class="hi">${h.icone||''}</div><div class="ht">${h.t}°</div></div>`).join('')}</div>`:'')
+      +((M.jours||[]).length?`<div class="jours">${M.jours.map(j=>{
+        const d=new Date(j.date+'T12:00');
+        return `<div><span>${j.icone||''}</span><span class="jn">${d.toLocaleDateString('fr-FR',{weekday:'long'})}</span>
+          <b>${j.max}°</b><span>${j.min}°</span></div>`;}).join('')}</div>`:'');
+  }
+
+  /* menu — vraie photo du plat quand on l'a, pictogramme deviné sinon.
+     La vignette est le bouton qui ouvre la recette : le reste de la ligne ouvre
+     toujours le panneau Menu pour changer le repas, les deux gestes ne se
+     marchent pas dessus. */
+  document.getElementById('menuBody').innerHTML=DAYS.map((d,i)=>{
+    const row=S.menu.find(m=>(m.jour||'').startsWith(d))||{};
+    const fiche=(S.plats||[]).find(p=>p.id===row.soirId);
+    const ouvrable=fiche&&fiche.recette;
+    const vignette=row.soirPhoto
+      ? `<img src="${esc(row.soirPhoto)}" alt="" loading="lazy">`
+      : (fiche&&fiche.emoji?esc(fiche.emoji):picto(row.soir));
+    return `<div class="repas ${i===ti?'today':''}"><span class="j">${d}</span>
+      <span class="pic ${row.soirPhoto?'aphoto':''} ${ouvrable?'clic':''}"
+            ${ouvrable?`onclick="event.stopPropagation();ouvrirRecette('${row.soirId}',${row.soirCouverts||4})"`:''}
+            ${ouvrable?'title="Voir la recette"':''}>${vignette}</span>
+      <span class="tx"><span class="p ${row.soir?'':'rien'}">${esc(row.soir)||'à définir'}</span>
+        ${row.midi?`<span class="m">midi · ${esc(row.midi)}</span>`:''}</span></div>`;
+  }).join('');
+
+  // courses — ce qui reste à prendre d'abord (la hauteur est limitée)
+  const co=S.courses.filter(x=>!x.pris);
+  document.getElementById('courseCnt').textContent=co.length+' à prendre';
+  document.getElementById('courseBody').innerHTML=triFait(S.courses,'pris').map(x=>
+    `<div class="pill ${x.pris?'fait':''}"><span class="box" onclick="event.stopPropagation();toggleCourse('${x.id}',${!x.pris})">${ico('ok')}</span>
+      <span class="lt">${esc(x.article)}</span>${x.rayon?`<span class="tag">${esc(x.rayon)}</span>`:''}</div>`
+  ).join('')||'<div class="vide">Liste vide</div>';
+
+  // à faire — non fait d'abord, échéance la plus proche en tête
+  const to=S.todos.filter(x=>!x.done);
+  document.getElementById('todoCnt').textContent=to.length+' à faire';
+  document.getElementById('todoBody').innerHTML=triTodos(S.todos).map(x=>
+    `<div class="pill ${x.done?'fait':''}"><span class="box" onclick="event.stopPropagation();toggleTodo('${x.id}',${!x.done})">${ico('ok')}</span>
+      <span class="lt">${esc(x.tache)}</span>${x.who?`<span class="tag ac">${esc(x.who)}</span>`:''}
+      ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}</div>`
+  ).join('')||'<div class="vide">Rien à faire 🎉</div>';
+
+  // agenda : mini-mois + événements du jour
+  const auj=new Date(),ev=evtsDuJour(auj);
+  document.getElementById('agCnt').textContent=ev.length?ev.length+' aujourd’hui':'calme';
+  const debut=lundi(new Date(auj.getFullYear(),auj.getMonth(),1));
+  let mm=DAYS.map(d=>`<div class="mh">${d[0]}</div>`).join('');
+  for(let i=0;i<42;i++){
+    const j=new Date(debut);j.setDate(debut.getDate()+i);
+    if(i>=35&&j.getMonth()!==auj.getMonth())break;
+    mm+=`<button class="mc ${j.getMonth()!==auj.getMonth()?'out':''} ${memeJour(j,auj)?'today':''}"
+      onclick="event.stopPropagation();ouvreAgendaSur('${ymd(j)}')">${j.getDate()}
+      <span class="pt ${evtsDuJour(j).length?'':'vide'}"></span></button>`;
+  }
+  document.getElementById('mois').innerHTML=mm;
+  document.getElementById('agendaBody').innerHTML=ev.length?ev.slice(0,5).map(ligneEvt).join('')
+    :'<div class="vide">Rien de prévu</div>';
+
+  // plannings enfants : cartes-avatars dans l'accueil
+  document.getElementById('kids').innerHTML=((S.plannings&&S.plannings.personnes)||[]).map(p=>{
+    const c=creneauxDuJour(p);
+    const suite=c.length?`${c[0].h} ${c[0].quoi}`:"rien aujourd'hui";
+    return `<button class="kid" onclick="openTile('plan:${esc(p.nom)}')">
+      <span class="av" style="background:${esc(p.couleur)}">${esc((p.nom||'?')[0])}</span>
+      <span class="tx"><span class="n">${esc(p.nom)}</span><span class="s">${esc(suite)}</span></span></button>`;
+  }).join('');
+
+  // post-it
+  document.getElementById('postBody').innerHTML=S.postits.map(p=>
+    `<div class="note">${esc(p.message)}<b>— ${esc(p.who)}</b></div>`).join('')||'<div class="vide">Aucun mot</div>';
+
+  majNews('news','newsVp');
+}
+
+/* Bandeau actus : contenu dupliqué + translate de -50 % → défilement continu sans saut. */
+function majNews(idBloc,idVp){
+  const N=(S.news||[]),bloc=document.getElementById(idBloc),vp=document.getElementById(idVp);
+  if(!bloc||!vp)return;
+  if(!N.length){bloc.style.display='none';return;}
+  bloc.style.display='flex';
+  const sig=idBloc+'|'+N.length+'|'+(N[0]&&N[0].titre);
+  if(vp.dataset.sig===sig)return;                    // ne pas relancer l'animation à chaque refresh
+  vp.dataset.sig=sig;
+  const suite=N.map(n=>`<span class="it">${n.source?`<i>${esc(n.source)}</i>`:''}${esc(n.titre)}</span><span class="sp">◆</span>`).join('');
+  const duree=Math.max(60,Math.round(N.reduce((s,n)=>s+n.titre.length,0)/7));
+  vp.innerHTML=`<div class="track" style="animation-duration:${duree}s">${suite}${suite}</div>`;
+}
+
+/* ---------- actions ---------- */
+async function refresh(){await load();if(openK)drawSheet(openK);}
+async function toggleCourse(id,pris){try{await api('/api/course/'+id,'PATCH',{pris});await refresh();}catch(e){showErr(e.message);}}
+async function toggleTodo(id,done){try{await api('/api/todo/'+id,'PATCH',{done});await refresh();}catch(e){showErr(e.message);}}
+
+/* suppression en 2 touchers ; Notion archive → restaurable depuis la corbeille */
+let armed=null,armTimer;
+function askDel(btn,kind,id){
+  if(armed&&armed!==btn)resetDel(armed);
+  if(armed===btn){clearTimeout(armTimer);armed=null;return doDel(kind,id);}
+  btn.classList.add('arm');btn.innerHTML='Supprimer ?';armed=btn;
+  clearTimeout(armTimer);armTimer=setTimeout(()=>{if(armed===btn){resetDel(btn);armed=null;}},4000);
+}
+function resetDel(b){b.classList.remove('arm');b.innerHTML=ico('x');}
+async function doDel(kind,id){try{await api('/api/'+kind+'/'+id,'DELETE');await refresh();}catch(e){showErr(e.message);}}
+async function viderPris(){try{const r=await api('/api/course/vider','POST');await refresh();showErr(r.supprimes+' article(s) retiré(s)');}catch(e){showErr(e.message);}}
+
+/* ---------- Courses depuis le menu ----------
+   Le serveur PROPOSE les ingrédients des plats de la semaine, personne ne les ajoute
+   à notre place : avoir un plat au menu ne veut pas dire qu'il manque ses ingrédients,
+   la moitié dort dans les placards. Rien n'est coché d'avance, exprès. */
+let SUGG=null;                                   // null = bloc fermé
+
+async function ouvrirSugg(){
+  try{SUGG=await api('/api/course/suggestions');drawSheet('course');}
+  catch(e){showErr(e.message);}
+}
+function fermerSugg(){SUGG=null;drawSheet('course');}
+
+function blocSuggestions(){
+  const libres=(SUGG.suggestions||[]).filter(s=>!s.deja);
+  const deja=(SUGG.suggestions||[]).filter(s=>s.deja);
+  if(!(SUGG.suggestions||[]).length)
+    return `<div class="demo" style="margin-top:12px">Aucun ingrédient renseigné pour les plats
+      de la semaine.${(SUGG.sansIngredients||[]).length?` À compléter dans l'administration
+      pour : ${esc(SUGG.sansIngredients.join(', '))}.`:''}</div>`;
+
+  return `<div style="margin-top:14px">
+    <div class="stitre" style="margin:0 0 8px">Ingrédients du menu — coche ce qui manque</div>
+    ${libres.length?libres.map((s,i)=>`
+      <div class="pill" onclick="basculeSugg(${i})">
+        <span class="box" id="sg${i}">${ico('ok')}</span>
+        <span class="lt">${esc(s.article)}<span class="tag">${esc(s.plats.join(' · '))}</span></span>
+      </div>`).join('')
+      :'<div class="vide" style="padding:10px 0">Tout est déjà sur la liste 🎉</div>'}
+    ${deja.length?`<div class="stitre" style="margin:16px 0 8px">Déjà sur la liste</div>
+      ${deja.map(s=>`<div class="pill fait"><span class="lt">${esc(s.article)}</span></div>`).join('')}`:''}
+    ${libres.length?`<div class="bar" style="margin-top:12px">
+      <button onclick="ajouterSugg()">Ajouter les articles cochés</button>
+      <button onclick="toutSugg()">Tout cocher / décocher</button></div>`:''}
+    ${(SUGG.sansIngredients||[]).length?`<div class="demo" style="margin-top:12px">
+      Sans ingrédients renseignés : ${esc(SUGG.sansIngredients.join(', '))} —
+      à compléter dans l'administration.</div>`:''}
+  </div>`;
+}
+
+/* La sélection vit dans le DOM (classe `on` sur la case) : le bloc est redessiné à
+   chaque frappe du flux temps réel, mais pas pendant qu'on coche — inutile de la
+   remonter dans l'état global. */
+function basculeSugg(i){const b=document.getElementById('sg'+i);if(b)b.classList.toggle('on');}
+function toutSugg(){
+  const cases=[...document.querySelectorAll('[id^="sg"]')];
+  const on=cases.some(c=>!c.classList.contains('on'));
+  cases.forEach(c=>c.classList.toggle('on',on));
+}
+async function ajouterSugg(){
+  const libres=(SUGG.suggestions||[]).filter(s=>!s.deja);
+  const choisis=libres.filter((_,i)=>document.getElementById('sg'+i)?.classList.contains('on'))
+                      .map(s=>s.article);
+  if(!choisis.length)return showErr('Rien de coché.');
+  try{
+    const r=await api('/api/course/lot','POST',{articles:choisis});
+    SUGG=null;await refresh();drawSheet('course');
+    showErr(r.ajoutes+' article(s) ajouté(s)');
+  }catch(e){showErr(e.message);}
+}
+/* ---------- Ce qu'on rachète toujours ----------
+   La corbeille des courses conserve tout ce qui a été acheté puis retiré : c'est
+   gratuitement un historique. Plutôt que de retaper « lait, pain, yaourts »
+   chaque semaine, on les propose — un toucher chacun. Rien n'est ajouté
+   d'office : même règle que partout ici. */
+let HABITUELS=null;
+
+async function chargerHabituels(){
+  if(HABITUELS){HABITUELS=null;return drawSheet('course');}
+  try{HABITUELS=(await api('/api/course/habituels')).habituels||[];drawSheet('course');}
+  catch(e){showErr(e.message);}
+}
+
+function blocHabituels(){
+  if(!HABITUELS.length)
+    return `<div class="demo" style="margin-top:12px">Pas encore assez d'historique : un article
+      doit avoir été acheté au moins deux fois pour apparaître ici.</div>`;
+  return `<div style="margin-top:14px">
+    <div class="stitre" style="margin:0 0 8px">On les rachète souvent — touche pour ajouter</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${HABITUELS.map((h,i)=>`<button class="hab" id="hb${i}" onclick="ajouterHabituel(${i})">
+        ${esc(h.article)}<span>×${h.fois}</span></button>`).join('')}
+    </div></div>`;
+}
+
+async function ajouterHabituel(i){
+  const h=HABITUELS[i];
+  if(!h)return;
+  const b=document.getElementById('hb'+i);
+  if(b){b.disabled=true;b.classList.add('fait');}
+  try{
+    await api('/api/course','POST',{article:h.article,rayon:h.rayon||undefined});
+    HABITUELS=HABITUELS.filter((_,k)=>k!==i);
+    await refresh();drawSheet('course');
+  }catch(e){showErr(e.message);if(b){b.disabled=false;b.classList.remove('fait');}}
+}
+
+const delBtn=(kind,id)=>`<button class="del" onclick="event.stopPropagation();askDel(this,'${kind}','${id}')">${ico('x')}</button>`;
+
+/* ---------- panneau ---------- */
+const IC={menu:['menu','Menu de la semaine','var(--menu)'],course:['cart','Liste de courses','var(--course)'],
+  todo:['check','À faire','var(--todo)'],post:['note','Post-it famille','var(--post)'],
+  agenda:['cal','Agenda (perso)','var(--agenda)']};
+let openK=null;
+function drawSheet(k){
+  let icone,titre,ac;
+  if(k.startsWith('plan:')){const p=personne(k.slice(5));if(!p)return closeTile();icone='bag';titre='Planning '+p.nom;ac=p.couleur;}
+  else if(k.startsWith('recette:')){if(!RECETTE)return closeTile();icone='menu';titre=RECETTE.nom;ac='var(--menu)';}
+  else [icone,titre,ac]=IC[k];
+  const s=document.getElementById('sheet');
+  s.style.setProperty('--ac',ac);
+  s.className='sheet'+(k==='todo'?' todo':'');             /* .todo → cases à cocher rondes */
+  s.innerHTML=`<h2><span class="ic">${ico(icone)}</span>${titre}</h2>`+body(k);
+  armed=null;
+}
+function openTile(k){
+  openK=k;drawSheet(k);
+  document.getElementById('overlay').classList.add('on');
+  document.getElementById('homeBtn').classList.add('on');
+  document.querySelectorAll('.rail button[data-k]').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  resetIdle();
+}
+function closeTile(){
+  openK=null;armed=null;
+  MENU_SEM='';MENU_SEM_DATA=null;   // rouvrir le menu repart toujours sur la semaine du jour
+  PROPO=null;PROPO_VARIANTE=0;SUGG=null;HABITUELS=null;   // et sur un panneau propre
+  document.getElementById('overlay').classList.remove('on');
+  document.getElementById('homeBtn').classList.remove('on');
+  document.querySelectorAll('.rail button[data-k]').forEach(b=>b.classList.remove('on'));
+}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeTile();});
+const famOpts=s=>FAMILY.map(f=>`<option ${f===s?'selected':''}>${f}</option>`).join('');
+
+/* Nombre de couverts proposé : de « seul » à « douze ». Le choix est posé sur le
+   REPAS, pas sur le plat — c'est bien « samedi soir on sera six », pas « la
+   tartiflette est pour six ». C'est lui qui recalcule les quantités de la recette
+   et des courses. */
+const COUVERTS = [1,2,3,4,5,6,8,10,12];
+
+/* Semaine affichée dans le panneau Menu. Vide = celle du jour, servie par /api/data ;
+   sinon on va chercher la semaine demandée et on la garde le temps du panneau. */
+let MENU_SEM='',MENU_SEM_DATA=null;
+
+const dateCourte=iso=>{
+  const d=new Date(iso+'T12:00');
+  return d.toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
+};
+
+async function menuSemaine(pas){
+  if(pas===0){MENU_SEM='';MENU_SEM_DATA=null;return drawSheet('menu');}
+  const ref=MENU_SEM_DATA?MENU_SEM_DATA[0].date:(S.menu[0]&&S.menu[0].date);
+  if(!ref)return;
+  const d=new Date(ref+'T12:00');d.setDate(d.getDate()+7*pas);
+  const iso=d.toISOString().slice(0,10);
+  try{
+    const r=await (await fetch('/api/menu?semaine='+iso)).json();
+    MENU_SEM=iso;MENU_SEM_DATA=r.menu;
+    /* Revenu sur la semaine du jour : on repasse sur les données de /api/data,
+       qui restent à jour toutes seules par le flux temps réel. */
+    if(S.menu[0]&&r.menu[0]&&r.menu[0].date===S.menu[0].date){MENU_SEM='';MENU_SEM_DATA=null;}
+    drawSheet('menu');
+  }catch(e){showErr(e.message);}
+}
+
+function couvertsRow(m,champ){
+  const n = m[champ==='midi'?'midiCouverts':'soirCouverts'] || 4;
+  const choisi = m[champ==='midi'?'midiCouvertsChoisi':'soirCouvertsChoisi'];
+  /* Suggestion venue de la garde alternée. On ne l'applique PAS d'office : on la
+     montre, et un toucher suffit à l'accepter. Personne ne veut découvrir qu'un
+     nombre de couverts a changé tout seul la veille d'un repas. */
+  const prop = m.couvertsProposes;
+  const suggere = prop && prop !== n
+    ? `<button class="cvt-prop" title="${esc(m.presents?m.presents.join(', '):'')}"
+         onclick="setCouverts('${m.id}','${champ}',${prop})">→ ${prop} ?</button>` : '';
+  return `<select class="inline cvt" title="Nombre de couverts"
+      onchange="setCouverts('${m.id}','${champ}',this.value)">
+    ${COUVERTS.map(c=>`<option value="${c}" ${c===n?'selected':''}>${c} ${c>1?'couverts':'couvert'}</option>`).join('')}
+    </select>${choisi?'':'<span class="cvt-def">défaut</span>'}${suggere}`;
+}
+
+function menuRow(m,champ){
+  const cur=m[champ]||'',connu=S.dishes.includes(cur),spe=SPECIAL.includes(cur);
+  return `<div class="mrow"><span class="ml">${champ==='midi'?'Midi':'Soir'}</span>
+    <select class="inline" onchange="setMenu('${m.id}','${champ}',this.value)">
+      <option value="">— choisir —</option>
+      <optgroup label="Plats">${S.dishes.map(d=>`<option value="P:${esc(d)}" ${d===cur?'selected':''}>${picto(d)} ${esc(d)}</option>`).join('')}</optgroup>
+      <optgroup label="Pas de cuisine">${SPECIAL.map(d=>`<option value="S:${esc(d)}" ${d===cur?'selected':''}>${picto(d)} ${esc(d)}</option>`).join('')}</optgroup>
+    </select>
+    <input class="inline" style="min-width:150px" placeholder="ou écrire un nouveau plat…"
+      value="${(!connu&&!spe)?esc(cur):''}" onchange="setMenu('${m.id}','${champ}','P:'+this.value)">
+    ${couvertsRow(m,champ)}</div>`;
+}
+
+/* ---------- Proposer la semaine ----------
+   La bibliothèque compte des dizaines de plats et on tourne pourtant sur les
+   mêmes cinq : remplir sept soirs à la main est fastidieux, et personne ne se
+   souvient de ce qu'on a mangé il y a six semaines.
+   Aucune IA ici : c'est de la ROTATION, pas de la créativité. Le résultat est
+   instantané, gratuit, et surtout EXPLICABLE — chaque ligne dit pourquoi.
+   Et rien ne s'applique tant qu'on n'a pas validé. */
+let PROPO=null,PROPO_VARIANTE=0;
+
+async function proposerMenu(varier){
+  PROPO_VARIANTE=varier?PROPO_VARIANTE+1:0;
+  try{
+    PROPO=await api('/api/menu/proposer','POST',{semaine:MENU_SEM||undefined,variante:PROPO_VARIANTE});
+    drawSheet('menu');
+  }catch(e){showErr(e.message);}
+}
+function fermerPropo(){PROPO=null;PROPO_VARIANTE=0;drawSheet('menu');}
+
+function blocPropo(){
+  const p=PROPO.proposition||[];
+  if(!p.length)
+    return `<div class="demo" style="margin-bottom:14px">${PROPO.raison
+      ||'Tous les soirs de cette semaine sont déjà décidés — rien à proposer.'}</div>`;
+  return `<div class="card" style="background:var(--card2);border-radius:14px;padding:14px;margin-bottom:16px">
+    <div class="stitre" style="margin:0 0 4px">Proposition pour ${p.length} soir(s)</div>
+    <div style="color:var(--faint);font-size:12.5px;margin-bottom:10px">
+      Décoche ce qui ne te va pas. Rien n'est enregistré tant que tu n'as pas appliqué.</div>
+    ${p.map((x,i)=>`<div class="pill" onclick="basculePropo(${i})">
+      <span class="box on" id="pp${i}">${ico('ok')}</span>
+      <span class="lt"><b>${esc(x.jour)}</b> — ${esc(x.plat)}
+        <span class="tag">${esc(x.raison)}</span></span></div>`).join('')}
+    <div class="bar" style="margin-top:12px">
+      <button onclick="appliquerPropo()">Appliquer</button>
+      <button onclick="proposerMenu(true)">↻ Une autre idée</button>
+    </div></div>`;
+}
+
+function basculePropo(i){const b=document.getElementById('pp'+i);if(b)b.classList.toggle('on');}
+
+async function appliquerPropo(){
+  const p=PROPO.proposition||[];
+  const choix=p.filter((_,i)=>document.getElementById('pp'+i)?.classList.contains('on'))
+    .map(x=>({id:x.id,plat:x.plat,moment:PROPO.moment||'soir'}));
+  if(!choix.length)return showErr('Rien de coché.');
+  try{
+    const r=await api('/api/menu/appliquer','POST',{choix});
+    PROPO=null;PROPO_VARIANTE=0;
+    await apresMenu();
+    showErr(r.poses+' soir(s) enregistré(s)');
+  }catch(e){showErr(e.message);}
+}
+
+async function setCouverts(id,champ,valeur){
+  try{
+    await api('/api/menu/'+id,'PATCH',{[champ+'Couverts']:Number(valeur)});
+    await apresMenu();
+  }catch(e){showErr(e.message);}
+}
+
+function body(k){
+  if(k==='course'){
+    const pris=S.courses.filter(x=>x.pris).length;
+    let h=`<div class="form"><input type="text" id="cNew" placeholder="Ajouter un article…">
+      <select id="cRayon">${(S.rayons&&S.rayons.length?S.rayons:RAYONS).map(r=>`<option>${esc(r)}</option>`).join('')}</select>
+      <select id="cWho">${famOpts('Rémi')}</select><button onclick="addCourse()">Ajouter</button></div>`;
+    h+=`<div class="bar"><button onclick="${SUGG?'fermerSugg':'ouvrirSugg'}()">🍽️ ${SUGG?'Fermer':'Depuis le menu'}</button>
+      <button onclick="chargerHabituels()">🔁 Habituels</button>
+      <button onclick="viderPris()" ${pris?'':'disabled style="opacity:.4"'}>🧹 Retirer les ${pris} article(s) pris</button>
+      <span style="color:var(--faint);font-size:12.5px">ou ✕ ligne par ligne</span></div>`;
+    if(SUGG)h+=blocSuggestions();
+    if(HABITUELS)h+=blocHabituels();
+    /* ⚠️ Les rayons viennent du SERVEUR (source unique). Avant, la liste était
+       codée en dur ici ET dans l'app, avec des valeurs différentes : un article
+       rangé dans « Surgelés » depuis un téléphone n'apparaissait nulle part sur
+       le mur — présent en base, compté sur la tuile, mais introuvable dans la
+       liste. Et un article sans rayon (ceux venus du menu) disparaissait aussi. */
+    const rayons=(S.rayons&&S.rayons.length?S.rayons:RAYONS);
+    const groupe=(titre,items)=>{
+      const it=triFait(items,'pris');
+      if(!it.length)return '';
+      return `<div class="stitre" style="margin:16px 0 8px">${esc(titre)}</div>`+it.map(x=>
+        `<div class="pill ${x.pris?'fait':''}"><span class="box" onclick="toggleCourse('${x.id}',${!x.pris})">${ico('ok')}</span>
+          <span class="lt">${esc(x.article)}</span>${x.who?`<span class="tag">${esc(x.who)}</span>`:''}${delBtn('course',x.id)}</div>`).join('');
+    };
+    rayons.forEach(r=>{h+=groupe(r,S.courses.filter(x=>x.rayon===r));});
+    /* Filet : tout ce qui n'est tombé dans AUCUN rayon connu reste visible.
+       Un article qu'on ne voit pas est un article qu'on n'achète pas. */
+    h+=groupe('Sans rayon',S.courses.filter(x=>!rayons.includes(x.rayon)));
+    return h;
+  }
+
+  if(k==='todo'){
+    let h=`<div class="form"><input type="text" id="tNew" placeholder="Nouvelle tâche…">
+      <select id="tWho">${famOpts('Toute la famille')}</select><input type="date" id="tDue">
+      <button onclick="addTodo()">Ajouter</button></div>`;
+    h+=triTodos(S.todos).map(x=>
+      `<div class="pill ${x.done?'fait':''}"><span class="box" onclick="toggleTodo('${x.id}',${!x.done})">${ico('ok')}</span>
+        <span class="lt">${esc(x.tache)}</span>${x.who?`<span class="tag ac">${esc(x.who)}</span>`:''}
+        ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}${delBtn('todo',x.id)}</div>`
+    ).join('')||'<div class="vide">Rien à faire 🎉</div>';
+    return h;
+  }
+
+  if(k==='post'){
+    let h=`<div class="form"><input type="text" id="pNew" placeholder="Laisser un mot…">
+      <select id="pWho">${famOpts('Rémi')}</select><button onclick="addPost()">Épingler</button></div>`;
+    h+=S.postits.map(p=>`<div class="note">${esc(p.message)}<b>— ${esc(p.who)}</b>${delBtn('postit',p.id)}</div>`).join('')
+      ||'<div class="vide">Aucun mot</div>';
+    return h;
+  }
+
+  if(k==='menu'){
+    /* Navigation de semaine : le menu est glissant, on peut préparer la suivante
+       ou relire la précédente. `MENU_SEM` vide = la semaine du jour. */
+    const lignes = MENU_SEM_DATA || S.menu;
+    const l0 = lignes.length ? lignes[0].date : '';
+    const cetteSemaine = !MENU_SEM;
+    const entete = `<div class="bar" style="margin-bottom:14px">
+      <button onclick="menuSemaine(-1)">‹ Semaine précédente</button>
+      <button onclick="menuSemaine(0)" ${cetteSemaine?'disabled style="opacity:.45"':''}>Cette semaine</button>
+      <button onclick="menuSemaine(1)">Semaine suivante ›</button>
+      <button onclick="${PROPO?'fermerPropo':'proposerMenu'}()">✨ ${PROPO?'Fermer':'Proposer les soirs vides'}</button>
+      <span style="color:var(--faint);font-size:13px">${l0?'du '+esc(dateCourte(l0)):''}</span>
+    </div>`;
+    return entete + (PROPO?blocPropo():'') + lignes.map(m=>{
+      /* Le raccourci vers la recette n'apparaît que s'il y a quelque chose à
+         montrer : un bouton qui ouvre une page vide use la confiance. */
+      const f=(S.plats||[]).find(p=>p.id===m.soirId);
+      return `<div class="pill" style="display:block;background:var(--card)">
+        <div class="jsep">${m.soirPhoto?`<img src="${esc(m.soirPhoto)}" alt="" style="width:26px;height:26px;border-radius:7px;object-fit:cover;vertical-align:-7px;margin-right:6px">`:picto(m.soir)} ${esc(m.jour)}
+          ${f&&f.recette?`<button class="rec-courses" onclick="ouvrirRecette('${m.soirId}',${m.soirCouverts||4})">Voir la recette</button>`:''}</div>
+        ${menuRow(m,'midi')}${menuRow(m,'soir')}</div>`;
+    }).join('');
+  }
+
+  if(k==='agenda')return vueAgenda();
+
+  if(k.startsWith('recette:'))return vueRecette(RECETTE);
+
+  if(k.startsWith('plan:')){
+    const p=personne(k.slice(5));
+    if(!p)return'';
+    let h=S.plannings.exemple
+      ?'<div class="demo">🧪 Données d\'exemple — remplace-les dans l\'administration (/admin/), puis décoche le repère dans Réglages</div>':'';
+    /* Semaine A / B des collèges. Le repère n'apparaît QUE si des créneaux sont
+       réellement marqués : sinon il n'apprendrait rien et encombrerait. */
+    if(S.plannings.alterne)
+      h+=`<div class="quinz">Semaine <b>${esc(S.plannings.quinzaine||'?')}</b>
+        <span style="color:var(--faint);font-weight:400">· semaine ${S.plannings.semaine}
+        (${S.plannings.semaine%2===0?'paire':'impaire'})</span></div>`;
+    return h+vuePlanning(p);
+  }
+}
+
+/* ---------- Mode cuisine : la recette d'un plat ----------
+   Ouvert en touchant la vignette d'un repas. Pensé pour être lu DEBOUT, à un ou
+   deux mètres, les mains occupées : gros texte, étapes numérotées, et chaque
+   ligne se coche d'un doigt pour ne pas perdre le fil entre deux gestes.
+   Les coches ne sont pas enregistrées — elles ne valent que le temps du repas. */
+let RECETTE=null,RECETTE_ID=null;
+
+/* `couverts` : pour combien de personnes on veut la fiche. Quand on l'ouvre depuis
+   le menu, on part du nombre prévu pour CE repas — c'est le cas courant, et ça
+   évite de reparamétrer à chaque fois. */
+async function ouvrirRecette(id,couverts){
+  if(!id)return;
+  try{
+    const q=couverts?('?couverts='+encodeURIComponent(couverts)):'';
+    const d=await (await fetch('/api/plat/'+encodeURIComponent(id)+q)).json();
+    if(!d.plat)return showErr('Fiche du plat introuvable.');
+    RECETTE=d.plat;RECETTE_ID=id;
+    if(openK==='recette:'+id)drawSheet(openK); else openTile('recette:'+id);
+  }catch(e){showErr('Recette indisponible : '+e.message);}
+}
+
+/* Changer le nombre de convives depuis la fiche : on redemande au serveur plutôt
+   que de recalculer dans le navigateur, pour que l'écran, l'app et les courses
+   affichent exactement les mêmes nombres. */
+const changerCouverts=(n)=>ouvrirRecette(RECETTE_ID,n);
+
+function vueRecette(p){
+  if(!p)return'';
+  /* Quand le sélecteur de couverts est là, il porte déjà le nombre de personnes :
+     répéter « 4 personnes » en en-tête pendant qu'on affiche les quantités pour 6
+     est contradictoire, et c'est l'en-tête qu'on croit. */
+  const meta=[p.portionsBase?'':p.portions,p.duree].filter(Boolean).join(' · ');
+  const ing=p.ingredients||[],et=p.etapes||[],app=p.appareils||[];
+
+  return `
+  <div class="rec-tete">
+    ${p.photo?`<img class="rec-photo" src="${esc(p.photo)}" alt="">`:''}
+    <div class="rec-info">
+      ${meta?`<div class="rec-meta">${esc(meta)}</div>`:''}
+      ${app.length?`<div class="rec-app">${app.map(a=>`<span>${esc(a)}</span>`).join('')}</div>`:''}
+      ${p.source_url?`<div class="rec-src">source : ${esc(p.source_url.replace(/^https?:\/\/(www\.)?/,'').split('/')[0])}</div>`:''}
+    </div>
+  </div>
+
+  ${p.portionsBase?`<div class="rec-cvt">
+    <span>Pour</span>
+    ${COUVERTS.map(c=>`<button class="${(p.couverts||p.portionsBase)===c?'on':''}"
+        onclick="changerCouverts(${c})">${c}</button>`).join('')}
+    <span>${(p.couverts||p.portionsBase)>1?'personnes':'personne'}</span>
+    ${p.misAEchelle?`<em>quantités recalculées — recette écrite pour ${p.portionsBase}</em>`:''}
+  </div>`:''}
+
+  ${ing.length?`<div class="stitre" style="margin:18px 0 10px">Ingrédients
+      <button class="rec-courses" onclick="ingredientsAuxCourses()">+ aux courses</button></div>
+    <div class="rec-ing">${ing.map((x,i)=>
+      `<div class="rec-i" onclick="this.classList.toggle('ok')"><span class="rec-case">${ico('ok')}</span>${esc(x)}</div>`).join('')}</div>`:''}
+
+  ${et.length?`<div class="stitre" style="margin:22px 0 10px">Préparation</div>
+    <ol class="rec-et">${et.map(x=>
+      `<li onclick="this.classList.toggle('ok')">${esc(x)}</li>`).join('')}</ol>`
+    :`<div class="vide" style="padding:22px 0;text-align:center">Pas encore de recette pour ce plat.<br>
+       <span style="font-size:14px">Ajoute-la depuis l'administration : un lien de recette suffit.</span></div>`}`;
+}
+
+/* Les ingrédients de CE plat vers la liste de courses, d'un geste. Rien n'est
+   coché d'avance ailleurs dans l'app ; ici on est déjà devant la recette et on
+   sait ce qui manque, donc le geste unique est le bon compromis. */
+async function ingredientsAuxCourses(){
+  if(!RECETTE||!(RECETTE.ingredients||[]).length)return;
+  try{
+    const r=await api('/api/course/lot','POST',{articles:RECETTE.ingredients});
+    await refresh();
+    showErr(r.ajoutes+' ingrédient(s) ajouté(s) aux courses');
+  }catch(e){showErr(e.message);}
+}
+
+/* ---------- Planning d'un enfant : grille horaire ----------
+   La liste par jour a été abandonnée : elle disait « quoi » mais pas « quand » ni
+   « combien de temps ». Ici la hauteur d'un bloc est sa durée, les trous se voient,
+   et une journée chargée se reconnaît sans lire les horaires. */
+const PALETTE_PLAN=['#f0902f','#6b8fc9','#f7d548','#22c3d0','#bcd230','#a96fbb',
+                    '#f4a6cd','#7fd1a4','#ef8181','#8fb2e8','#d9a441','#5fc8a0',
+                    '#c78fd6','#e8756f','#9ec94a','#6fc3d8'];
+const hachage=s=>{let h=0;const n=String(s||'').trim().toUpperCase();
+  for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))>>>0;return h;};
+
+/* Couleurs de tout le planning d'un coup : le hachage seul donnait la même teinte à des
+   matières différentes, ce qui annule l'intérêt de la couleur. On garde le hachage comme
+   premier choix (c'est lui qui rend la teinte stable d'une semaine sur l'autre) puis on
+   décale vers la première libre. */
+function couleursPlan(cr){
+  const noms=[...new Set(cr.map(c=>String(c.quoi||'').trim()))].sort();
+  const pris=new Set(),out=new Map();
+  for(const n of noms){
+    const fixe=(cr.find(c=>c.quoi===n&&c.couleur)||{}).couleur;
+    if(fixe){out.set(n,fixe);pris.add(fixe);continue;}
+    let i=hachage(n)%PALETTE_PLAN.length;
+    for(let k=0;k<PALETTE_PLAN.length&&pris.has(PALETTE_PLAN[i]);k++)i=(i+1)%PALETTE_PLAN.length;
+    out.set(n,PALETTE_PLAN[i]);pris.add(PALETTE_PLAN[i]);
+  }
+  return out;
+}
+
+const minDe=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(t||''));return m?+m[1]*60+ +m[2]:null;};
+const hmDe=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+
+/* Deux créneaux à la même heure se partagent la largeur : sans ça l'un masque l'autre
+   et on le croit perdu (cas réel : piscine pendant l'option facultative). */
+function disposerPlan(list){
+  const tri=list.slice().sort((a,b)=>a.deb-b.deb||a.fin-b.fin);
+  const out=[],grappe=[];let finMax=-1;
+  const vider=()=>{
+    const cols=[];
+    for(const c of grappe){
+      let k=cols.findIndex(f=>f<=c.deb);
+      if(k<0){k=cols.length;cols.push(0);}
+      cols[k]=c.fin;c.col=k;
+    }
+    for(const c of grappe){c.nbCol=cols.length;out.push(c);}
+    grappe.length=0;
+  };
+  for(const c of tri){
+    if(grappe.length&&c.deb>=finMax)vider();
+    grappe.push(c);finMax=Math.max(finMax,c.fin);
+  }
+  if(grappe.length)vider();
+  return out;
+}
+
+const PX_MIN_PLAN=1.15,DUREE_DEFAUT_PLAN=55;
+
+function vuePlanning(p){
+  const ti=todayIdx();
+  /* Tous les créneaux à plat, en gardant leur jour : il faut une échelle de temps
+     COMMUNE à la semaine, sinon les colonnes ne s'alignent plus. */
+  const tous=[],sansH=[];
+  for(const d of DAYS)for(const c of (p.semaine&&p.semaine[d])||[]){
+    const deb=minDe(c.h);
+    if(deb===null){sansH.push({...c,jour:d});continue;}
+    const f=minDe(c.fin);
+    tous.push({...c,jour:d,deb,fin:(f!==null&&f>deb)?f:deb+DUREE_DEFAUT_PLAN});
+  }
+  if(!tous.length&&!sansH.length)
+    return '<div class="vide" style="padding:26px 0;text-align:center">Aucun créneau.</div>';
+
+  /* Samedi et dimanche n'apparaissent que s'ils servent : deux colonnes vides en
+     permanence volent de la largeur aux jours de classe. */
+  const jours=DAYS.filter(d=>['Lun','Mar','Mer','Jeu','Ven'].includes(d)
+    ||tous.some(c=>c.jour===d)||sansH.some(c=>c.jour===d));
+
+  const COUL=couleursPlan(tous.concat(sansH));
+  const coul=c=>COUL.get(String(c.quoi||'').trim())||PALETTE_PLAN[0];
+
+  const dep=tous.length?Math.floor(Math.min(...tous.map(c=>c.deb))/60)*60:8*60;
+  const arr=tous.length?Math.ceil(Math.max(...tous.map(c=>c.fin))/60)*60:18*60;
+  const H=Math.max(220,(arr-dep)*PX_MIN_PLAN);
+  const y=m=>(m-dep)*PX_MIN_PLAN;
+
+  let lignes='',heures='';
+  for(let m=dep;m<=arr;m+=30)lignes+=`<div class="ln ${m%60?'lnd':''}" style="top:${y(m)}px"></div>`;
+  for(let m=dep;m<=arr;m+=60)heures+=`<div class="hl" style="top:${y(m)}px">${Math.floor(m/60)}h</div>`;
+
+  const colonne=d=>{
+    const blocs=disposerPlan(tous.filter(c=>c.jour===d)).map(c=>{
+      const haut=(c.fin-c.deb)*PX_MIN_PLAN,larg=100/c.nbCol;
+      return `<div class="pbloc ${c.categorie==='activite'?'act':''} ${haut<36?'pcourt':''}"
+        style="top:${y(c.deb)}px;height:${haut-2}px;left:calc(${c.col*larg}% + 2px);
+               width:calc(${larg}% - 4px);--pc:${esc(coul(c))}">
+        <div class="pn">${esc(c.quoi)}</div>
+        <div class="ph">${esc(hmDe(c.deb))} – ${esc(hmDe(c.fin))}</div>
+        ${haut>=62&&(c.salle||c.ou)?`<div class="pd">${esc(c.salle||c.ou)}</div>`:''}
+      </div>`;
+    }).join('');
+    const auj=DAYS.indexOf(d)===ti;
+    return `<div class="pcol ${auj?'today':''}" style="height:${H}px">${lignes}${blocs}</div>`;
+  };
+
+  const vues=new Map();
+  for(const c of tous.concat(sansH))if(!vues.has(c.quoi))vues.set(c.quoi,coul(c));
+
+  return `
+  ${sansH.length?`<div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px">
+    ${sansH.map(c=>`<span class="plegende" style="margin:0"><span style="background:${esc(coul(c))}">
+      ${esc(c.jour)} · ${esc(c.quoi)}</span></span>`).join('')}</div>`:''}
+  <div class="pgrille" style="grid-template-columns:48px repeat(${jours.length},minmax(0,1fr))">
+    <div class="pjour" style="background:transparent"></div>
+    ${jours.map(d=>`<div class="pjour ${DAYS.indexOf(d)===ti?'today':''}">${esc(d)}</div>`).join('')}
+    <div class="pgut" style="height:${H}px">${heures}</div>
+    ${jours.map(colonne).join('')}
+  </div>
+  <div class="plegende">${[...vues].map(([n,c])=>
+    `<span style="background:${esc(c)}">${esc(n)}</span>`).join('')}</div>`;
+}
+
+/* ---------- agenda : vues jour / semaine / mois ---------- */
+let agVue='semaine',agRef=new Date();
+function ouvreAgendaSur(jour){agVue='jour';agRef=new Date(jour+'T12:00');openTile('agenda');}
+function agAller(pas){
+  if(pas===0){agRef=new Date();return drawSheet('agenda');}
+  const d=new Date(agRef);
+  if(agVue==='jour')d.setDate(d.getDate()+pas);
+  else if(agVue==='semaine')d.setDate(d.getDate()+7*pas);
+  else d.setMonth(d.getMonth()+pas,1);
+  agRef=d;drawSheet('agenda');
+}
+function agSetVue(v,jour){agVue=v;if(jour)agRef=new Date(jour);drawSheet('agenda');}
+
+function vueAgenda(){
+  const auj=new Date();
+  let titre;
+  if(agVue==='jour')titre=agRef.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  else if(agVue==='semaine'){const l=lundi(agRef),f=new Date(l);f.setDate(l.getDate()+6);
+    titre=`${l.getDate()} ${moisCourt(l.getMonth())} – ${f.getDate()} ${MOIS[f.getMonth()]}`;}
+  else titre=`${MOIS[agRef.getMonth()]} ${agRef.getFullYear()}`;
+
+  let h=`<div class="agnav">
+    <button onclick="agAller(-1)">${ico('left')}</button>
+    <button onclick="agAller(0)">Aujourd'hui</button>
+    <button onclick="agAller(1)">${ico('right')}</button>
+    <span class="per">${titre}</span>
+    <span class="vues">${['jour','semaine','mois'].map(v=>
+      `<button class="${agVue===v?'on':''}" onclick="agSetVue('${v}')">${v[0].toUpperCase()+v.slice(1)}</button>`).join('')}</span></div>`;
+
+  if(agVue==='jour'){
+    const ev=evtsDuJour(agRef),fr=ferieDe(agRef);
+    if(fr)h+=`<div class="ferie">🇫🇷 ${esc(fr)} — jour férié</div>`;
+    h+=ev.length?ev.map(ligneEvt).join(''):'<div class="vide" style="padding:20px 0">Rien de prévu ce jour-là</div>';
+  }else if(agVue==='semaine'){
+    const l=lundi(agRef);
+    h+=DAYS.map((d,i)=>{
+      const j=new Date(l);j.setDate(l.getDate()+i);
+      const ev=evtsDuJour(j),fr=ferieDe(j);
+      return `<div class="agj ${memeJour(j,auj)?'today':''} ${fr?'jferie':''}">
+        <div class="jn">${JOURS_LONG[i]} <small>${j.getDate()} ${moisCourt(j.getMonth())}</small>
+          ${fr?`<span class="tag ferie-tag">${esc(fr)}</span>`:''}</div>
+        <div class="jl">${ev.length?ev.map(ligneEvt).join(''):'<span class="vide">—</span>'}</div></div>`;
+    }).join('');
+  }else{
+    const debut=lundi(new Date(agRef.getFullYear(),agRef.getMonth(),1));
+    h+='<div class="grille">'+DAYS.map(d=>`<div class="mh">${d}</div>`).join('');
+    for(let i=0;i<42;i++){
+      const j=new Date(debut);j.setDate(debut.getDate()+i);
+      if(i>=35&&j.getMonth()!==agRef.getMonth())break;
+      const ev=evtsDuJour(j),fr=ferieDe(j);
+      h+=`<div class="gc ${j.getMonth()!==agRef.getMonth()?'out':''} ${memeJour(j,auj)?'today':''} ${fr?'jferie':''}"
+        onclick="agSetVue('jour','${j.toISOString()}')" ${fr?`title="${esc(fr)}"`:''}><div class="n">${j.getDate()}</div>
+        ${fr?`<div class="e ferie-tag">${esc(fr)}</div>`:''}
+        ${ev.slice(0,fr?2:3).map(e=>`<div class="e">${e.journee?'':`<b>${hhmm(e.start)}</b> `}${esc(e.summary)}</div>`).join('')}
+        ${ev.length>(fr?2:3)?`<div class="e">+${ev.length-(fr?2:3)}…</div>`:''}</div>`;
+    }
+    h+='</div>';
+  }
+  return h;
+}
+
+/* ---------- écritures ---------- */
+async function addCourse(){
+  const v=document.getElementById('cNew').value.trim();if(!v)return;
+  try{await api('/api/course','POST',{article:v,rayon:document.getElementById('cRayon').value,
+    who:document.getElementById('cWho').value});await refresh();}catch(e){showErr(e.message);}
+}
+async function addTodo(){
+  const v=document.getElementById('tNew').value.trim();if(!v)return;
+  try{await api('/api/todo','POST',{tache:v,who:document.getElementById('tWho').value,
+    due:document.getElementById('tDue').value||undefined});await refresh();}catch(e){showErr(e.message);}
+}
+async function addPost(){
+  const v=document.getElementById('pNew').value.trim();if(!v)return;
+  try{await api('/api/postit','POST',{message:v,who:document.getElementById('pWho').value});await refresh();}
+  catch(e){showErr(e.message);}
+}
+/* raw = "P:<plat>" (créé dans la bibliothèque si nouveau) ou "S:<spécial>" (texte libre seul) */
+async function setMenu(id,champ,raw){
+  const special=raw.startsWith('S:'),val=/^[PS]:/.test(raw)?raw.slice(2):raw;
+  try{await api('/api/menu/'+id,'PATCH',{[champ]:val,special});await apresMenu();}catch(e){showErr(e.message);}
+}
+
+/* Après une écriture sur le menu : si on regarde une AUTRE semaine, `refresh()` ne
+   suffit pas — il ne recharge que la semaine du jour et le panneau resterait figé
+   sur l'ancienne valeur. */
+async function apresMenu(){
+  if(!MENU_SEM)return refresh();
+  try{
+    const r=await (await fetch('/api/menu?semaine='+MENU_SEM)).json();
+    MENU_SEM_DATA=r.menu;
+    await refresh();
+  }catch(e){showErr(e.message);}
+}
+
+/* ---------- veille ---------- */
+const saver=document.getElementById('saver');
+function renderSaver(){
+  const M=S.meteo;
+  /* En veille aussi, l'anniversaire prime : c'est souvent le seul moment de la
+     journée où quelqu'un regarde l'écran de loin. */
+  const anv=(S.anniversaires&&S.anniversaires.aujourdhui)||[];
+  document.getElementById('svSaint').textContent=anv.length
+    ?('🎂 Anniversaire de '+anv.map(a=>a.nom+(a.age!=null?` (${a.age} ans)`:'')).join(', '))
+    :(S.saint?('Fête du jour · '+S.saint):'');
+  document.getElementById('svWx').innerHTML=M&&M.temp!=null
+    ?`<div class="i2">${M.icone||''}</div><div><div class="t">${M.temp}°</div>
+      <div class="d">${esc(M.texte)} · ${M.min}°/${M.max}°</div></div>`:'';
+
+  const ev=evtsDuJour(new Date());
+  const dernier=[...S.postits].sort((a,b)=>(b.pin?1:0)-(a.pin?1:0))[0];
+  const co=S.courses.filter(x=>!x.pris).length,to=S.todos.filter(x=>!x.done).length;
+  const soir=(S.menu.find(m=>(m.jour||'').startsWith(DAYS[todayIdx()]))||{}).soir;
+
+  document.getElementById('svGrid').innerHTML=`
+    <div class="sv-w"><div class="wt">Aujourd'hui</div>${
+      ev.length?ev.slice(0,4).map(e=>`<div class="row"><b>${heureEvt(e)}</b><span>${esc(e.summary)}</span></div>`).join('')
+              :'<div class="wm">Rien de prévu</div>'}</div>
+    <div class="sv-w"><div class="wt">Ce soir</div>
+      <div class="wm">${picto(soir)} ${esc(soir)||'à définir'}</div>
+      <div class="ws">${co} article(s) à acheter · ${to} tâche(s) à faire</div></div>
+    <div class="sv-w"><div class="wt">Dernier mot</div>${
+      dernier?`<div class="wm">${esc(dernier.message)}</div><div class="ws">— ${esc(dernier.who)}</div>`
+             :'<div class="wm">Aucun mot</div>'}</div>`;
+
+  majNews('svNews','svNewsVp');
+}
+function showSaver(){closeTile();renderSaver();saver.classList.add('on');}
+saver.addEventListener('click',()=>{saver.classList.remove('on');resetIdle();});
+
+/* Délai de veille réglable depuis /admin/ → Réglages (il était codé en dur à
+   25 min, ce qui rendait le champ du back-office décoratif). */
+let idle,veilleMs=25*60*1000;
+function resetIdle(){clearTimeout(idle);idle=setTimeout(showSaver,veilleMs);}
+['click','touchstart','keydown'].forEach(e=>
+  document.addEventListener(e,()=>{if(!saver.classList.contains('on'))resetIdle();},{passive:true}));
+resetIdle();
+
+/* ---------- synchronisation temps réel ----------
+   Le serveur pousse un événement dès qu'un téléphone ou l'écran modifie quelque chose :
+   la coche faite dans l'app apparaît ici tout de suite, sans attendre un cycle.
+   `EventSource` se reconnecte tout seul si le Wi-Fi tombe — rien à gérer à la main.
+   Le rafraîchissement périodique reste, très espacé : il rattrape la météo, les actus
+   et l'agenda (qui changent sans passer par nous), et sert de filet si le flux meurt. */
+let majEnAttente;
+function brancherFlux(){
+  try{
+    const flux=new EventSource('/api/flux');
+    flux.addEventListener('maj',()=>{                    // rafale d'événements -> un seul rechargement
+      clearTimeout(majEnAttente);majEnAttente=setTimeout(refresh,120);
+    });
+    flux.addEventListener('notif',(ev)=>{                // message à afficher, sans rechargement
+      try{montrerNotif(JSON.parse(ev.data));}catch(e){}
+    });
+    flux.addEventListener('open',()=>console.log('flux temps réel connecté'));
+  }catch(e){console.warn('flux indisponible, on reste sur le rafraîchissement périodique');}
+}
+
+/* ---------- Notifications ----------
+   Envoyées depuis le back-office ou l'app, elles arrivent par le flux et s'affichent
+   au même instant ici et sur les téléphones ouverts (~30 ms mesurés).
+   ⚠️ Ce n'est PAS le push iOS : un téléphone verrouillé ne sonnera pas tant qu'on n'a
+   pas de HTTPS (Tailscale + Mac mini). Ici, sur un écran mural allumé en permanence,
+   ça suffit — c'est justement le cas d'usage. */
+const ICONES_NIVEAU={info:'🔔',important:'⚠️',urgent:'🚨'};
+let minuteurNotif;
+
+function montrerNotif(n){
+  const d=document.getElementById('notif');
+  d.className='notif '+(n.niveau||'info');
+  document.getElementById('notifIco').textContent=ICONES_NIVEAU[n.niveau]||'🔔';
+  document.getElementById('notifTitre').textContent=n.titre||'';
+  /* On dit POUR QUI : sur un écran partagé, « Amandine — RDV 18 h » évite que chacun
+     se demande si le message le concerne. */
+  const pour=n.pour?n.pour+' · ':'';
+  document.getElementById('notifMsg').textContent=pour+(n.message||'');
+
+  saver.classList.remove('on');   // réveille l'écran : une notification invisible ne sert à rien
+  resetIdle();
+  requestAnimationFrame(()=>d.classList.add('on'));
+
+  /* Un message urgent reste plus longtemps ; on peut toujours le chasser au doigt. */
+  clearTimeout(minuteurNotif);
+  minuteurNotif=setTimeout(fermerNotif,(n.niveau==='urgent'?90:35)*1000);
+}
+
+function fermerNotif(){
+  clearTimeout(minuteurNotif);
+  document.getElementById('notif').classList.remove('on');
+}
+
+/* ---------- Jarvis sur l'écran mural ----------
+   Le moteur vit dans `voix.js`, partagé avec /vocal.html : reconnaissance,
+   synthèse et appel serveur ont chacun leurs pièges de navigateur, et deux
+   copies auraient divergé au premier correctif.
+
+   Ici, l'interface se résume à trois choses : un bouton dans le rail, l'écho
+   dans le bandeau de notification EXISTANT (qui sait déjà réveiller l'écran de
+   veille — exactement ce qu'on veut quand on parle à la cuisine), et rien
+   d'autre. Pas de panneau, pas de réglages : ils sont sur /vocal.html.
+
+   ⚠️ Le bouton reste CACHÉ si le micro ne peut pas s'ouvrir. Sur une tablette en
+   http://192.168.x.x, le navigateur l'interdit : contexte non sécurisé. Il
+   apparaîtra le jour où l'écran sera servi en localhost (Raspberry avec un
+   mandataire local, ou dalle branchée sur le Mac) ou en HTTPS via Tailscale. */
+let VOIX=null;
+
+/* Applique les réglages du back-office au moteur déjà créé.
+   ⚠️ Appelé à CHAQUE chargement, pas seulement au démarrage : sans ça, changer
+   la voix dans /admin/ n'avait d'effet qu'après un rechargement complet de
+   l'écran mural — qu'on ne fait jamais sur un mur. */
+function appliquerReglagesVoix(){
+  if(!VOIX)return;
+  const rv=(S.reglages&&S.reglages.voix)||{};
+  VOIX.reglerVoix({nom:rv.nom||'',debit:rv.debit||1,ton:rv.ton||1,
+    eveil:rv.eveil||'jarvis',exigerEveil:rv.exigerEveil!==false});
+}
+
+function initVoix(){
+  if(typeof Voix==='undefined')return;
+  const d=Voix.disponible();
+  if(!d.utilisable)return;                      // on ne montre rien plutôt qu'un bouton inerte
+  let jeton='';try{jeton=localStorage.getItem('maison-jeton')||'';}catch(e){}
+
+  /* Tout le paramétrage vient du back-office : voix, débit, tonalité, mot
+     d'éveil. L'écran mural n'a AUCUN écran de configuration, et ne doit pas en
+     avoir — on ne règle pas un objet posé sur un mur, on le règle depuis un
+     ordinateur. */
+  const rv=(S.reglages&&S.reglages.voix)||{};
+  VOIX=Voix.creer({jeton,motEveil:rv.eveil||'jarvis',exigerEveil:rv.exigerEveil!==false,
+    debit:rv.debit||1,ton:rv.ton||1,voix:rv.nom||'',sur:{
+    etat(e){
+      const b=document.getElementById('btnVoix');
+      if(!b)return;
+      b.classList.toggle('on',e.continu);
+      b.style.opacity=e.ecoute?'1':(e.continu?'.85':'');
+      b.title=e.continu?`À l'écoute — dis « ${VOIX.motEveil} »`:'Parler à la maison';
+    },
+    /* ⚠️ RIEN ne s'affiche tant que le mot d'éveil n'a pas été prononcé.
+       La première version montrait chaque phrase entendue, transcriptions
+       provisoires comprises : autrement dit, toute conversation de cuisine
+       s'affichait sur le mur. Ça ressemblait à de la surveillance parce que
+       c'en était — et ça contredisait le principe du projet, qui est justement
+       que rien ne sort avant « Jarvis ».
+       Le mot d'éveil est cherché SUR L'APPAREIL : ce qui est écarté ici n'est
+       ni affiché, ni envoyé, ni conservé. */
+    entendu(texte,info){
+      if(!info.eveil)return;
+      montrerNotif({titre:'🎙️ '+texte,message:'…',niveau:'info'});
+    },
+    repondu(d){
+      montrerNotif({titre:d.texte,message:d.reponse,niveau:'info'});
+      if(d.fait)refresh();                      // une action a modifié les données
+    },
+    erreur(m){montrerNotif({titre:'Voix',message:m,niveau:'important'});},
+  }});
+
+  const b=document.getElementById('btnVoix');
+  if(b)b.style.display='';
+}
+
+/* Un seul bouton : il ouvre ou ferme l'écoute continue.
+   ⚠️ AUCUN bandeau à l'allumage. La première version en affichait un (« à
+   l'écoute… »), qui restait plusieurs dizaines de secondes sur le mur à chaque
+   appui : autrement dit, l'écran annonçait qu'il écoutait — exactement l'effet
+   « surveillance » qu'on cherche à éviter. L'état se lit sur le BOUTON lui-même
+   (allumé, pastille qui pulse) ; le bandeau ne s'ouvre que lorsque « Jarvis »
+   a réellement été prononcé. */
+function basculeVoix(){
+  if(!VOIX)return;
+  VOIX.basculerContinu();
+  resetIdle();
+}
+
+/* ⚠️ `load()` est asynchrone. La première version appelait `initVoix()` juste
+   après, sans attendre : les réglages (voix, débit, ton, mot d'éveil) n'étaient
+   pas encore chargés, et l'écran retombait sur la voix française par défaut —
+   féminine sous Windows. D'où « j'ai réglé une voix masculine et j'entends une
+   voix féminine ». On attend, et on ré-applique à chaque rechargement. */
+load().then(()=>{ initVoix(); appliquerReglagesVoix(); });
+brancherFlux();
+setInterval(load,5*60*1000);   // filet de sécurité + météo / actus / agenda
+</script>
+</body>
+</html>

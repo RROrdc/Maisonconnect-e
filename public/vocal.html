@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Maison — banc d'essai vocal</title>
+<!--
+  Banc d'essai de l'assistant vocal.
+
+  Cette page ne RÈGLE rien : le paramétrage (voix, débit, tonalité, mot d'éveil,
+  test du micro) vit dans /admin/ → Réglages, avec le reste de la configuration.
+  Ici on OBSERVE — chaque étape, du micro à la voix — pour que, le jour où la
+  chaîne casse, la dernière ligne du journal dise où.
+
+  Tout le moteur est dans /voix.js, partagé avec l'écran mural : reconnaissance,
+  synthèse et appel serveur cachent chacun un piège de navigateur, et deux copies
+  auraient divergé au premier correctif.
+
+  ⚠️ Deux limites de navigateur, pas du projet :
+  1. Le micro exige un CONTEXTE SÉCURISÉ — HTTPS, ou localhost qui en est
+     dispensé. Depuis une tablette en http://192.168.x.x, il ne s'ouvrira pas.
+  2. La TRANSCRIPTION n'existe que sur Chrome et Edge ; Safari ne l'implémente
+     pas. La lecture à voix haute, elle, fonctionne partout.
+-->
+<style>
+  :root{
+    --fond:#0b0f16; --carte:#151b26; --carte2:#1d2532; --bord:#26303f;
+    --txt:#e8edf5; --doux:#9aa7bd; --pale:#66748c;
+    --accent:#5b9bff; --ok:#33c48d; --alerte:#ff6b6b; --sur:#0b0f16;
+  }
+  :root[data-theme="light"]{
+    --fond:#eef1f7; --carte:#fff; --carte2:#f3f6fb; --bord:#dde4ef;
+    --txt:#16202e; --doux:#5b6a80; --pale:#8b98ab; --sur:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;background:var(--fond);color:var(--txt);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:22px 16px 40px}
+  .bandeau{width:100%;max-width:620px;display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  h1{font-size:19px;margin:0;flex:1;letter-spacing:.2px}
+  .pastille{width:9px;height:9px;border-radius:50%;background:var(--pale);flex:0 0 auto}
+  .pastille.on{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 22%,transparent)}
+  .pastille.ecoute{background:var(--accent);animation:pulse 1.2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .carte{width:100%;max-width:620px;background:var(--carte);border:1px solid var(--bord);
+    border-radius:16px;padding:18px;margin-bottom:14px}
+  .avert{background:color-mix(in srgb,var(--alerte) 12%,var(--carte));
+    border-color:color-mix(in srgb,var(--alerte) 40%,var(--bord));font-size:14px}
+  .info{color:var(--doux);font-size:13.5px}
+
+  .micro{width:150px;height:150px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--accent);color:var(--sur);font-size:17px;font-weight:700;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    margin:6px auto 16px;transition:transform .12s, background .2s;
+    box-shadow:0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .micro:active{transform:scale(.96)}
+  .micro.on{background:var(--alerte);box-shadow:0 10px 30px color-mix(in srgb,var(--alerte) 35%,transparent)}
+  .micro:disabled{opacity:.45;cursor:not-allowed}
+  .micro svg{width:34px;height:34px;fill:currentColor}
+
+  .rang{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+  .btn{background:var(--carte2);color:var(--txt);border:1px solid var(--bord);border-radius:11px;
+    padding:11px 15px;font-size:14.5px;cursor:pointer;font-family:inherit}
+  .btn.on{background:var(--accent);color:var(--sur);border-color:transparent;font-weight:700}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  .dit{font-size:20px;font-weight:600;min-height:30px;margin:0 0 4px}
+  .dit.provisoire{color:var(--pale);font-weight:400}
+  .rep{font-size:17px;color:var(--ok);min-height:26px;margin:10px 0 0}
+  .meta{font-size:12.5px;color:var(--pale);margin-top:8px}
+
+  .exemples{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .exemples button{background:transparent;border:1px dashed var(--bord);color:var(--doux);
+    border-radius:20px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit}
+  .exemples button:hover{color:var(--txt);border-color:var(--accent)}
+
+  .journal{max-height:220px;overflow:auto;font-size:13.5px}
+  .journal div{padding:7px 0;border-bottom:1px solid var(--bord)}
+  .journal div:last-child{border-bottom:none}
+  .journal b{color:var(--doux);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="bandeau">
+  <span class="pastille" id="etat"></span>
+  <h1>Parler à la maison</h1>
+  <button class="btn" id="theme" title="Thème">◐</button>
+</div>
+
+<div class="carte avert" id="avertSecurise" style="display:none"></div>
+<div class="carte avert" id="avertNavigateur" style="display:none"></div>
+<div class="carte info" id="diagnostic" style="font-size:12.5px"></div>
+
+<div class="carte">
+  <button class="micro" id="micro">
+    <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 0 0 2 0v-3.08A7 7 0 0 0 19 11z"/></svg>
+    <span id="microTxt">Parler</span>
+  </button>
+
+  <div class="rang">
+    <button class="btn" id="veille">🎧 Écoute continue</button>
+    <button class="btn on" id="voix">🔊 Voix active</button>
+    <button class="btn" id="testSon">▶︎ Tester le son</button>
+    <a class="btn" href="/admin/" style="text-decoration:none">🎚️ Régler la voix et le micro</a>
+  </div>
+
+  <div class="info" style="margin-top:12px">
+    Le <b>paramétrage</b> — voix, débit, tonalité, mot d'éveil, test du micro — vit dans
+    <b>/admin/ → Réglages</b>, avec le reste de la configuration. Cette page reste un
+    <b>banc d'essai</b> : elle montre ce qui se passe, elle ne règle rien.
+    <span id="reglagesEnCours"></span>
+  </div>
+
+  <p class="dit" id="dit"></p>
+  <p class="rep" id="rep"></p>
+  <div class="meta" id="meta"></div>
+
+  <div class="exemples" id="exemples"></div>
+</div>
+
+<div class="carte">
+  <div class="info" style="margin-bottom:8px"><b>Historique de la session</b></div>
+  <div class="journal" id="journal"><div class="info">Rien encore.</div></div>
+</div>
+
+<div class="carte">
+  <div class="info" style="margin-bottom:8px">
+    <b>Journal technique</b> — chaque étape, du micro à la voix. Si ça s'arrête quelque part,
+    la dernière ligne dit où.
+  </div>
+  <div class="journal" id="trace" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">
+    <div class="info">Rien encore.</div>
+  </div>
+</div>
+
+<script src="/voix.js"></script>
+<script>
+const $ = (s)=>document.querySelector(s);
+const VERSION = '2026-08-19f';   // repère : permet de vérifier qu'on n'a pas une page en cache
+const esc = (s)=>String(s??'').replace(/[&<>]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+/* Le thème suit celui du bento, sans partager sa clé : cette page est un banc
+   d'essai, elle ne doit pas influencer l'écran mural. */
+try{ document.documentElement.dataset.theme = localStorage.getItem('theme-vocal') || 'dark'; }catch(e){}
+$('#theme').onclick = ()=>{
+  const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = n;
+  try{ localStorage.setItem('theme-vocal', n); }catch(e){}
+};
+
+const EXEMPLES = [
+  "Qu'est-ce qu'on mange ce soir ?",
+  'Ajoute du lait aux courses',
+  "Qu'est-ce qu'il y a dans l'agenda aujourd'hui ?",
+  'Rappelle à Martial de sortir la poubelle demain',
+  'Quel temps il fait ?',
+  'Laisse un mot : le facteur est passé',
+];
+$('#exemples').innerHTML = EXEMPLES.map((t,i)=>`<button data-i="${i}">${esc(t)}</button>`).join('');
+
+/* ---------- journaux ---------- */
+function note(dit, rep){
+  const j = $('#journal');
+  if(j.querySelector('.info')) j.innerHTML = '';
+  const d = document.createElement('div');
+  d.innerHTML = `<b>${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</b> — ${esc(dit)}<br>${esc(rep)}`;
+  j.prepend(d);
+}
+
+/* Journal TECHNIQUE, distinct des échanges. La chaîne va du micro à la voix en
+   passant par le réseau et l'IA : quand elle s'arrête, rien à l'écran ne dit OÙ.
+   Deux diagnostics à l'aveugle ont suffi — on trace, et le point de rupture
+   devient lisible. */
+function trace(etape, detail){
+  const j = $('#trace');
+  if(j.querySelector('.info')) j.innerHTML = '';
+  const t = new Date();
+  const hh = [t.getHours(),t.getMinutes(),t.getSeconds()].map((n)=>String(n).padStart(2,'0')).join(':');
+  const d = document.createElement('div');
+  d.innerHTML = `<b>${hh}</b> <span style="color:var(--accent)">${esc(etape)}</span> ${esc(detail||'')}`;
+  j.prepend(d);
+  while(j.children.length > 40) j.lastChild.remove();
+}
+
+/* ---------- moteur partagé ---------- */
+const CAPACITES = (typeof Voix !== 'undefined') ? Voix.disponible() : {utilisable:false};
+let V = null, chrono = null, sansVoix = 0;
+
+function majEtat(e){
+  $('#etat').className = 'pastille' + (e.ecoute ? ' ecoute' : e.continu ? ' on' : '');
+  $('#microTxt').textContent = e.ecoute ? 'J’écoute…' : 'Parler';
+  $('#micro').classList.toggle('on', e.ecoute);
+  $('#veille').classList.toggle('on', e.continu);
+  $('#veille').textContent = e.continu ? `🎧 À l’écoute — dis « ${V.motEveil} »` : '🎧 Écoute continue';
+}
+
+function creerMoteur(reglages){
+  /* Si /voix.js n'a pas pu être chargé, la page doit rester lisible et le dire —
+     pas se figer sur une erreur dans la console que personne ne verra. */
+  if(typeof Voix === 'undefined'){
+    trace('moteur', 'voix.js introuvable');
+    $('#rep').textContent = 'Moteur vocal introuvable (/voix.js).';
+    return;
+  }
+  V = Voix.creer({
+    motEveil: (reglages && reglages.eveil) || 'jarvis',
+    exigerEveil: !reglages || reglages.exigerEveil !== false,
+    debit: (reglages && reglages.debit) || 1,
+    ton: (reglages && reglages.ton) || 1,
+    voix: (reglages && reglages.nom) || '',
+    jeton: (()=>{ try{ return localStorage.getItem('maison-jeton') || ''; }catch(e){ return ''; } })(),
+    sur: {
+      etat: majEtat,
+      trace,
+      entendu(texte, info){
+        if(info.provisoire){ $('#dit').textContent = texte; $('#dit').classList.add('provisoire'); return; }
+        $('#dit').textContent = texte;
+        $('#dit').classList.remove('provisoire');
+        sansVoix = 0;
+        if(info.ignore){
+          /* Ignorer EN SILENCE était le défaut de la première version : le micro
+             pulsait, la phrase partait à la poubelle, et rien ne disait pourquoi.
+             On montre la transcription EXACTE — si Chrome a écrit « jarvisse »,
+             ça se voit ici au lieu de rester un mystère. */
+          $('#rep').textContent = `⛔ ignoré — il manque le mot « ${V.motEveil} »`;
+          $('#meta').innerHTML = `entendu « <i>${esc(texte)}</i> ». Commence par « <b>${V.motEveil}</b> », `
+            + `ou décoche « Exiger le mot d'éveil » dans /admin/ → Réglages.`;
+          trace('éveil', 'absent → phrase ignorée');
+          return;
+        }
+        trace('éveil', info.sansEveil ? 'non exigé' : 'reconnu');
+      },
+      envoi(texte){
+        trace('envoi', '→ /api/vocal « ' + texte + ' »');
+        $('#rep').textContent = 'Je réfléchis…';
+        const t0 = Date.now();
+        clearInterval(chrono);
+        /* Un compteur qui avance : sans lui, une réponse de dix secondes ne se
+           distingue pas d'une page bloquée — et on reclique, ce qui n'arrange rien. */
+        chrono = setInterval(()=>{
+          const s = Math.round((Date.now()-t0)/1000);
+          $('#meta').textContent = `${s} s…` + (s>=6 ? '  (long — vois Réglages → Modèle IA vocal)' : '');
+        }, 500);
+      },
+      repondu(d){
+        clearInterval(chrono);
+        $('#rep').textContent = d.reponse;
+        $('#meta').textContent = [d.action||'?',
+          d.source==='regle' ? '⚡ règle locale (sans réseau)' : (d.modele||d.source||'?'),
+          d.fait ? 'écrit en base' : ''].filter(Boolean).join(' · ');
+        trace('réponse', `${d.action||'?'} — ${d.source||''}`);
+        note(d.texte, d.reponse);
+      },
+      erreur(m){
+        clearInterval(chrono);
+        $('#rep').textContent = m;
+        $('#meta').textContent = '';
+        trace('réponse', 'ÉCHEC — ' + m);
+        note('(erreur)', m);
+      },
+      /* Trois « no-speech » d'affilée : le micro s'ouvre et n'entend rien. On le
+         DIT au lieu de laisser tourner en silence. */
+      silence(){
+        if(++sansVoix < 3) return;
+        sansVoix = 0;
+        $('#rep').textContent = '🎙️ Le micro s’ouvre mais n’entend rien.';
+        $('#meta').innerHTML = 'Teste-le dans <b>/admin/ → Réglages</b>. '
+          + 'Remède qui a fonctionné ici : un appel test Teams, raccrocher, revenir.';
+      },
+    },
+  });
+  if(V) majEtat(V.etat());
+}
+
+/* ---------- réglages : lus sur le serveur, jamais définis ici ---------- */
+async function chargerReglages(){
+  try{
+    const d = await (await fetch('/api/data')).json();
+    const r = (d.reglages && d.reglages.voix) || {};
+    creerMoteur(r);
+    $('#reglagesEnCours').innerHTML = `<br>En vigueur : mot d'éveil « <b>${esc(r.eveil||'jarvis')}</b> »`
+      + `, ${r.exigerEveil === false ? '<b>non exigé</b>' : 'exigé'}`
+      + `${r.nom ? `, voix « ${esc(r.nom)} »` : ', voix automatique'}.`;
+    trace('réglages', `éveil « ${r.eveil||'jarvis'} », exigé : ${r.exigerEveil !== false}`);
+  }catch(e){
+    creerMoteur(null);
+    trace('réglages', 'serveur injoignable — valeurs par défaut');
+  }
+}
+
+/* ---------- boutons ---------- */
+$('#micro').onclick = ()=>{
+  if(!V) return;
+  const e = V.etat();
+  /* En écoute continue, le gros bouton semblait mort. Il en sort maintenant,
+     ce qui est l'attente naturelle quand on appuie sur « Parler ». */
+  if(e.continu){ V.basculerContinu(false); return; }
+  if(e.ecoute) V.arreter(); else V.demarrer();
+};
+$('#veille').onclick = ()=>{
+  if(!V) return;
+  const actif = V.basculerContinu();
+  note('système', actif
+    ? `À l'écoute. Commence tes phrases par « ${V.motEveil} ».`
+    : 'Écoute arrêtée.');
+};
+$('#voix').onclick = ()=>{
+  if(!V) return;
+  const actif = V.couperVoix();
+  $('#voix').textContent = actif ? '🔊 Voix active' : '🔇 Voix coupée';
+  $('#voix').classList.toggle('on', actif);
+};
+$('#testSon').onclick = ()=>{
+  if(!V) return;
+  trace('test', 'lecture d’une phrase');
+  V.dire("Bonsoir. Le dîner est prêt, il reste six articles sur la liste de courses.");
+};
+document.querySelectorAll('#exemples button').forEach((b)=>
+  b.onclick = ()=>{ if(V) V.envoyer(EXEMPLES[Number(b.dataset.i)]); });
+
+/* ---------- diagnostic ----------
+   Trois conditions décident si le micro peut s'ouvrir, et aucune n'est visible
+   quand elle échoue. Les afficher évite de chercher un bug là où il n'y en a
+   pas : le plus souvent, c'est l'adresse utilisée qui bloque. */
+async function diagnostiquer(){
+  const ok = (b)=>b ? '✅' : '❌';
+  const l = [];
+  l.push(`🏷️ page <b>${VERSION}</b> — si ce numéro ne change pas après une correction, recharge en forçant (Ctrl+Maj+R)`);
+  l.push(`${ok(CAPACITES.securise)} contexte sécurisé — <code>${location.origin}</code>`
+    + (CAPACITES.securise ? '' : ' → le micro restera fermé, ouvre la page depuis <code>localhost</code>'));
+  l.push(`${ok(CAPACITES.reconnaissance)} transcription ${CAPACITES.reconnaissance ? 'disponible' : 'absente (Safari ne la propose pas — utilise Chrome)'}`);
+  l.push(`${ok(CAPACITES.synthese)} lecture à voix haute — ${V ? V.listeVoix().length : 0} voix installée(s)`);
+
+  if(navigator.permissions && navigator.permissions.query){
+    try{
+      const p = await navigator.permissions.query({name:'microphone'});
+      const dit = {granted:'autorisé', denied:'REFUSÉ — reclique sur le cadenas de la barre d’adresse', prompt:'sera demandé au 1er clic'};
+      l.push(`${ok(p.state!=='denied')} microphone : ${dit[p.state]||p.state}`);
+    }catch(_){ /* Firefox refuse cette requête : sans gravité */ }
+  }
+  try{
+    const t0 = Date.now();
+    const h = await (await fetch('/api/health')).json();
+    l.push(`✅ serveur joignable (${Date.now()-t0} ms) — source ${h.source}, IA ${h.ia?'active':'absente'}`);
+  }catch(_){ l.push('❌ serveur injoignable — lance <code>demarrer-maison.cmd</code>'); }
+
+  $('#diagnostic').innerHTML = l.join('<br>');
+}
+
+if(!CAPACITES.securise){
+  const a = $('#avertSecurise'); a.style.display = 'block';
+  a.innerHTML = `<b>Le micro est bloqué ici.</b><br>Les navigateurs n'ouvrent le micro qu'en
+    <b>HTTPS</b> ou sur <b>localhost</b>. Ouvre cette page depuis la machine qui fait tourner le
+    serveur — <code>http://localhost:8090/vocal.html</code>. Depuis la tablette murale, il faudra
+    Tailscale (même déblocage que Face ID et les notifications). Les phrases d'exemple, elles,
+    marchent partout.`;
+}
+if(!CAPACITES.reconnaissance){
+  const a = $('#avertNavigateur'); a.style.display = 'block';
+  a.innerHTML = `<b>Ce navigateur ne sait pas transcrire la voix.</b><br>La reconnaissance vocale
+    n'existe que sur <b>Chrome</b> et Edge. La lecture à voix haute, elle, fonctionne — et les
+    phrases d'exemple ci-dessous aussi.`;
+}
+if(!CAPACITES.utilisable){
+  $('#micro').disabled = true;
+  $('#veille').disabled = true;
+  $('#microTxt').textContent = 'Micro indisponible';
+}
+
+chargerReglages().then(()=>{ diagnostiquer(); setTimeout(diagnostiquer, 1500); });
+</script>
+</body>
+</html>

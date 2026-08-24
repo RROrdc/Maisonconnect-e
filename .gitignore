@@ -1,0 +1,45 @@
+# ============================================================================
+#  Ce qui ne part JAMAIS sur GitHub — même dans un dépôt privé.
+#  Un dépôt privé se clone, se partage, se transfère : une clé exposée reste
+#  exposée, et l'historique Git garde tout, même après suppression du fichier.
+# ============================================================================
+
+# --- SECRETS ---------------------------------------------------------------
+# Clé API Anthropic et token Notion, en clair. `.env.example` sert de modèle.
+.env
+.env.local
+*.pem
+*.key
+
+# --- DONNÉES DE LA FAMILLE -------------------------------------------------
+# maison.db est la SEULE copie des données du foyer : menus, courses, tâches,
+# emplois du temps des enfants, dates de naissance, appareils enrôlés.
+# Elle se sauvegarde (sauvegarder-tout.cmd), elle ne se publie pas.
+maison.db
+maison.db-wal
+maison.db-shm
+sauvegardes/
+*.db
+*.db-wal
+*.db-shm
+
+# --- PHOTOS DE PLATS -------------------------------------------------------
+# ~8,5 Mo récupérés sur des sites de cuisine : ce n'est pas à nous de les
+# redistribuer, et elles se régénèrent en un clic (/admin/ → Repas →
+# « Trouver les photos manquantes »).
+public/plats/
+
+# --- DÉPENDANCES -----------------------------------------------------------
+# `npm ci` les reconstruit à l'identique depuis package-lock.json.
+node_modules/
+
+# --- LOCAL À CETTE MACHINE -------------------------------------------------
+.claude/settings.local.json
+*.log
+*.zip
+_ap-*.html
+
+# --- SYSTÈME ---------------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store

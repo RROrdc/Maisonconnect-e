@@ -1,0 +1,1268 @@
+<!-- Écran Maison — APP FAMILLE (PWA)
+     ===================================
+     Un écran par sujet, appelés depuis un MENU LATÉRAL : menu de la semaine, courses,
+     à faire, agenda, post-it, notifications. Même langage visuel que bento.html —
+     c'est la même solution dans la poche, pas un autre produit.
+
+     Ce n'est pas une app de l'App Store et c'est volontaire : « Sur l'écran d'accueil »
+     donne l'icône, le plein écran et le lancement direct, sans compte développeur Apple
+     (99 €/an) ni build à réinstaller tous les 7 jours.
+
+     ⚠️ Deux fonctions attendent HTTPS (donc le Mac mini + Tailscale) :
+        - Face ID / Touch ID : WebAuthn exige un contexte sécurisé. En attendant, le
+          verrou optionnel se fait au code. La colonne `passkey` est déjà en base.
+        - Le push hors application (téléphone verrouillé). En revanche les notifications
+          s'affichent en direct dans l'app ouverte et sur l'écran mural : c'est le flux SSE.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Maison">
+<meta name="theme-color" content="#eef1f7">
+<title>Maison</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/icone-180.png">
+<!-- Thème appliqué AVANT le premier rendu : sinon l'écran clignote en blanc au lancement. -->
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('maison-theme')||'light'}catch(e){}</script>
+
+<style>
+:root{
+  --bg:#eef1f7; --card:#fff; --card2:#f4f6fb; --line:#e6eaf2; --line2:#d3dae7;
+  --txt:#141a24; --muted:#5d6980; --faint:#8b96aa; --onac:#fff;
+  --menu:#c9740a; --course:#0d9464; --todo:#2563eb; --agenda:#7739e0; --post:#a3780a;
+  --notif:#d6336c; --alerte:#c2253f; --alerte-fond:#fdeaee;
+  --r:22px; --r2:15px; --r3:11px;
+  --sh:0 1px 2px rgba(24,38,64,.05), 0 8px 22px rgba(24,38,64,.07);
+  --sh-haut:0 2px 4px rgba(24,38,64,.06), 0 18px 40px rgba(24,38,64,.18);
+  --tap:rgba(20,26,36,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#080b11; --card:#141922; --card2:#1b2130; --line:#232b39; --line2:#333d4f;
+  --txt:#f1f5fb; --muted:#98a4b8; --faint:#66728a; --onac:#0a0d13;
+  --menu:#ffb340; --course:#3ddc97; --todo:#5b9bff; --agenda:#b388ff; --post:#ffd23c;
+  --notif:#ff6ba3; --alerte:#ffb3bd; --alerte-fond:#3a1420;
+  --sh:0 1px 0 rgba(255,255,255,.03) inset, 0 8px 22px rgba(0,0,0,.45);
+  --sh-haut:0 1px 0 rgba(255,255,255,.05) inset, 0 20px 44px rgba(0,0,0,.65);
+  --tap:rgba(255,255,255,.07);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overscroll-behavior-y:contain}
+body{
+  background:var(--bg); color:var(--txt);
+  font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  /* `viewport-fit=cover` + ces marges = le contenu évite l'encoche et la barre du bas */
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button,input,select,textarea{font:inherit;color:inherit;border:0;background:none}
+h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.015em}
+
+/* ---------- En-tête ---------- */
+header{
+  position:sticky;top:0;z-index:20;background:var(--bg);
+  padding:14px 18px 10px;display:flex;align-items:center;gap:13px
+}
+.burger{width:42px;height:42px;border-radius:13px;background:var(--card);box-shadow:var(--sh);
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;cursor:pointer}
+.burger span{display:block;width:17px;height:2px;background:var(--txt);border-radius:2px;position:relative}
+.burger span::before,.burger span::after{content:'';position:absolute;left:0;width:17px;height:2px;
+  background:var(--txt);border-radius:2px}
+.burger span::before{top:-5.5px} .burger span::after{top:5.5px}
+header .ou{flex:1 1 auto;min-width:0}
+header h1{font-size:21px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header .s{font-size:13px;color:var(--muted)}
+.avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;color:#141a24;flex:0 0 auto;font-size:16px}
+
+main{padding:4px 18px 34px}
+
+/* ---------- Cartes et listes ---------- */
+.carte{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px 17px;margin-bottom:14px}
+.carte>h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+.carte>h3 .pt{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.carte>h3 .cpt{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--muted);
+  background:var(--card2);padding:3px 10px;border-radius:999px}
+
+/* Pilule de liste : la ligne cliquable de base, teintée par module (comme le bento). */
+.li{
+  display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-radius:var(--r2);
+  background:var(--card2);margin-bottom:9px;transition:.12s
+}
+.li:active{transform:scale(.985)}
+.li.course{background:color-mix(in srgb,var(--course) 11%,var(--card2))}
+.li.todo{background:color-mix(in srgb,var(--todo) 11%,var(--card2))}
+.li.post{background:color-mix(in srgb,var(--post) 14%,var(--card2))}
+.li.menu{background:color-mix(in srgb,var(--menu) 11%,var(--card2))}
+.li.fini{opacity:.45}
+.li.fini .t{text-decoration:line-through}
+.li .t{font-size:16px;font-weight:600;overflow-wrap:anywhere;flex:1 1 auto;min-width:0}
+.li .d{font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.li .fin{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding-top:1px}
+.tag{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;
+  background:var(--card);color:var(--muted);white-space:nowrap}
+
+/* Case à cocher : 30 px, seuil confortable pour un pouce. */
+.case{
+  width:30px;height:30px;border-radius:10px;border:2.5px solid var(--line2);
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:900;color:transparent;transition:.14s;cursor:pointer
+}
+.case.on{background:var(--course);border-color:var(--course);color:var(--onac)}
+.li.todo .case.on{background:var(--todo);border-color:var(--todo)}
+
+/* ---------- Boutons ---------- */
+.btn{
+  border-radius:var(--r2);padding:14px 18px;font-weight:700;cursor:pointer;
+  background:var(--txt);color:var(--bg);display:block;width:100%;text-align:center;font-size:16px
+}
+.btn.doux{background:var(--card2);color:var(--txt)}
+.btn.fin{padding:11px 15px;font-size:14.5px;border-radius:var(--r3)}
+.rang{display:flex;gap:9px}
+.rang>*{flex:1 1 0}
+.plus{
+  position:fixed;right:19px;bottom:calc(21px + env(safe-area-inset-bottom));z-index:25;
+  width:60px;height:60px;border-radius:50%;background:var(--txt);color:var(--bg);
+  font-size:30px;font-weight:300;line-height:1;box-shadow:var(--sh-haut);cursor:pointer;
+  display:none;align-items:center;justify-content:center
+}
+.plus.on{display:flex}
+
+/* ---------- Menu latéral ---------- */
+#voile{position:fixed;inset:0;background:rgba(8,12,20,.45);z-index:40;opacity:0;
+  pointer-events:none;transition:opacity .26s}
+#voile.on{opacity:1;pointer-events:auto}
+#tiroir{
+  position:fixed;top:0;left:0;bottom:0;width:min(300px,84vw);z-index:41;
+  background:var(--card);box-shadow:var(--sh-haut);transform:translateX(-102%);
+  transition:transform .3s cubic-bezier(.3,.8,.3,1);display:flex;flex-direction:column;
+  padding:calc(20px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom))
+}
+#tiroir.on{transform:none}
+#tiroir .qui{display:flex;align-items:center;gap:12px;padding:6px 12px 18px}
+#tiroir .qui b{display:block;font-size:17px}
+#tiroir .qui span{font-size:13px;color:var(--faint)}
+.nav{display:flex;align-items:center;gap:13px;padding:14px 13px;border-radius:var(--r2);
+  cursor:pointer;font-weight:650;color:var(--muted);width:100%;text-align:left}
+.nav .pt{width:10px;height:10px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.nav .cpt{margin-left:auto;font-size:12px;font-weight:800;background:var(--notif);color:var(--onac);
+  min-width:22px;height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.nav[aria-current="page"]{background:var(--card2);color:var(--txt)}
+#tiroir .bas{margin-top:auto;border-top:1px solid var(--line);padding-top:10px}
+
+/* ---------- Divers ---------- */
+/* ---------- Emploi du temps ---------- */
+.jours{display:flex;gap:7px;overflow-x:auto;padding:2px 0 12px;-webkit-overflow-scrolling:touch}
+.jours button{flex:0 0 auto;padding:9px 15px;border-radius:999px;background:var(--card);
+  box-shadow:var(--sh);font-weight:700;font-size:14.5px;cursor:pointer;position:relative}
+.jours button[aria-pressed="true"]{background:var(--txt);color:var(--bg)}
+.jours button .n{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;border-radius:9px;
+  background:var(--agenda);color:var(--onac);font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;padding:0 4px}
+/* Journée en BLOCS sur un axe horaire, pas en liste : la hauteur d'un bloc est sa durée,
+   les trous entre les cours se voient, et une plage de 4 h se distingue d'un cours d'1 h
+   sans avoir à lire les horaires. */
+.jgrille{display:flex;gap:9px}
+.jheures{flex:0 0 34px;position:relative}
+.jheures .hl{position:absolute;right:0;transform:translateY(-50%);font-size:11.5px;
+  font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums}
+.jcol{flex:1 1 auto;position:relative;background:var(--card2);border-radius:var(--r2);cursor:copy}
+.jcol .ligne{position:absolute;left:0;right:0;height:1px;background:var(--line2);opacity:.5}
+.jcol .demi{opacity:.2}
+.jbloc{
+  position:absolute;border-radius:13px;padding:8px 11px;overflow:hidden;cursor:pointer;
+  background:var(--c);color:#16202c;display:flex;flex-direction:column;gap:1px;min-height:22px
+}
+.jbloc:active{transform:scale(.99)}
+.jbloc.activite{background:color-mix(in srgb,var(--c) 26%,var(--card));color:var(--txt);
+  box-shadow:inset 0 0 0 2px var(--c)}
+.jbloc.off{opacity:.45}
+.jbloc .nn{font-size:15px;font-weight:800;line-height:1.15;overflow-wrap:anywhere}
+.jbloc .hh{font-size:11.5px;font-weight:700;opacity:.75;font-variant-numeric:tabular-nums}
+.jbloc .dd{font-size:11.5px;opacity:.75;overflow-wrap:anywhere}
+.jbloc.court{flex-direction:row;align-items:center;gap:9px;padding:3px 11px}
+.jbloc.court .hh{display:block;font-size:11px}
+.jbloc.court .dd{display:none}
+.badgeq{font-size:10.5px;font-weight:900;padding:1px 6px;border-radius:5px;
+  background:rgba(0,0,0,.2);color:#fff;margin-left:6px;vertical-align:1px}
+
+/* Vignette du plat dans le menu — c'est aussi le bouton qui ouvre la recette. */
+.mini{width:42px;height:42px;border-radius:12px;object-fit:cover;flex:0 0 auto;
+  box-shadow:var(--sh);display:block}
+
+/* Choix du nombre de convives : des boutons, pas une liste déroulante — on s'en
+   sert souvent d'une main, parfois en cuisinant. */
+.cvt-choix{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}
+.cvt-choix button{min-width:44px;height:44px;border-radius:14px;background:var(--card2);
+  color:var(--txt);font-size:16px;font-weight:700;cursor:pointer}
+.cvt-choix button.on{background:var(--menu);color:var(--onac)}
+
+.vide{text-align:center;color:var(--faint);padding:30px 10px;font-size:15px}
+.avert{background:var(--alerte-fond);color:var(--alerte);border-radius:var(--r2);
+  padding:12px 15px;margin-bottom:13px;font-size:14px;font-weight:600}
+.info{background:var(--card2);border-radius:var(--r2);padding:12px 15px;margin-bottom:13px;
+  font-size:13.5px;color:var(--muted)}
+.ch{width:100%;padding:14px;border-radius:var(--r2);background:var(--card2);margin-bottom:10px}
+.ch::placeholder{color:var(--faint)}
+label.et{display:block;font-size:12.5px;font-weight:700;color:var(--muted);margin:0 0 6px 3px}
+select.ch{appearance:none}
+
+/* Bandeau de notification — même rôle que sur l'écran mural. */
+#notifBar{
+  position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:60;
+  background:var(--card);border-radius:var(--r2);box-shadow:var(--sh-haut);
+  border-left:6px solid var(--todo);padding:14px 16px;display:flex;gap:12px;align-items:center;
+  transform:translateY(-190%);transition:transform .36s cubic-bezier(.2,.9,.3,1.2)
+}
+#notifBar.on{transform:none}
+#notifBar.important{border-left-color:var(--post)}
+#notifBar.urgent{border-left-color:var(--alerte)}
+#notifBar .i{font-size:25px} #notifBar .t{font-weight:800;font-size:16px}
+#notifBar .m{font-size:13.5px;color:var(--muted)}
+
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));z-index:70;
+  transform:translate(-50%,100px);background:var(--txt);color:var(--bg);padding:12px 20px;
+  border-radius:999px;font-weight:650;box-shadow:var(--sh-haut);transition:transform .26s;
+  max-width:86vw;text-align:center;font-size:14.5px}
+#toast.on{transform:translate(-50%,0)}
+
+/* ---------- Feuille qui monte du bas ----------
+   ⚠️ Le contenu peut être long : une recette entière, trente ingrédients proposés
+   depuis le menu. Sans hauteur maximale ni défilement, le panneau débordait par le
+   HAUT — on voyait la fin et il n'y avait rien à faire défiler pour remonter.
+   `dvh` plutôt que `vh` : sur iPhone, `vh` ignore les barres de Safari et la feuille
+   dépassait quand même. */
+.feuille{
+  background:var(--card); width:100%; text-align:left;
+  border-radius:26px 26px 0 0; box-shadow:var(--sh-haut);
+  padding:22px 20px 0;
+  max-height:92dvh; overflow-y:auto;
+  -webkit-overflow-scrolling:touch;      /* défilement à inertie sur iOS */
+  overscroll-behavior:contain;           /* ne pas entraîner la page derrière */
+}
+@supports not (height:1dvh){ .feuille{max-height:88vh} }
+
+/* Le titre reste visible pendant qu'on fait défiler une longue recette. */
+.feuille>h2{position:sticky;top:-22px;z-index:2;background:var(--card);
+  font-size:20px;margin:0 0 14px;padding:6px 0 10px}
+
+/* Les boutons restent accessibles sans avoir à dérouler jusqu'en bas.
+   ⚠️ Classe dédiée `.pied` et non `.feuille>.rang` : d'autres `.rang` (la ligne
+   début/fin d'un créneau, par exemple) sont aussi des enfants directs de la feuille
+   et se seraient collées en bas de l'écran. */
+.feuille>.pied{position:sticky;bottom:0;z-index:2;background:var(--card);
+  margin-top:12px;padding:12px 0 calc(16px + env(safe-area-inset-bottom));
+  box-shadow:0 -8px 14px -10px rgba(0,0,0,.35)}
+
+/* ---------- Écrans pleine page (enrôlement / verrou) ---------- */
+.plein{position:fixed;inset:0;z-index:90;background:var(--bg);display:none;
+  flex-direction:column;align-items:center;justify-content:center;padding:30px 24px;text-align:center}
+.plein.on{display:flex}
+.plein h2{font-size:25px;margin-bottom:8px}
+.plein p{color:var(--muted);margin:0 0 26px;font-size:15px}
+.gens{display:flex;flex-wrap:wrap;gap:11px;justify-content:center;margin-bottom:20px}
+.gens button{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;width:86px}
+.gens .rond{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:24px;font-weight:800;color:#141a24}
+.gens span{font-size:14px;font-weight:650}
+#pin{width:min(280px,80vw);text-align:center;font-size:30px;letter-spacing:.4em;
+  padding:16px;border-radius:var(--r2);background:var(--card);box-shadow:var(--sh)}
+#pin::placeholder{letter-spacing:normal;font-size:15px}
+</style>
+
+<div id="notifBar"><div class="i" id="nbIco">🔔</div>
+  <div style="flex:1;min-width:0"><div class="t" id="nbTitre"></div><div class="m" id="nbMsg"></div></div></div>
+
+<header>
+  <div class="burger" id="burger"><span></span></div>
+  <div class="ou"><h1 id="titre">Maison</h1><div class="s" id="sous"></div></div>
+  <div class="avatar" id="avatar"></div>
+</header>
+
+<main id="ecran"></main>
+<button class="plus" id="plus">+</button>
+
+<div id="voile"></div>
+<nav id="tiroir">
+  <div class="qui"><div class="avatar" id="avatar2"></div>
+    <div><b id="monNom"></b><span id="monRole"></span></div></div>
+  <div id="navs"></div>
+  <div class="bas">
+    <button class="nav" id="btnTheme"><span class="pt"></span> Thème clair / sombre</button>
+    <button class="nav" id="btnQuitter"><span class="pt"></span> Changer de personne</button>
+  </div>
+</nav>
+
+<div class="plein" id="ecranQui">
+  <h2>Qui es-tu ?</h2>
+  <p>Une seule fois : ce téléphone se souviendra de toi.</p>
+  <div class="gens" id="gens"></div>
+</div>
+
+<div class="plein" id="ecranPin">
+  <h2 id="pinTitre">Ton code</h2>
+  <p>Cette app est verrouillée sur cet appareil.</p>
+  <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="Code">
+  <div style="height:14px"></div>
+  <button class="btn" id="pinOk" style="width:min(280px,80vw)">Déverrouiller</button>
+  <p id="pinMsg" style="margin-top:16px;min-height:20px;color:var(--alerte)"></p>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   État et utilitaires
+   ===================================================================== */
+const $ = (s)=>document.querySelector(s);
+const $$ = (s)=>[...document.querySelectorAll(s)];
+const e = (s)=>String(s??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* Clés de stockage identiques à la version précédente de l'app : un téléphone déjà
+   enrôlé ne doit pas se retrouver déconnecté par une simple mise à jour. */
+let jeton = localStorage.getItem('maison-jeton') || '';
+let moi   = localStorage.getItem('maison-personne') || '';
+let ECRAN = localStorage.getItem('maison-onglet') || 'jour';
+let S = {}, NOTIFS = [], MES = [], DEVERROUILLE = false;
+let EDT_JOUR = '';                      // jour affiché dans « Mon emploi du temps »
+
+const JOURS  = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const JOURSL = {Lun:'Lundi',Mar:'Mardi',Mer:'Mercredi',Jeu:'Jeudi',Ven:'Vendredi',Sam:'Samedi',Dim:'Dimanche'};
+const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+/* Repli seulement : la liste fait foi côté SERVEUR (`S.rayons`). Deux listes
+   codées en dur avaient divergé, et un article rangé dans un rayon connu d'un
+   seul des deux écrans devenait invisible sur l'autre. */
+const RAYONS_DEFAUT = ['Fruits & légumes','Frais','Surgelés','Épicerie','Boissons','Maison / hygiène','Autre'];
+const rayons = ()=>((S.rayons && S.rayons.length) ? S.rayons : RAYONS_DEFAUT);
+
+const init = (n)=>String(n||'?').trim().charAt(0).toUpperCase();
+const couleurDe = (n)=>((S.personnes||[]).find((p)=>p.nom===n)||{}).couleur || '#9aa7bd';
+const aujourdhui = ()=>new Date().toISOString().slice(0,10);
+
+let minuteurToast;
+function toast(t){
+  const n = $('#toast'); n.textContent = t; n.classList.add('on');
+  clearTimeout(minuteurToast); minuteurToast = setTimeout(()=>n.classList.remove('on'), 2400);
+}
+
+/* Le jeton d'appareil part sur chaque appel : le serveur sait qui agit sans rien demander. */
+async function api(url, methode='GET', corps){
+  const r = await fetch(url, {
+    method: methode,
+    headers: {'Content-Type':'application/json', ...(jeton?{'x-jeton':jeton}:{})},
+    body: corps ? JSON.stringify(corps) : undefined,
+  });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error || ('Erreur '+r.status));
+  return d;
+}
+
+/* =====================================================================
+   Chargement
+   ===================================================================== */
+async function charger(silencieux){
+  try{
+    S = await api('/api/data');
+    /* Repli hors ligne : la liste de courses doit rester lisible dans les rayons même
+       sans réseau. On garde une copie en localStorage — indépendant du service worker,
+       qui lui ne s'enregistre pas en HTTP sur iPhone. */
+    try{ localStorage.setItem('maison-cache', JSON.stringify(S)); }catch(_){}
+    try{ NOTIFS = (await api('/api/notif')).notifs || []; }catch(_){ NOTIFS = []; }
+    try{ MES = (await api('/api/planning/mien')).creneaux || []; }catch(_){ MES = []; }
+  }catch(err){
+    if(!S.courses){
+      try{ const c = localStorage.getItem('maison-cache'); if(c){ S = JSON.parse(c); toast('Hors ligne — dernière copie'); } }catch(_){}
+    }
+    if(!silencieux && !S.courses) toast('Serveur injoignable');
+  }
+  dessiner();
+}
+
+/* Le même flux que l'écran mural : une coche faite en cuisine apparaît ici tout de suite. */
+function brancherFlux(){
+  try{
+    const f = new EventSource('/api/flux');
+    let attente;
+    f.addEventListener('maj', ()=>{ clearTimeout(attente); attente = setTimeout(()=>charger(true), 150); });
+    f.addEventListener('notif', (ev)=>{ try{ montrerNotif(JSON.parse(ev.data)); }catch(_){} });
+  }catch(_){}
+}
+
+/* =====================================================================
+   Notifications reçues
+   ===================================================================== */
+const ICONES = {info:'🔔', important:'⚠️', urgent:'🚨'};
+let minuteurNotif;
+
+function montrerNotif(n){
+  /* Un message adressé à quelqu'un d'autre ne doit pas s'afficher sur mon téléphone. */
+  if(n.pour && n.pour !== moi) return;
+  const b = $('#notifBar');
+  b.className = n.niveau || 'info';
+  $('#nbIco').textContent = ICONES[n.niveau] || '🔔';
+  $('#nbTitre').textContent = n.titre || '';
+  $('#nbMsg').textContent = n.message || '';
+  requestAnimationFrame(()=>b.classList.add('on'));
+  clearTimeout(minuteurNotif);
+  minuteurNotif = setTimeout(()=>b.classList.remove('on'), 9000);
+  if(navigator.vibrate) navigator.vibrate(n.niveau==='urgent' ? [90,60,90] : 45);
+  NOTIFS.unshift(n);
+  if(ECRAN !== 'notifs') majPastilles();
+}
+$('#notifBar').onclick = ()=>{ $('#notifBar').classList.remove('on'); aller('notifs'); };
+
+/* =====================================================================
+   Menu latéral
+   ===================================================================== */
+const ECRANS = [
+  {k:'jour',   t:'Aujourd\'hui', c:'--todo'},
+  {k:'menu',   t:'Menu de la semaine', c:'--menu'},
+  {k:'course', t:'Courses', c:'--course'},
+  {k:'todo',   t:'À faire', c:'--todo'},
+  {k:'agenda', t:'Agenda', c:'--agenda'},
+  {k:'edt',    t:'Mon emploi du temps', c:'--agenda'},
+  {k:'post',   t:'Post-it', c:'--post'},
+  {k:'notifs', t:'Notifications', c:'--notif'},
+  {k:'reglages', t:'Réglages', c:'--faint'},
+];
+
+function dessinerNav(){
+  $('#navs').innerHTML = ECRANS.map((x)=>
+    `<button class="nav" data-ec="${x.k}" aria-current="${x.k===ECRAN?'page':'false'}">
+       <span class="pt" style="background:var(${x.c})"></span>${e(x.t)}
+       <span class="cpt" data-cpt="${x.k}" style="display:none"></span></button>`).join('');
+  $$('[data-ec]').forEach((b)=>b.onclick = ()=>{ aller(b.dataset.ec); tiroir(false); });
+  majPastilles();
+}
+
+function majPastilles(){
+  const n = {
+    course: (S.courses||[]).filter((c)=>!c.pris).length,
+    todo:   (S.todos||[]).filter((t)=>!t.done).length,
+    notifs: NOTIFS.filter((x)=>!x.lu).length,
+  };
+  for(const [k,v] of Object.entries(n)){
+    const b = document.querySelector(`[data-cpt="${k}"]`);
+    if(b){ b.textContent = v; b.style.display = v ? 'flex' : 'none'; }
+  }
+}
+
+function tiroir(on){
+  $('#tiroir').classList.toggle('on', on);
+  $('#voile').classList.toggle('on', on);
+}
+$('#burger').onclick = ()=>tiroir(true);
+$('#voile').onclick  = ()=>tiroir(false);
+
+function aller(k){
+  ECRAN = k; localStorage.setItem('maison-onglet', k);
+  $$('[data-ec]').forEach((b)=>b.setAttribute('aria-current', b.dataset.ec===k?'page':'false'));
+  dessiner();
+}
+
+/* =====================================================================
+   Rendu
+   ===================================================================== */
+const RENDU = {};
+
+function dessiner(){
+  const x = ECRANS.find((y)=>y.k===ECRAN) || ECRANS[0];
+  $('#titre').textContent = x.t;
+  const d = new Date();
+  $('#sous').textContent = JOURSL[JOURS[(d.getDay()+6)%7]] + ' ' + d.getDate() + ' ' + MOIS[d.getMonth()];
+  for(const a of ['#avatar','#avatar2']){
+    $(a).textContent = init(moi); $(a).style.background = couleurDe(moi);
+  }
+  $('#monNom').textContent = moi || '—';
+  $('#monRole').textContent = (S.moi && S.moi.role) ? S.moi.role : 'membre du foyer';
+  $('#ecran').innerHTML = (RENDU[ECRAN] || RENDU.jour)();
+  brancherEcran();
+  majPastilles();
+
+  /* Le bouton « + » n'a de sens que là où l'on peut ajouter quelque chose. */
+  $('#plus').classList.toggle('on', ['course','todo','post','notifs','edt'].includes(ECRAN));
+}
+
+/* ---------- Aujourd'hui : le résumé qu'on veut voir en ouvrant l'app ---------- */
+RENDU.jour = ()=>{
+  const jr = JOURS[(new Date().getDay()+6)%7];
+  const repas = (S.menu||[]).find((m)=>String(m.jour||'').startsWith(jr.slice(0,3)));
+  const rest = (S.courses||[]).filter((c)=>!c.pris).length;
+  const taches = (S.todos||[]).filter((t)=>!t.done && (!t.due || t.due <= aujourdhui()));
+  const evts = (S.agenda||[]).filter((a)=>String(a.start).slice(0,10) === aujourdhui());
+  const mien = (S.plannings?.personnes||[]).map((p)=>({nom:p.nom, couleur:p.couleur, c:(p.semaine||{})[jr]||[]}))
+                 .filter((p)=>p.c.length);
+
+  return `
+  ${S.meteo ? `<div class="carte" style="display:flex;align-items:center;gap:15px">
+    <div style="font-size:38px">${e(S.meteo.icone||'')}</div>
+    <div style="flex:1"><div style="font-size:29px;font-weight:800;letter-spacing:-.02em">${e(S.meteo.temp)}°</div>
+      <div style="font-size:13.5px;color:var(--muted)">${e(S.meteo.texte)} · ${e(S.meteo.ville)}</div></div>
+    <div style="text-align:right;font-size:13.5px;color:var(--muted)">
+      ${e(S.meteo.min)}° / <b style="color:var(--txt)">${e(S.meteo.max)}°</b></div>
+  </div>` : ''}
+
+  <div class="carte"><h3><span class="pt" style="background:var(--menu)"></span>Repas du jour</h3>
+    ${repas ? `<div class="li menu">
+      ${repas.soirPhoto?`<img class="mini" src="${e(repas.soirPhoto)}" alt=""
+          ${platDe(repas.soirId)&&platDe(repas.soirId).recette?`data-recette="${e(repas.soirId)}" data-couverts="${e(repas.soirCouverts||4)}"`:''}>`:''}
+      <div class="t">${e(repas.soir||'—')}
+        <div class="d">midi · ${e(repas.midi||'—')}</div></div>
+      ${platDe(repas.soirId)&&platDe(repas.soirId).recette
+        ? `<div class="fin"><span class="tag" data-recette="${e(repas.soirId)}" data-couverts="${e(repas.soirCouverts||4)}">Recette</span></div>` : ''}
+    </div>`
+      : '<div class="vide">Rien de prévu.</div>'}
+  </div>
+
+  <div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>Agenda
+    <span class="cpt">${evts.length}</span></h3>
+    ${evts.length ? evts.slice(0,4).map((a)=>`<div class="li">
+      <div class="t">${e(a.summary)}<div class="d">${e(heure(a))}${a.lieu?' · '+e(a.lieu):''}</div></div></div>`).join('')
+      : '<div class="vide">Journée libre.</div>'}
+  </div>
+
+  ${mien.length ? `<div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>Les enfants</h3>
+    ${mien.map((p)=>`<div class="li"><div class="t">${e(p.nom)}
+      <div class="d">${p.c.map((x)=>e((x.h||'')+' '+x.quoi)).join(' · ')}</div></div></div>`).join('')}
+  </div>` : ''}
+
+  <div class="carte"><h3><span class="pt" style="background:var(--todo)"></span>À faire aujourd'hui
+    <span class="cpt">${taches.length}</span></h3>
+    ${taches.length ? taches.slice(0,5).map(ligneTache).join('') : '<div class="vide">Rien d\'urgent 🎉</div>'}
+  </div>
+
+  <div class="carte" style="cursor:pointer" data-va="course">
+    <h3><span class="pt" style="background:var(--course)"></span>Courses
+      <span class="cpt">${rest} à prendre</span></h3>
+    ${rest ? `<div class="li course"><div class="t">${e((S.courses||[]).filter((c)=>!c.pris)
+        .slice(0,3).map((c)=>c.article).join(', '))}${rest>3?'…':''}</div></div>`
+      : '<div class="vide">Liste vide.</div>'}
+  </div>`;
+};
+
+const heure = (a)=>a.journee ? 'Journée' :
+  new Date(a.start).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})
+  + (a.fin ? '–'+new Date(a.fin).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '');
+
+/* ---------- Courses ---------- */
+RENDU.course = ()=>{
+  const l = (S.courses||[]).slice().sort((a,b)=>(a.pris?1:0)-(b.pris?1:0));
+  const pris = l.filter((c)=>c.pris).length;
+  return `
+  <div class="rang" style="margin-bottom:13px">
+    <button class="btn doux fin" id="depuisMenu">🍽️ Depuis le menu</button>
+    <button class="btn doux fin" id="habituels">🔁 Habituels</button>
+    ${pris ? `<button class="btn doux fin" id="vider">🧹 Retirer les ${pris} pris</button>` : ''}
+  </div>
+  <div class="carte">
+    ${l.length ? l.map((c)=>`<div class="li course ${c.pris?'fini':''}">
+      <div class="case ${c.pris?'on':''}" data-course="${e(c.id)}">✓</div>
+      <div class="t">${e(c.article)}${c.who?`<div class="d">ajouté par ${e(c.who)}</div>`:''}</div>
+      <div class="fin">${c.rayon?`<span class="tag">${e(c.rayon)}</span>`:''}
+        <span class="tag" data-suppr="course:${e(c.id)}">✕</span></div>
+    </div>`).join('') : '<div class="vide">Liste vide.</div>'}
+  </div>`;
+};
+
+/* ---------- À faire ---------- */
+const ligneTache = (t)=>`<div class="li todo ${t.done?'fini':''}">
+  <div class="case ${t.done?'on':''}" data-todo="${e(t.id)}">✓</div>
+  <div class="t">${e(t.tache)}${(t.who||t.due)?`<div class="d">${e([t.who, dateCourte(t.due)].filter(Boolean).join(' · '))}</div>`:''}</div>
+  <div class="fin"><span class="tag" data-suppr="todo:${e(t.id)}">✕</span></div></div>`;
+
+function dateCourte(d){
+  if(!d) return '';
+  if(d === aujourdhui()) return "aujourd'hui";
+  const x = new Date(d+'T12:00');
+  return x.getDate()+' '+MOIS[x.getMonth()].slice(0,4);
+}
+
+RENDU.todo = ()=>{
+  const l = (S.todos||[]).slice().sort((a,b)=>(a.done?1:0)-(b.done?1:0)
+    || String(a.due||'9').localeCompare(String(b.due||'9')));
+  return `<div class="carte">${l.length ? l.map(ligneTache).join('') : '<div class="vide">Rien à faire 🎉</div>'}</div>`;
+};
+
+/* ---------- Menu de la semaine ---------- */
+const platDe = (id)=>(S.plats||[]).find((p)=>p.id===id);
+
+RENDU.menu = ()=>{
+  const jr = JOURS[(new Date().getDay()+6)%7];
+  return `<div class="info">Touche un jour pour changer le plat, ou la photo pour ouvrir
+    la recette. Un plat écrit librement rejoint la bibliothèque et sera proposé les
+    semaines suivantes.</div>
+  <div class="carte">${(S.menu||[]).map((m)=>{
+    const auj = String(m.jour||'').startsWith(jr.slice(0,3));
+    const f = platDe(m.soirId);
+    const ouvrable = f && f.recette;
+    return `<div class="li menu" data-menu="${e(m.id)}" style="${auj?'outline:2px solid var(--menu);outline-offset:-2px':''}">
+      <div style="flex:0 0 40px;font-weight:800;font-size:13px;color:var(--menu);padding-top:2px">
+        ${e(String(m.jour||'').slice(0,3).toUpperCase())}</div>
+      ${m.soirPhoto
+        ? `<img class="mini" src="${e(m.soirPhoto)}" alt="" loading="lazy"
+             ${ouvrable?`data-recette="${e(m.soirId)}" data-couverts="${e(m.soirCouverts||4)}"`:''}>`
+        : ''}
+      <div class="t">${e(m.soir||'— à définir —')}
+        <div class="d">midi · ${e(m.midi||'—')}${f&&f.duree?' · '+e(f.duree):''}${
+          m.soirCouvertsChoisi?' · <b>'+e(m.soirCouverts)+' couverts</b>':''}</div></div>
+      ${ouvrable?`<div class="fin"><span class="tag" data-recette="${e(m.soirId)}" data-couverts="${e(m.soirCouverts||4)}">Recette</span></div>`:''}
+    </div>`;}).join('')}</div>`;
+};
+
+/* Fiche cuisine sur le téléphone : mêmes données que l'écran mural, présentées en
+   une colonne. Utile en faisant les courses (les ingrédients) comme aux fourneaux. */
+const COUVERTS = [1,2,3,4,5,6,8,10,12];
+
+async function ouvrirRecette(id, couverts){
+  let p;
+  const q = couverts ? ('?couverts='+encodeURIComponent(couverts)) : '';
+  try{ p = (await api('/api/plat/'+encodeURIComponent(id)+q)).plat; }
+  catch(err){ return toast('✗ '+err.message); }
+  if(!p) return toast('Fiche introuvable.');
+
+  /* Changer le nombre de convives rouvre la fiche : le calcul reste côté serveur,
+     pour que le téléphone, l'écran mural et les courses donnent les mêmes nombres. */
+  const relancer = (n)=>{ document.querySelectorAll('.plein.on').forEach((x)=>x.remove());
+                          ouvrirRecette(id, n); };
+  window._recCouverts = relancer;
+
+  const meta = [p.duree].filter(Boolean).join(' · ');
+  feuille(e(p.nom), `
+    ${p.photo?`<img src="${e(p.photo)}" alt="" style="width:100%;height:170px;object-fit:cover;border-radius:var(--r2);margin-bottom:12px">`:''}
+    ${meta?`<div style="font-weight:700;color:var(--muted);margin-bottom:8px">${e(meta)}</div>`:''}
+    ${p.portionsBase?`<label class="et">Pour combien de personnes</label>
+      <div class="cvt-choix">${COUVERTS.map((c)=>
+        `<button type="button" class="${(p.couverts||p.portionsBase)===c?'on':''}"
+           onclick="window._recCouverts(${c})">${c}</button>`).join('')}</div>
+      ${p.misAEchelle?`<div style="font-size:12.5px;color:var(--faint);margin:6px 0 12px">
+        Quantités recalculées — recette écrite pour ${p.portionsBase}.</div>`:'<div style="height:10px"></div>'}`:''}
+    ${(p.appareils||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${p.appareils.map((a)=>`<span class="tag" style="background:color-mix(in srgb,var(--menu) 18%,var(--card2));color:var(--menu)">${e(a)}</span>`).join('')}</div>`:''}
+
+    ${(p.ingredients||[]).length?`<label class="et">Ingrédients</label>
+      <div style="margin-bottom:14px">${p.ingredients.map((x)=>
+        `<div class="li" onclick="this.classList.toggle('fini')"><div class="t">${e(x)}</div></div>`).join('')}</div>
+      <button class="btn doux fin" id="r_courses" style="margin-bottom:14px">🛒 Ajouter aux courses</button>`:''}
+
+    ${(p.etapes||[]).length?`<label class="et">Préparation</label>
+      <div>${p.etapes.map((x,i)=>
+        `<div class="li" onclick="this.classList.toggle('fini')" style="align-items:flex-start">
+           <div style="flex:0 0 28px;height:28px;border-radius:50%;background:var(--menu);color:var(--onac);
+                       display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">${i+1}</div>
+           <div class="t" style="font-weight:500">${e(x)}</div></div>`).join('')}</div>`
+      :'<div class="vide">Pas encore de recette pour ce plat.</div>'}
+
+    ${p.source_url?`<div style="color:var(--faint);font-size:12.5px;margin-top:12px">source : ${e(String(p.source_url).replace(/^https?:\/\/(www\.)?/,'').split('/')[0])}</div>`:''}`,
+    async ()=>{});
+
+  /* La fiche se lit, elle ne se valide pas : « Annuler / Valider » n'aurait aucun
+     sens ici. On ne garde qu'un bouton de fermeture. */
+  const feu = document.querySelector('.plein.on');
+  if(feu){
+    const ok = feu.querySelector('[data-x="oui"]'); if(ok) ok.remove();
+    const non = feu.querySelector('[data-x="non"]');
+    if(non){ non.textContent = 'Fermer'; non.className = 'btn'; }
+  }
+
+  const b = document.querySelector('#r_courses');
+  if(b) b.onclick = async ()=>{
+    try{
+      const r = await api('/api/course/lot','POST',{articles:p.ingredients});
+      toast(r.ajoutes+' ingrédient(s) ajouté(s).');
+    }catch(err){ toast('✗ '+err.message); }
+  };
+}
+
+/* ---------- Agenda ---------- */
+/* Jours fériés : calculés par le serveur, sans réseau. Ils expliquent une
+   semaine creuse, et disent qu'il n'y a pas cours. */
+const ferieDe = (jour)=>((S.feries||[]).find((f)=>f.date === jour)||{}).nom || '';
+
+RENDU.agenda = ()=>{
+  const dep = aujourdhui();
+  const suite = (S.agenda||[]).filter((a)=>String(a.start).slice(0,10) >= dep).slice(0,40);
+  const par = {};
+  for(const a of suite) (par[String(a.start).slice(0,10)] ||= []).push(a);
+  /* Un jour férié sans rendez-vous mérite quand même sa ligne : c'est
+     l'information du jour. */
+  for(const f of (S.feries||[])) if(f.date >= dep && !par[f.date]) par[f.date] = [];
+  const cles = Object.keys(par).sort().slice(0,25);
+  if(!cles.length) return '<div class="carte"><div class="vide">Aucun événement à venir.</div></div>';
+  return cles.map((j)=>{
+    const d = new Date(j+'T12:00');
+    const fr = ferieDe(j);
+    return `<div class="carte">
+      <h3><span class="pt" style="background:var(--agenda)"></span>
+        ${j===dep ? "Aujourd'hui" : e(JOURSL[JOURS[(d.getDay()+6)%7]]+' '+d.getDate()+' '+MOIS[d.getMonth()])}
+        ${fr?`<span class="tag" style="margin-left:8px">🇫🇷 ${e(fr)}</span>`:''}</h3>
+      ${par[j].length
+        ? par[j].map((a)=>`<div class="li"><div class="t">${e(a.summary)}
+            <div class="d">${e(heure(a))}${a.lieu?' · '+e(a.lieu):''}</div></div></div>`).join('')
+        : '<div class="vide" style="padding:8px 0">Jour férié — rien de prévu.</div>'}
+    </div>`;
+  }).join('');
+};
+
+/* ---------- Mon emploi du temps ----------
+   Vue par JOUR et non en grille de semaine : sur un téléphone, une semaine complète
+   impose un défilement horizontal, et on édite mal ce qu'on doit d'abord aller chercher.
+   Chacun ne voit et ne modifie que SON planning — le serveur l'impose à partir du jeton
+   de l'appareil, la personne n'est jamais envoyée par le téléphone. */
+const PALETTE_EDT = ['#f0902f','#6b8fc9','#f7d548','#22c3d0','#bcd230','#a96fbb',
+                     '#f4a6cd','#7fd1a4','#ef8181','#8fb2e8','#d9a441','#5fc8a0',
+                     '#c78fd6','#e8756f','#9ec94a','#6fc3d8'];
+function teinte(c){
+  if(c.couleur) return c.couleur;
+  const n = String(c.activite||'').trim().toUpperCase();
+  let h = 0; for(let i=0;i<n.length;i++) h = (h*31 + n.charCodeAt(i)) >>> 0;
+  return PALETTE_EDT[h % PALETTE_EDT.length];
+}
+
+const enMin = (t)=>{ const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m ? +m[1]*60 + +m[2] : null; };
+const enHM  = (m)=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const PX_MIN = 1.05, DUREE_DEFAUT = 55;
+
+/* Deux créneaux à la même heure (le facultatif et le sport, par exemple) doivent se
+   partager la largeur, sinon l'un masque l'autre et on croit l'avoir perdu. */
+function disposer(list){
+  const tri = list.slice().sort((a,b)=>a.deb-b.deb || a.fin-b.fin);
+  const out = [], grappe = []; let finMax = -1;
+  const vider = ()=>{
+    const cols = [];
+    for(const c of grappe){
+      let k = cols.findIndex((f)=>f <= c.deb);
+      if(k < 0){ k = cols.length; cols.push(0); }
+      cols[k] = c.fin; c.col = k;
+    }
+    for(const c of grappe) { c.nbCol = cols.length; out.push(c); }
+    grappe.length = 0;
+  };
+  for(const c of tri){
+    if(grappe.length && c.deb >= finMax) vider();
+    grappe.push(c); finMax = Math.max(finMax, c.fin);
+  }
+  if(grappe.length) vider();
+  return out;
+}
+
+RENDU.edt = ()=>{
+  if(!EDT_JOUR) EDT_JOUR = JOURS[(new Date().getDay()+6)%7];
+
+  const situes = [], sansHeure = [];
+  for(const c of MES.filter((x)=>x.jour===EDT_JOUR)){
+    const d = enMin(c.debut);
+    if(d === null){ sansHeure.push(c); continue; }
+    const f = enMin(c.fin);
+    situes.push({...c, deb:d, fin:(f !== null && f > d) ? f : d + DUREE_DEFAUT});
+  }
+
+  const chips = `<div class="jours">${JOURS.map((j)=>{
+    const n = MES.filter((c)=>c.jour===j).length;
+    return `<button data-jr="${j}" aria-pressed="${j===EDT_JOUR}">${e(JOURSL[j].slice(0,3))}
+      ${n?`<span class="n">${n}</span>`:''}</button>`;}).join('')}</div>`;
+
+  /* Semaine A / B des collèges. Ici on affiche TOUT — c'est l'écran où l'on
+     SAISIT son emploi du temps, et on ne corrige pas ce qu'on ne voit pas. Les
+     créneaux qui ne sont pas de la semaine en cours sont estompés et marqués,
+     plutôt que masqués. L'écran mural, lui, ne montre que la bonne semaine. */
+  const quinzaine = (S.plannings && S.plannings.quinzaine) || '';
+  const alterne = MES.some((c)=>c.quinzaine);
+  const bandeau = alterne ? `<div class="info" style="margin:0 0 12px">
+    📅 Cette semaine, c'est la <b>semaine ${e(quinzaine)}</b>. Les cours de l'autre semaine sont
+    grisés ici, et n'apparaissent pas sur l'écran de la cuisine.</div>` : '';
+
+  const libres = `<div class="carte">${sansHeure.map((c)=>
+    `<div class="li" data-mien="${e(c.id)}"><div class="t">${e(c.activite)}
+      <div class="d">sans horaire — touche pour en donner un</div></div></div>`).join('')}</div>`;
+
+  if(!situes.length) return chips + bandeau
+    + (sansHeure.length ? libres : '')
+    + `<div class="carte"><div class="vide">Rien le ${e(JOURSL[EDT_JOUR].toLowerCase())} 🎉<br>
+       <span style="font-size:13.5px">Touche <b>+</b> pour ajouter un cours.</span></div></div>`;
+
+  /* Bornes calées sur la journée affichée : sur un téléphone, mieux vaut remplir l'écran
+     que garder une échelle commune à des journées de longueurs très différentes. */
+  const dep = Math.floor(Math.min(...situes.map((c)=>c.deb))/60)*60;
+  const arr = Math.ceil (Math.max(...situes.map((c)=>c.fin))/60)*60;
+  const H = Math.max(220, (arr-dep) * PX_MIN);
+  const y = (m)=>(m-dep) * PX_MIN;
+
+  let lignes = '', heures = '';
+  for(let m = dep; m <= arr; m += 30) lignes += `<div class="ligne ${m%60?'demi':''}" style="top:${y(m)}px"></div>`;
+  for(let m = dep; m <= arr; m += 60) heures += `<div class="hl" style="top:${y(m)}px">${Math.floor(m/60)}h</div>`;
+
+  const blocs = disposer(situes).map((c)=>{
+    const haut = (c.fin-c.deb) * PX_MIN, larg = 100/c.nbCol;
+    /* Pas de la semaine en cours : estompé, pas caché. */
+    const horsSemaine = c.quinzaine && quinzaine && c.quinzaine !== quinzaine;
+    return `<div class="jbloc ${c.categorie==='activite'?'activite':''} ${(c.actif && !horsSemaine)?'':'off'}
+                 ${haut<40?'court':''}"
+      data-mien="${e(c.id)}"
+      style="top:${y(c.deb)}px;height:${haut-3}px;left:calc(${c.col*larg}% + 3px);
+             width:calc(${larg}% - 6px);--c:${e(teinte(c))}">
+      <div class="nn">${e(c.activite)}${c.quinzaine?`<span class="badgeq">${e(c.quinzaine)}</span>`:''}</div>
+      <div class="hh">${e(enHM(c.deb))} – ${e(enHM(c.fin))}</div>
+      ${haut>=64 && (c.salle||c.prof) ? `<div class="dd">${e([c.salle,c.prof].filter(Boolean).join(' · '))}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return chips + bandeau + (sansHeure.length ? libres : '') + `
+  <div class="carte" style="padding:14px 13px">
+    <div class="jgrille">
+      <div class="jheures" style="height:${H}px">${heures}</div>
+      <div class="jcol" data-col="${EDT_JOUR}" data-dep="${dep}" style="height:${H}px">${lignes}${blocs}</div>
+    </div>
+  </div>`;
+};
+
+function editerMien(c){
+  const neuf = !c.id;
+  feuille(neuf ? 'Nouveau créneau' : e(c.activite), `
+    <input class="ch" id="a_quoi" placeholder="Matière ou activité" value="${e(c.activite||'')}"
+           autocapitalize="sentences">
+    <label class="et">Type</label>
+    <select class="ch" id="a_cat">
+      <option value="cours" ${c.categorie!=='activite'?'selected':''}>Cours</option>
+      <option value="activite" ${c.categorie==='activite'?'selected':''}>Activité</option></select>
+    <label class="et">Jour</label>
+    <select class="ch" id="a_jour">${JOURS.map((j)=>
+      `<option value="${j}" ${(c.jour||EDT_JOUR)===j?'selected':''}>${JOURSL[j]}</option>`).join('')}</select>
+    <div class="rang" style="margin-bottom:10px">
+      <div><label class="et">Début</label><input class="ch" id="a_deb" type="time" value="${e(c.debut||'')}" style="margin:0"></div>
+      <div><label class="et">Fin</label><input class="ch" id="a_fin" type="time" value="${e(c.fin||'')}" style="margin:0"></div>
+    </div>
+    <input class="ch" id="a_salle" placeholder="Salle" value="${e(c.salle||'')}">
+    <input class="ch" id="a_prof" placeholder="Professeur / encadrant" value="${e(c.prof||'')}">
+    <label class="et">Semaine</label>
+    <select class="ch" id="a_quinz">
+      <option value="" ${!c.quinzaine?'selected':''}>Toutes les semaines</option>
+      <option value="A" ${c.quinzaine==='A'?'selected':''}>Semaine A</option>
+      <option value="B" ${c.quinzaine==='B'?'selected':''}>Semaine B</option></select>
+    ${neuf?'':`<button class="btn doux fin" id="a_suppr" style="margin-top:4px;color:var(--alerte)">
+      Supprimer ce créneau</button>`}`,
+    async (d)=>{
+      const q = d.querySelector('#a_quoi').value.trim();
+      if(!q){ toast('Il faut un intitulé.'); return false; }
+      await api('/api/planning/mien','POST',{
+        id:c.id, jour:d.querySelector('#a_jour').value, activite:q,
+        categorie:d.querySelector('#a_cat').value,
+        debut:d.querySelector('#a_deb').value, fin:d.querySelector('#a_fin').value,
+        salle:d.querySelector('#a_salle').value.trim(), prof:d.querySelector('#a_prof').value.trim(),
+        quinzaine:d.querySelector('#a_quinz').value, lieu:c.lieu||'', couleur:c.couleur||'', actif:true,
+      });
+      EDT_JOUR = d.querySelector('#a_jour').value;
+      toast(neuf?'Ajouté.':'Modifié.');
+    });
+
+  /* Suppression en deux touchers, comme partout ailleurs dans l'app. */
+  const b = document.querySelector('#a_suppr');
+  if(b) b.onclick = async ()=>{
+    if(!b.dataset.sur){ b.dataset.sur='1'; b.textContent='Confirmer la suppression ?'; return; }
+    try{ await api('/api/planning/mien/'+c.id,'DELETE'); toast('Supprimé.');
+      b.closest('.plein').remove(); await charger(true); }
+    catch(err){ toast('✗ '+err.message); }
+  };
+}
+
+/* ---------- Post-it ---------- */
+RENDU.post = ()=>`<div class="carte">${(S.postits||[]).length
+  ? (S.postits||[]).map((p)=>`<div class="li post">
+      <div class="t">${e(p.message)}<div class="d">— ${e(p.who||'?')}</div></div>
+      <div class="fin"><span class="tag" data-suppr="postit:${e(p.id)}">✕</span></div></div>`).join('')
+  : '<div class="vide">Aucun mot.</div>'}</div>`;
+
+/* ---------- Notifications ---------- */
+RENDU.notifs = ()=>`
+  <div class="info">Une notification apparaît <b>tout de suite</b> sur l'écran de la cuisine
+    et sur les téléphones ouverts. Téléphone verrouillé dans la poche : il faudra HTTPS,
+    donc le Mac mini — le message est conservé et s'affichera à l'ouverture.</div>
+  <div class="carte">
+    ${NOTIFS.length ? NOTIFS.map((n)=>`<div class="li">
+      <div style="font-size:21px;flex:0 0 auto">${ICONES[n.niveau]||'🔔'}</div>
+      <div class="t">${e(n.titre)}${n.message?`<div class="d">${e(n.message)}</div>`:''}
+        <div class="d">${e(n.de||'')}${n.pour?' → '+e(n.pour):' → tout le foyer'} · ${e(n.cree_le||'')}</div></div>
+    </div>`).join('') : '<div class="vide">Aucun message.</div>'}
+  </div>`;
+
+/* ---------- Réglages ---------- */
+RENDU.reglages = ()=>{
+  const verrou = localStorage.getItem('maison-verrou') === '1';
+  return `
+  <div class="carte"><h3>Cet appareil</h3>
+    <div class="li"><div class="t">${e(moi)}<div class="d">enrôlé sur ce téléphone</div></div></div>
+    <div style="height:8px"></div>
+    <button class="btn doux fin" id="verrou">${verrou?'✅':'⬜'} Demander mon code à l'ouverture</button>
+    <div class="info" style="margin:11px 0 0">Face ID prendra la place du code quand le serveur
+      sera en HTTPS (Mac mini + Tailscale) : la biométrie du navigateur exige un site sécurisé,
+      elle n'est tout simplement pas disponible en HTTP.</div>
+  </div>
+
+  <div class="carte"><h3>Installer l'app</h3>
+    <div class="info" style="margin:0">Dans Safari : <b>Partager</b> → <b>Sur l'écran d'accueil</b>.
+      L'app s'ouvre alors en plein écran, avec son icône, sans les barres du navigateur.</div>
+  </div>
+
+  <div class="carte"><h3>À propos</h3>
+    <div class="info" style="margin:0">Écran mural : <b>/bento.html</b> · Administration : <b>/admin/</b><br>
+      Les données restent à la maison, sur le serveur familial. Rien ne part sur Internet
+      en dehors de la météo et des actualités.</div>
+  </div>`;
+};
+
+/* =====================================================================
+   Interactions — rebranchées après chaque rendu
+   ===================================================================== */
+function brancherEcran(){
+  $$('[data-va]').forEach((n)=>n.onclick = ()=>aller(n.dataset.va));
+
+  $$('[data-course]').forEach((n)=>n.onclick = async ()=>{
+    const c = (S.courses||[]).find((x)=>x.id===n.dataset.course); if(!c) return;
+    n.classList.toggle('on');                                  // réponse immédiate au doigt
+    try{ await api('/api/course/'+c.id,'PATCH',{pris:!c.pris}); }catch(err){ toast('✗ '+err.message); }
+  });
+
+  $$('[data-todo]').forEach((n)=>n.onclick = async ()=>{
+    const t = (S.todos||[]).find((x)=>x.id===n.dataset.todo); if(!t) return;
+    n.classList.toggle('on');
+    try{ await api('/api/todo/'+t.id,'PATCH',{done:!t.done}); }catch(err){ toast('✗ '+err.message); }
+  });
+
+  /* Suppression en deux touchers : sur un téléphone, une croix se frôle vite. */
+  $$('[data-suppr]').forEach((n)=>n.onclick = async (ev)=>{
+    ev.stopPropagation();
+    if(!n.dataset.sur){
+      n.dataset.sur = '1'; n.textContent = 'Supprimer ?';
+      setTimeout(()=>{ if(n.isConnected){ delete n.dataset.sur; n.textContent='✕'; } }, 4000);
+      return;
+    }
+    const [genre,id] = n.dataset.suppr.split(':');
+    try{ await api('/api/'+genre+'/'+id,'DELETE'); toast('Supprimé.'); }catch(err){ toast('✗ '+err.message); }
+  });
+
+  $$('[data-menu]').forEach((n)=>n.onclick = ()=>changerMenu((S.menu||[]).find((m)=>m.id===n.dataset.menu)));
+  /* La photo et l'étiquette « Recette » ouvrent la fiche ; le reste de la ligne change
+     le plat. Deux gestes distincts sur la même ligne, d'où le stopPropagation. */
+  $$('[data-recette]').forEach((n)=>n.onclick = (ev)=>{
+    ev.stopPropagation(); ouvrirRecette(n.dataset.recette, n.dataset.couverts);
+  });
+
+  $$('[data-jr]').forEach((b)=>b.onclick = ()=>{ EDT_JOUR = b.dataset.jr; dessiner(); });
+  $$('[data-mien]').forEach((n)=>n.onclick = (ev)=>{
+    ev.stopPropagation();                     // sinon on crée AUSSI un créneau au même endroit
+    editerMien(MES.find((c)=>c.id===n.dataset.mien)||{});
+  });
+  /* Toucher un trou dans la journée crée un cours à cette heure-là, arrondie au quart d'heure. */
+  $$('.jcol').forEach((col)=>col.onclick = (ev)=>{
+    const dep = Number(col.dataset.dep);
+    const min = dep + Math.round(((ev.clientY - col.getBoundingClientRect().top) / PX_MIN) / 15) * 15;
+    editerMien({jour:col.dataset.col, categorie:'cours',
+                debut:enHM(Math.max(0, Math.min(23*60+45, min))),
+                fin:enHM(Math.max(0, Math.min(23*60+55, min+55)))});
+  });
+
+  if($('#depuisMenu')) $('#depuisMenu').onclick = suggestionsCourses;
+  if($('#habituels')) $('#habituels').onclick = articlesHabituels;
+
+  if($('#vider')) $('#vider').onclick = async ()=>{
+    try{ await api('/api/course/vider','POST'); toast('Liste nettoyée.'); }catch(err){ toast('✗ '+err.message); }
+  };
+
+  if($('#verrou')) $('#verrou').onclick = ()=>{
+    const on = localStorage.getItem('maison-verrou') === '1';
+    localStorage.setItem('maison-verrou', on ? '0' : '1');
+    toast(on ? 'Verrou retiré.' : 'Verrou activé au prochain lancement.');
+    dessiner();
+  };
+}
+
+/* ---------- Ajouts (bouton +) ---------- */
+$('#plus').onclick = ()=>({course:ajoutCourse, todo:ajoutTache, post:ajoutPostit,
+                           notifs:ajoutNotif, edt:()=>editerMien({})}[ECRAN]||(()=>{}))();
+
+/* Un formulaire simple posé sur l'écran, plutôt qu'un prompt() : on peut choisir un
+   rayon, une échéance, une personne — ce qu'un prompt ne sait pas faire. */
+function feuille(titre, corps, valider){
+  const d = document.createElement('div');
+  d.className = 'plein on';
+  d.style.cssText += 'justify-content:flex-end;padding:0;background:rgba(8,12,20,.45)';
+  /* La feuille porte sa mise en forme dans une classe (`.feuille`) et non plus en
+     ligne : c'est elle qui plafonne la hauteur et rend le contenu défilable. */
+  d.innerHTML = `<div class="feuille">
+      <h2>${titre}</h2>${corps}
+      <div class="rang pied">
+        <button class="btn doux" data-x="non">Annuler</button>
+        <button class="btn" data-x="oui">Valider</button></div></div>`;
+  document.body.appendChild(d);
+  const p = d.querySelector('input,select,textarea'); if(p) setTimeout(()=>p.focus(), 90);
+  d.querySelector('[data-x="non"]').onclick = ()=>d.remove();
+  d.onclick = (ev)=>{ if(ev.target===d) d.remove(); };
+  d.querySelector('[data-x="oui"]').onclick = async ()=>{
+    try{ if(await valider(d) !== false) d.remove(); }catch(err){ toast('✗ '+err.message); }
+  };
+}
+
+const gensOptions = (sel)=>(S.personnes||[]).map((p)=>
+  `<option ${p.nom===sel?'selected':''}>${e(p.nom)}</option>`).join('');
+
+function ajoutCourse(){
+  feuille('Ajouter aux courses', `
+    <input class="ch" id="a_article" placeholder="Article" autocapitalize="sentences">
+    <label class="et">Rayon</label>
+    <select class="ch" id="a_rayon">${rayons().map((r)=>`<option>${e(r)}</option>`).join('')}</select>`,
+    async (d)=>{
+      const a = d.querySelector('#a_article').value.trim();
+      if(!a){ toast('Il faut un article.'); return false; }
+      await api('/api/course','POST',{article:a, rayon:d.querySelector('#a_rayon').value, who:moi});
+      toast('Ajouté.');
+    });
+}
+
+/* ---------- Courses depuis le menu ----------
+   Rien n'est coché d'avance, et c'est le cœur du sujet : avoir un plat au menu ne veut
+   pas dire qu'il manque ses ingrédients. On PROPOSE, la personne décide devant ses
+   placards. Ce qui est déjà sur la liste est montré barré plutôt que caché — sinon on
+   se demande où est passé un ingrédient qu'on s'attendait à voir. */
+async function suggestionsCourses(){
+  let d;
+  try{ d = await api('/api/course/suggestions'); }catch(err){ return toast('✗ '+err.message); }
+  const libres = (d.suggestions||[]).filter((s)=>!s.deja);
+  const dejaLa = (d.suggestions||[]).filter((s)=>s.deja);
+
+  if(!d.suggestions?.length){
+    return feuille('Depuis le menu', `
+      <div class="info" style="margin:0">Aucun ingrédient renseigné pour les plats de la semaine.
+      ${(d.sansIngredients||[]).length ? `<br><br>À compléter dans l'administration
+        (onglet <b>Repas</b>) pour : <b>${e(d.sansIngredients.join(', '))}</b>.` : ''}</div>`,
+      async ()=>{});
+  }
+
+  feuille('Depuis le menu', `
+    <div class="info">Coche ce qui manque vraiment. Rien n'est ajouté sans ton accord.</div>
+    <div id="s_liste">
+      ${libres.map((s,i)=>`<label class="li course" style="align-items:center">
+        <input type="checkbox" class="s_ch" data-a="${e(s.article)}" id="s${i}"
+               style="width:24px;height:24px;flex:0 0 auto;accent-color:var(--course)">
+        <div class="t">${e(s.article)}<div class="d">${e(s.plats.join(' · '))}</div></div>
+      </label>`).join('') || '<div class="vide">Tout est déjà sur la liste 🎉</div>'}
+    </div>
+    ${dejaLa.length ? `<div style="margin-top:12px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--muted);margin:0 0 7px 3px">
+        Déjà sur la liste</div>
+      ${dejaLa.map((s)=>`<div class="li fini"><div class="t">${e(s.article)}
+        <div class="d">${e(s.plats.join(' · '))}</div></div></div>`).join('')}</div>` : ''}
+    ${libres.length ? `<button class="btn doux fin" id="s_tout" style="margin-top:6px">
+      Tout cocher / tout décocher</button>` : ''}
+    ${(d.sansIngredients||[]).length ? `<div class="info" style="margin-top:12px">
+      Sans ingrédients renseignés : <b>${e(d.sansIngredients.join(', '))}</b> —
+      à compléter dans l'administration.</div>` : ''}`,
+    async (feu)=>{
+      const choisis = [...feu.querySelectorAll('.s_ch:checked')].map((c)=>c.dataset.a);
+      if(!choisis.length){ toast('Rien de coché.'); return false; }
+      const r = await api('/api/course/lot','POST',{articles:choisis});
+      toast(r.ajoutes + ' article(s) ajouté(s).');
+    });
+
+  const tout = document.querySelector('#s_tout');
+  if(tout) tout.onclick = ()=>{
+    const cases = [...document.querySelectorAll('.s_ch')];
+    const on = cases.some((c)=>!c.checked);
+    cases.forEach((c)=>{ c.checked = on; });
+  };
+}
+
+/* ---------- Ce qu'on rachète toujours ----------
+   L'historique existait déjà, gratuitement : la corbeille des courses conserve
+   tout ce qui a été acheté puis retiré. Plutôt que de retaper « lait, pain,
+   yaourts » chaque semaine, on les propose. Rien n'est coché d'avance. */
+async function articlesHabituels(){
+  let d;
+  try{ d = await api('/api/course/habituels'); }catch(err){ return toast('✗ '+err.message); }
+  const liste = d.habituels || [];
+
+  if(!liste.length){
+    return feuille('Articles habituels', `
+      <div class="info" style="margin:0">Pas encore assez d'historique. Un article doit avoir été
+      acheté <b>au moins deux fois</b> pour apparaître ici — la liste se remplira d'elle-même au fil
+      des semaines.</div>`, async ()=>{});
+  }
+
+  feuille('On les rachète souvent', `
+    <div class="info">Coche ce qu'il te faut cette semaine.</div>
+    ${liste.map((h,i)=>`<label class="li course" style="align-items:center">
+      <input type="checkbox" class="h_ch" data-a="${e(h.article)}" data-r="${e(h.rayon||'')}"
+             style="width:24px;height:24px;flex:0 0 auto;accent-color:var(--course)">
+      <div class="t">${e(h.article)}<div class="d">${h.fois} fois${h.rayon?' · '+e(h.rayon):''}</div></div>
+    </label>`).join('')}`,
+    async (feu)=>{
+      const choisis = [...feu.querySelectorAll('.h_ch:checked')].map((c)=>c.dataset.a);
+      if(!choisis.length){ toast('Rien de coché.'); return false; }
+      const r = await api('/api/course/lot','POST',{articles:choisis});
+      toast(r.ajoutes + ' article(s) ajouté(s).');
+    });
+}
+
+function ajoutTache(){
+  feuille('Nouvelle tâche', `
+    <input class="ch" id="a_tache" placeholder="Quoi ?" autocapitalize="sentences">
+    <label class="et">Pour qui</label>
+    <select class="ch" id="a_qui">${gensOptions(moi)}</select>
+    <label class="et">Échéance</label>
+    <input class="ch" id="a_due" type="date">`,
+    async (d)=>{
+      const t = d.querySelector('#a_tache').value.trim();
+      if(!t){ toast('Il faut un intitulé.'); return false; }
+      await api('/api/todo','POST',{tache:t, who:d.querySelector('#a_qui').value, due:d.querySelector('#a_due').value});
+      toast('Tâche ajoutée.');
+    });
+}
+
+function ajoutPostit(){
+  feuille('Laisser un mot', `
+    <textarea class="ch" id="a_msg" rows="3" placeholder="Ton message" autocapitalize="sentences"></textarea>`,
+    async (d)=>{
+      const m = d.querySelector('#a_msg').value.trim();
+      if(!m){ toast('Message vide.'); return false; }
+      await api('/api/postit','POST',{message:m, who:moi});
+      toast('Post-it ajouté.');
+    });
+}
+
+function ajoutNotif(){
+  feuille('Prévenir la famille', `
+    <input class="ch" id="a_titre" placeholder="Titre" autocapitalize="sentences">
+    <input class="ch" id="a_msg" placeholder="Message (facultatif)" autocapitalize="sentences">
+    <label class="et">Pour qui</label>
+    <select class="ch" id="a_pour"><option value="">Tout le foyer</option>
+      ${(S.personnes||[]).filter((p)=>!p.collectif).map((p)=>`<option>${e(p.nom)}</option>`).join('')}</select>
+    <label class="et">Niveau</label>
+    <select class="ch" id="a_niv">
+      <option value="info">Information</option><option value="important">Important</option>
+      <option value="urgent">Urgent</option></select>
+    <div class="info">S'affiche aussitôt sur l'écran de la cuisine.</div>`,
+    async (d)=>{
+      const t = d.querySelector('#a_titre').value.trim();
+      if(!t){ toast('Il faut un titre.'); return false; }
+      await api('/api/notif','POST',{titre:t, message:d.querySelector('#a_msg').value.trim(),
+        pour:d.querySelector('#a_pour').value, niveau:d.querySelector('#a_niv').value});
+      toast('Envoyé.');
+    });
+}
+
+/* Changer le plat d'un jour : les plats connus d'abord, puis les options « pas de cuisine »
+   (envoyées avec special:true pour ne PAS polluer la bibliothèque), puis la saisie libre. */
+const SPECIAUX = ['Restaurant','Sortie','Livraison','Restes du frigo','Chacun pour soi'];
+
+function changerMenu(m){
+  if(!m) return;
+  feuille('Repas — '+e(m.jour), `
+    <label class="et">Moment</label>
+    <select class="ch" id="a_moment"><option value="soir">Soir</option><option value="midi">Midi</option></select>
+    <label class="et">Plat</label>
+    <select class="ch" id="a_plat">
+      <option value="">— vider —</option>
+      ${(S.dishes||[]).map((p)=>`<option ${p===m.soir?'selected':''}>${e(p)}</option>`).join('')}
+      <optgroup label="Pas de cuisine">${SPECIAUX.map((s)=>`<option value="!${e(s)}">${e(s)}</option>`).join('')}</optgroup>
+      <option value="__libre">Autre (écrire)…</option>
+    </select>
+    <input class="ch" id="a_libre" placeholder="Nom du plat" style="display:none">
+    <label class="et">On sera combien ?</label>
+    <select class="ch" id="a_cvt">${COUVERTS.map((c)=>
+      `<option value="${c}" ${c===(m.soirCouverts||4)?'selected':''}>${c} ${c>1?'personnes':'personne'}</option>`).join('')}</select>
+    <div class="info" style="margin-bottom:0">Sert à recalculer les quantités de la recette
+      et des courses. Choisi à l'avance, il permet de prévoir les repas où on est plus nombreux.</div>`,
+    async (d)=>{
+      const moment = d.querySelector('#a_moment').value;
+      let v = d.querySelector('#a_plat').value, special = false;
+      if(v === '__libre'){ v = d.querySelector('#a_libre').value.trim(); if(!v){ toast('Écris un plat.'); return false; } }
+      else if(v.startsWith('!')){ v = v.slice(1); special = true; }
+      await api('/api/menu/'+m.id,'PATCH',
+        { [moment]:v, special, [moment+'Couverts']: Number(d.querySelector('#a_cvt').value) });
+      toast('Menu mis à jour.');
+    });
+  /* Le champ libre n'apparaît que si on choisit « Autre » : sinon il encombre. */
+  setTimeout(()=>{
+    const sel = document.querySelector('#a_plat'), lib = document.querySelector('#a_libre');
+    if(sel) sel.onchange = ()=>{ lib.style.display = sel.value==='__libre' ? 'block' : 'none';
+      if(sel.value==='__libre') lib.focus(); };
+  }, 100);
+}
+
+/* =====================================================================
+   Enrôlement, verrou et thème
+   ===================================================================== */
+async function proposerQui(){
+  try{
+    const d = await (await fetch('/api/data')).json();
+    S = d;
+    $('#gens').innerHTML = (d.personnes||[]).filter((p)=>!p.collectif).map((p)=>
+      `<button data-nom="${e(p.nom)}"><span class="rond" style="background:${e(p.couleur||'#9aa7bd')}">
+        ${e(init(p.nom))}</span><span>${e(p.nom)}</span></button>`).join('');
+    $$('#gens button').forEach((b)=>b.onclick = ()=>enroler(b.dataset.nom));
+  }catch(_){ $('#gens').innerHTML = '<p style="color:var(--alerte)">Serveur injoignable.</p>'; }
+  $('#ecranQui').classList.add('on');
+}
+
+async function enroler(nom){
+  /* Le jeton est tiré au sort par le téléphone et ne bouge plus : c'est lui qui incarne
+     « appareil enrôlé une fois, on ne redemande plus jamais ». */
+  jeton = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random());
+  try{
+    await api('/api/appareil','POST',{jeton, personne:nom, nom:'Téléphone de '+nom});
+    moi = nom;
+    localStorage.setItem('maison-jeton', jeton);
+    localStorage.setItem('maison-personne', nom);
+    $('#ecranQui').classList.remove('on');
+    demarrer();
+  }catch(err){ toast('✗ '+err.message); jeton=''; }
+}
+
+/* Verrou optionnel : c'est la place que prendra Face ID le jour où HTTPS sera là. */
+function demanderCode(){
+  $('#pinTitre').textContent = 'Bonjour ' + moi;
+  $('#ecranPin').classList.add('on');
+  $('#pin').focus();
+  const tenter = async ()=>{
+    try{
+      const r = await fetch('/api/session', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({personne:moi, code:$('#pin').value})});
+      if(!r.ok) throw new Error('Code incorrect.');
+      $('#ecranPin').classList.remove('on'); DEVERROUILLE = true; lancer();
+    }catch(err){ $('#pinMsg').textContent = err.message; $('#pin').value=''; }
+  };
+  $('#pinOk').onclick = tenter;
+  $('#pin').onkeydown = (ev)=>{ if(ev.key==='Enter') tenter(); };
+}
+
+function demarrer(){
+  if(localStorage.getItem('maison-verrou')==='1' && !DEVERROUILLE) return demanderCode();
+  lancer();
+}
+
+function lancer(){
+  dessinerNav();
+  charger();
+  brancherFlux();
+  setInterval(()=>charger(true), 5*60*1000);   // filet + météo / agenda / actus
+}
+
+$('#btnTheme').onclick = ()=>{
+  const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = n;
+  localStorage.setItem('maison-theme', n);
+  document.querySelector('meta[name="theme-color"]').content = n==='dark' ? '#080b11' : '#eef1f7';
+};
+
+$('#btnQuitter').onclick = ()=>{
+  for(const k of ['maison-jeton','maison-personne','maison-verrou']) localStorage.removeItem(k);
+  location.reload();
+};
+
+/* Le service worker n'est PAS enregistré en HTTP : iOS l'exige en contexte sécurisé et
+   l'appel échoue silencieusement. On le tente quand même — le jour où le serveur passe
+   en HTTPS (Tailscale sur le Mac mini), le cache hors ligne s'activera tout seul. */
+if('serviceWorker' in navigator && location.protocol === 'https:'){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+if(jeton && moi) demarrer(); else proposerQui();
+</script>

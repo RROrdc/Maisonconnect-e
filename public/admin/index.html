@@ -1,0 +1,2102 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Maison — Administration</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+
+<!--
+  Écran Maison — PORTAIL D'ADMINISTRATION
+  ========================================
+  Gère la CONFIGURATION du foyer : membres, emploi du temps des enfants, bibliothèque
+  de plats, réglages, envoi de notifications. Les données du quotidien (courses, menu,
+  tâches) se saisissent sur l'écran mural et dans l'app — pas ici.
+
+  Même langage visuel que bento.html (fond clair, cartes blanches, ombre douce, pilules
+  pastel) : c'est la même solution vue par la porte de service, pas un autre produit.
+
+  Aucune dépendance, aucun CDN : tout doit fonctionner si Internet tombe (règle du projet).
+-->
+
+<style>
+:root{
+  --bg:#eef1f7; --card:#fff; --card2:#f4f6fb; --line:#e6eaf2; --line2:#d3dae7;
+  --txt:#141a24; --muted:#5d6980; --faint:#8b96aa; --onac:#fff;
+  --ac:#2563eb; --cours:#7739e0; --activite:#0d9464; --menu:#c9740a; --alerte:#c2253f;
+  --alerte-fond:#fdeaee; --ok:#0d9464; --ok-fond:#e6f7f0;
+  --r:20px; --r2:13px; --r3:9px;
+  --sh:0 1px 2px rgba(24,38,64,.05), 0 10px 26px rgba(24,38,64,.07);
+  --sh-haut:0 2px 4px rgba(24,38,64,.06), 0 18px 40px rgba(24,38,64,.16);
+}
+:root[data-theme="dark"]{
+  --bg:#080b11; --card:#141922; --card2:#1b2130; --line:#232b39; --line2:#333d4f;
+  --txt:#f1f5fb; --muted:#98a4b8; --faint:#66728a; --onac:#0a0d13;
+  --ac:#5b9bff; --cours:#b388ff; --activite:#3ddc97; --menu:#ffb340; --alerte:#ffb3bd;
+  --alerte-fond:#3a1420; --ok:#3ddc97; --ok-fond:#0e2a20;
+  --sh:0 1px 0 rgba(255,255,255,.03) inset, 0 10px 26px rgba(0,0,0,.45);
+  --sh-haut:0 1px 0 rgba(255,255,255,.05) inset, 0 20px 44px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--txt);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:750;letter-spacing:-.01em}
+
+/* ---------- Écran de connexion ---------- */
+#connexion{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.boite{
+  background:var(--card);border-radius:var(--r);box-shadow:var(--sh-haut);
+  padding:34px 30px;width:min(400px,100%);text-align:center
+}
+.boite h1{font-size:23px;margin-bottom:6px}
+.boite p.s{color:var(--muted);font-size:14px;margin:0 0 22px}
+.qui{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-bottom:20px}
+.qui button{
+  border:1.5px solid var(--line2);background:var(--card2);border-radius:999px;
+  padding:9px 16px;cursor:pointer;font-weight:600;transition:.14s
+}
+.qui button[aria-pressed="true"]{background:var(--ac);border-color:var(--ac);color:var(--onac)}
+#code{
+  width:100%;padding:14px;border:1.5px solid var(--line2);border-radius:var(--r2);
+  background:var(--card2);text-align:center;font-size:26px;letter-spacing:.35em;
+  font-variant-numeric:tabular-nums
+}
+#code::placeholder{letter-spacing:normal;font-size:15px}
+
+/* ---------- Charpente ---------- */
+#portail{display:none;grid-template-columns:236px 1fr;min-height:100vh}
+#portail.on{display:grid}
+nav{
+  background:var(--card);border-right:1px solid var(--line);
+  padding:18px 12px;display:flex;flex-direction:column;gap:3px;position:sticky;top:0;height:100vh
+}
+.marque{display:flex;align-items:center;gap:9px;padding:6px 10px 16px;font-weight:800;font-size:16px}
+.marque .pt{width:11px;height:11px;border-radius:50%;background:var(--ac)}
+nav button.ong{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;
+  background:transparent;border-radius:var(--r2);padding:11px 12px;cursor:pointer;
+  font-weight:600;color:var(--muted);transition:.13s
+}
+nav button.ong:hover{background:var(--card2);color:var(--txt)}
+nav button.ong[aria-current="page"]{background:var(--ac);color:var(--onac)}
+nav .bas{margin-top:auto;display:flex;flex-direction:column;gap:3px;padding-top:12px;border-top:1px solid var(--line)}
+nav .moi{padding:9px 12px;font-size:13px;color:var(--faint)}
+main{padding:28px 30px 70px;max-width:1180px}
+.entete{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.entete h2{font-size:25px}
+.entete .s{color:var(--muted);font-size:14px;margin-top:3px}
+
+/* ---------- Briques ---------- */
+.carte{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:20px 22px;margin-bottom:18px}
+.carte>h3{font-size:16px;margin-bottom:14px}
+.grille{display:grid;gap:14px}
+.stats{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+.stat{background:var(--card);border-radius:var(--r2);box-shadow:var(--sh);padding:15px 17px}
+.stat b{display:block;font-size:29px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.stat span{color:var(--muted);font-size:13px}
+
+.btn{
+  border:0;border-radius:var(--r2);padding:10px 17px;font-weight:650;cursor:pointer;
+  background:var(--ac);color:var(--onac);transition:.13s;white-space:nowrap
+}
+.btn:hover{filter:brightness(1.08)}
+.btn.doux{background:var(--card2);color:var(--txt);border:1.5px solid var(--line2)}
+.btn.danger{background:transparent;color:var(--alerte);border:1.5px solid currentColor}
+.btn.mini{padding:6px 11px;font-size:13px;border-radius:var(--r3)}
+
+label.ch{display:block;font-size:12.5px;font-weight:650;color:var(--muted);margin:0 0 5px}
+.ch input,.ch select,.ch textarea,input.ch,select.ch{
+  width:100%;padding:10px 12px;border:1.5px solid var(--line2);border-radius:var(--r3);
+  background:var(--card2)
+}
+.ch input:focus,.ch select:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:transparent}
+.form{display:grid;gap:13px;grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
+.form .large{grid-column:1/-1}
+
+/* ---------- Emploi du temps ---------- */
+.onglets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.onglets button{
+  border:1.5px solid var(--line2);background:var(--card);border-radius:999px;
+  padding:8px 16px;cursor:pointer;font-weight:650;display:flex;align-items:center;gap:7px
+}
+.onglets button[aria-pressed="true"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
+.onglets .rond{width:9px;height:9px;border-radius:50%;background:currentColor;opacity:.7}
+
+/* Grille horaire — l'axe vertical est le TEMPS RÉEL, pas une suite de cases.
+   C'est ce qui fait qu'un cours de 1 h 50 est visiblement deux fois plus haut qu'un
+   cours de 55 min, et qu'une plage « colles jusqu'à 18 h 15 » s'étire d'elle-même
+   sur plusieurs créneaux sans qu'on ait à fusionner des cellules à la main. */
+.edt-boite{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:14px;overflow-x:auto}
+.edt{display:grid;gap:5px;min-width:780px}
+.eh{
+  font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);text-align:center;padding:7px 4px;background:var(--card2);
+  border-radius:var(--r3);display:flex;align-items:center;justify-content:center;gap:6px
+}
+.eh .plus{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:15px;line-height:1;padding:0}
+.eh .plus:hover{color:var(--ac)}
+.egut{position:relative}
+.egut .hl{
+  position:absolute;right:8px;transform:translateY(-50%);font-size:11.5px;font-weight:700;
+  color:var(--faint);font-variant-numeric:tabular-nums
+}
+.ecol{position:relative;background:var(--card2);border-radius:var(--r3);cursor:copy}
+.ecol .ligne{position:absolute;left:0;right:0;height:1px;background:var(--line2);opacity:.55}
+.ecol .demi{opacity:.22}
+
+.bloc{
+  position:absolute;border-radius:8px;padding:5px 7px;overflow:hidden;cursor:pointer;
+  color:#16202c;                        /* les aplats sont clairs : texte sombre lisible */
+  display:flex;flex-direction:column;gap:1px;transition:.12s;min-height:20px
+}
+.bloc:hover{box-shadow:var(--sh-haut);z-index:5}
+.bloc .n{font-size:12.5px;font-weight:800;line-height:1.15;overflow-wrap:anywhere}
+.bloc .h{font-size:10.5px;font-weight:700;opacity:.72;font-variant-numeric:tabular-nums}
+.bloc .d{font-size:10.5px;opacity:.72;overflow-wrap:anywhere}
+/* Une ACTIVITÉ n'est pas un cours : fond pâle et liseré, pour la distinguer d'un coup
+   d'œil sans lui donner moins d'importance. */
+.bloc.activite{background:color-mix(in srgb,var(--bord) 26%,var(--card))!important;
+  color:var(--txt);box-shadow:inset 0 0 0 2px var(--bord)}
+.bloc.activite .n{color:var(--bord);filter:saturate(1.5) brightness(.78)}
+.bloc.off{opacity:.4}
+.bloc .badge{
+  position:absolute;top:3px;right:4px;font-size:9px;font-weight:900;padding:0 4px;
+  border-radius:4px;background:rgba(0,0,0,.22);color:#fff
+}
+.bloc.court{flex-direction:row;align-items:center;gap:6px;padding:2px 7px}
+.bloc.court .h{display:none}
+
+/* Créneaux sans horaire : ils n'ont pas de place sur un axe de temps, on les pose au-dessus. */
+.sansh{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+.sansh .bloc{position:static;font-size:12px}
+
+.legende{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}
+.legende span{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;color:#16202c}
+
+/* Nuancier du formulaire */
+.nuancier{display:flex;flex-wrap:wrap;gap:7px}
+.nuancier button{width:30px;height:30px;border-radius:9px;cursor:pointer;border:2px solid transparent}
+.nuancier button[aria-pressed="true"]{border-color:var(--txt)}
+
+/* Vignettes des plats */
+.vignette{width:52px;height:52px;border-radius:11px;object-fit:cover;display:block;background:var(--card2)}
+.vignette-vide{width:52px;height:52px;border-radius:11px;background:var(--card2);
+  display:flex;align-items:center;justify-content:center;font-size:22px}
+.apercu{display:flex;gap:14px;align-items:flex-start}
+.apercu img{width:132px;height:132px;border-radius:var(--r2);object-fit:cover;background:var(--card2)}
+.sources{display:flex;gap:8px;flex-wrap:wrap}
+.sources button{flex:1 1 140px}
+.badge-src{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px}
+.badge-src.sure{background:var(--ok-fond);color:var(--ok)}
+.badge-src.estimee{background:#fff4e0;color:#a8620a}
+:root[data-theme="dark"] .badge-src.estimee{background:#3a2a10;color:#ffb340}
+textarea.ch{min-height:130px;resize:vertical;font:inherit;line-height:1.5}
+
+/* ---------- Listes ---------- */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:0 10px 9px;font-weight:700}
+td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
+tr.inactif td{opacity:.45}
+.pastille{width:29px;height:29px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#141a24;flex:0 0 auto}
+.puce{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--card2);border:1px solid var(--line2);color:var(--muted)}
+.puce.ok{background:var(--ok-fond);color:var(--ok);border-color:transparent}
+.puce.non{background:var(--alerte-fond);color:var(--alerte);border-color:transparent}
+.actions{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap}
+
+/* ---------- Fenêtre modale ---------- */
+#voile{
+  position:fixed;inset:0;background:rgba(10,15,25,.5);display:none;z-index:50;
+  align-items:center;justify-content:center;padding:18px
+}
+#voile.on{display:flex}
+.modale{
+  background:var(--card);border-radius:var(--r);box-shadow:var(--sh-haut);
+  padding:24px;width:min(560px,100%);max-height:92vh;overflow:auto
+}
+.modale h3{font-size:19px;margin-bottom:16px}
+.pied{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+.pied .gauche{margin-right:auto}
+
+/* ---------- Divers ---------- */
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,90px);z-index:80;
+  background:var(--txt);color:var(--bg);padding:12px 20px;border-radius:999px;
+  font-weight:650;box-shadow:var(--sh-haut);transition:transform .26s;max-width:88vw;text-align:center
+}
+#toast.on{transform:translate(-50%,0)}
+.avert{
+  background:var(--alerte-fond);color:var(--alerte);border-radius:var(--r2);
+  padding:13px 16px;margin-bottom:16px;font-size:14px;font-weight:600
+}
+.info{background:var(--card2);border-radius:var(--r2);padding:13px 16px;margin-bottom:16px;font-size:13.5px;color:var(--muted)}
+.vide-txt{color:var(--faint);padding:22px 0;text-align:center}
+
+@media(max-width:900px){
+  #portail.on{grid-template-columns:1fr}
+  nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);padding:10px}
+  .marque{width:100%;padding-bottom:8px}
+  nav .bas{margin-top:0;border-top:0;flex-direction:row;width:100%}
+  main{padding:20px 16px 60px}
+  .semaine{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+
+<!-- ============================ CONNEXION ============================ -->
+<div id="connexion">
+  <div class="boite">
+    <h1>🏠 Administration</h1>
+    <p class="s">Gestion du foyer — accès réservé.</p>
+    <div class="qui" id="qui"></div>
+    <input id="code" type="password" inputmode="numeric" autocomplete="off"
+           placeholder="Code d'accès" maxlength="8">
+    <p class="s" id="msg" style="margin:14px 0 0;min-height:20px"></p>
+    <button class="btn" id="entrer" style="width:100%;margin-top:12px;padding:13px">Entrer</button>
+  </div>
+</div>
+
+<!-- ============================ PORTAIL ============================ -->
+<div id="portail">
+  <nav>
+    <div class="marque"><span class="pt"></span> Maison</div>
+    <button class="ong" data-vue="bord">◧ Tableau de bord</button>
+    <button class="ong" data-vue="edt">🎒 Emploi du temps</button>
+    <button class="ong" data-vue="plats">🍽️ Repas</button>
+    <button class="ong" data-vue="famille">👪 Famille</button>
+    <button class="ong" data-vue="notifs">🔔 Notifications</button>
+      <button class="ong" data-vue="garde">👦 Présence</button>
+      <button class="ong" data-vue="journal">🩺 Journal</button>
+    <button class="ong" data-vue="reglages">⚙️ Réglages</button>
+    <div class="bas">
+      <div class="moi" id="moi"></div>
+      <button class="ong" id="theme">◐ Thème</button>
+      <button class="ong" id="sortir">⤶ Se déconnecter</button>
+    </div>
+  </nav>
+  <main id="vue"></main>
+</div>
+
+<div id="voile"><div class="modale" id="modale"></div></div>
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   Réglages généraux et petits utilitaires
+   ===================================================================== */
+const JOURS  = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const JOURSL = {Lun:'Lundi',Mar:'Mardi',Mer:'Mercredi',Jeu:'Jeudi',Ven:'Vendredi',Sam:'Samedi',Dim:'Dimanche'};
+
+const $  = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+/* Échappement systématique : tout ce qui vient de la base peut contenir < ou &.
+   Une apostrophe dans « L'Aquarium » ne doit pas casser la page. */
+const e = (s)=>String(s??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let JETON = localStorage.getItem('admin-jeton') || '';
+let MOI = null, ETAT = {}, MEMBRES = [], CRENEAUX = [], PLATS = [], NOTIFS = [], REGLAGES = {}, APPAREILS = [];
+let ANNIVS = [], ANNIV_JOUR = [], JOURNAL = [], JOURNAL_NONVU = 0;
+let VUE = 'bord', EDT_QUI = '';
+
+/* Appel API : le jeton de session voyage en en-tête, comme le `x-jeton` de l'app.
+   Une session expirée renvoie 401 -> on repasse par l'écran de connexion plutôt
+   que de laisser l'écran se figer sur des données périmées. */
+async function api(methode, url, corps){
+  const r = await fetch(url, {
+    method: methode,
+    headers: {'content-type':'application/json', ...(JETON?{'x-session':JETON}:{})},
+    body: corps ? JSON.stringify(corps) : undefined,
+  });
+  if(r.status === 401 && VUE !== 'connexion'){ deconnecter('Session expirée.'); throw new Error('401'); }
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){
+    /* Le corps de la réponse voyage AVEC l'erreur : certaines routes renvoient
+       autre chose qu'un message (la recherche de recette rend les candidats
+       qu'elle a écartés, et ils sont plus utiles qu'un « rien trouvé »). */
+    const err = new Error(d.error || ('Erreur ' + r.status));
+    err.data = d;
+    throw err;
+  }
+  return d;
+}
+
+let minuteur;
+function toast(t){
+  const n = $('#toast'); n.textContent = t; n.classList.add('on');
+  clearTimeout(minuteur); minuteur = setTimeout(()=>n.classList.remove('on'), 2600);
+}
+
+/* Couleur lisible pour une pastille : on garde la couleur du membre, le texte reste sombre. */
+const init = (n)=>String(n||'?').trim().charAt(0).toUpperCase();
+
+/* =====================================================================
+   Connexion
+   ===================================================================== */
+let QUI = '';
+
+async function preparerConnexion(){
+  try{
+    const d = await (await fetch('/api/data')).json();
+    const gens = (d.personnes||[]).filter((p)=>!p.collectif);
+    $('#qui').innerHTML = gens.map((p)=>
+      `<button data-nom="${e(p.nom)}" style="--c:${e(p.couleur||'#888')}">${e(p.nom)}</button>`).join('');
+    $$('#qui button').forEach((b)=>b.onclick = ()=>{
+      QUI = b.dataset.nom;
+      $$('#qui button').forEach((x)=>x.setAttribute('aria-pressed', x===b));
+      $('#code').focus();
+    });
+  }catch(_){ $('#msg').textContent = 'Serveur injoignable.'; }
+}
+
+async function connecter(){
+  if(!QUI){ $('#msg').textContent = 'Choisis qui tu es.'; return; }
+  try{
+    const d = await api('POST','/api/session',{personne:QUI, code:$('#code').value});
+    if(!d.moi.admin){ $('#msg').textContent = "Ce compte n'a pas les droits d'administration."; return; }
+    JETON = d.jeton; localStorage.setItem('admin-jeton', JETON); MOI = d.moi;
+    demarrer();
+  }catch(err){ $('#msg').textContent = err.message; $('#code').value = ''; }
+}
+
+function deconnecter(raison){
+  api('DELETE','/api/session').catch(()=>{});
+  localStorage.removeItem('admin-jeton'); JETON=''; MOI=null;
+  $('#portail').classList.remove('on'); $('#connexion').style.display='flex';
+  $('#code').value=''; $('#msg').textContent = raison || '';
+}
+
+$('#entrer').onclick = connecter;
+$('#code').onkeydown = (ev)=>{ if(ev.key==='Enter') connecter(); };
+$('#sortir').onclick = ()=>deconnecter();
+
+/* =====================================================================
+   Démarrage du portail
+   ===================================================================== */
+async function demarrer(){
+  $('#connexion').style.display='none';
+  $('#portail').classList.add('on');
+  $('#moi').textContent = MOI.nom + ' · administrateur';
+  await recharger();
+  aller(VUE);
+  brancherFlux();
+}
+
+async function recharger(){
+  const [a,b,c,d,f,g,h,i] = await Promise.all([
+    api('GET','/api/admin/etat'), api('GET','/api/admin/membres'),
+    api('GET','/api/admin/planning'), api('GET','/api/admin/plats'),
+    api('GET','/api/notif'), api('GET','/api/admin/reglages'),
+    api('GET','/api/admin/anniversaires'), api('GET','/api/admin/journal'),
+  ]);
+  ETAT=a.etat; MEMBRES=b.membres; CRENEAUX=c.creneaux; PLATS=d.plats; NOTIFS=f.notifs; REGLAGES=g.reglages;
+  ANNIVS=h.anniversaires; ANNIV_JOUR=h.aujourdhui; JOURNAL=i.journal; JOURNAL_NONVU=i.nonVu;
+  /* Une pastille sur l'onglet : un journal qu'il faut penser à ouvrir ne sera
+     jamais ouvert. */
+  const ong = document.querySelector('[data-vue="journal"]');
+  if(ong) ong.textContent = JOURNAL_NONVU ? `🩺 Journal (${JOURNAL_NONVU})` : '🩺 Journal';
+  if(!EDT_QUI){ const en = MEMBRES.find((m)=>m.role==='enfant' && m.actif); EDT_QUI = en ? en.nom : (MEMBRES[0]||{}).nom||''; }
+}
+
+/* Le portail écoute le même flux que l'écran mural : si quelqu'un coche une course
+   depuis son téléphone pendant qu'on édite le planning, les compteurs suivent. */
+function brancherFlux(){
+  const src = new EventSource('/api/flux');
+  let attente;
+  src.addEventListener('maj', ()=>{
+    clearTimeout(attente);                       // rafale groupée : un seul rechargement
+    attente = setTimeout(()=>recharger().then(()=>rendre()).catch(()=>{}), 350);
+  });
+  src.addEventListener('notif', (ev)=>{
+    try{ const n = JSON.parse(ev.data); toast('🔔 ' + n.titre); }catch(_){}
+  });
+}
+
+function aller(v){
+  VUE = v;
+  $$('nav .ong').forEach((b)=>b.setAttribute('aria-current', b.dataset.vue===v ? 'page' : 'false'));
+  rendre();
+}
+$$('nav .ong').forEach((b)=>{ if(b.dataset.vue) b.onclick = ()=>aller(b.dataset.vue); });
+
+const VUES = {};
+function rendre(){ $('#vue').innerHTML = (VUES[VUE]||(()=>''))(); brancher(); }
+
+/* =====================================================================
+   Vue — Tableau de bord
+   ===================================================================== */
+VUES.bord = ()=>{
+  const sansCode = ETAT.sansCode||[];
+  return `
+  <div class="entete"><div>
+    <h2>Tableau de bord</h2>
+    <div class="s">Semaine ${ETAT.semaine} (${ETAT.semaine%2===0?'paire':'impaire'})
+      · emploi du temps de <b>semaine ${e(ETAT.quinzaine)}</b></div>
+  </div></div>
+
+  ${sansCode.length ? `<div class="avert">⚠️ Sans code d'accès : ${sansCode.map(e).join(', ')}.
+     Tant qu'une personne n'a pas de code, n'importe qui sur le réseau peut entrer sous son nom.
+     Onglet <b>Famille</b> pour en définir un.</div>` : ''}
+  ${ETAT.exemple ? `<div class="avert">🎒 Les plannings affichés sur l'écran sont marqués
+     « données d'exemple ». Décoche le repère dans l'onglet <b>Réglages</b> quand les vrais
+     emplois du temps seront saisis — plus besoin de toucher au <code>.env</code>.</div>` : ''}
+
+  <div class="grille stats">
+    ${[['membres','Membres'],['creneaux','Créneaux'],['plats','Plats'],
+       ['courses','Courses à prendre'],['taches','Tâches en cours'],['appareils','Appareils']]
+      .map(([k,l])=>`<div class="stat"><b>${ETAT[k]??'—'}</b><span>${l}</span></div>`).join('')}
+  </div>
+
+  <div class="carte">
+    <h3>Raccourcis</h3>
+    <div class="actions" style="justify-content:flex-start">
+      <button class="btn" data-va="edt">Éditer un emploi du temps</button>
+      <button class="btn doux" data-va="plats">Gérer les plats</button>
+      <button class="btn doux" data-va="notifs">Envoyer une notification</button>
+      <a class="btn doux" href="/bento.html" style="text-decoration:none;display:inline-block">Voir l'écran mural</a>
+      <a class="btn doux" href="/app/" style="text-decoration:none;display:inline-block">Ouvrir l'app</a>
+    </div>
+  </div>`;
+};
+
+/* =====================================================================
+   Vue — Emploi du temps
+   ===================================================================== */
+/* Nuancier volontairement franc : un emploi du temps se lit à distance et par couleur
+   avant de se lire par le texte. Teintes claires -> texte sombre, lisible dans les deux thèmes. */
+const PALETTE_EDT = ['#f0902f','#6b8fc9','#f7d548','#22c3d0','#bcd230','#a96fbb',
+                     '#f4a6cd','#7fd1a4','#ef8181','#8fb2e8','#d9a441','#5fc8a0',
+                     '#c78fd6','#e8756f','#9ec94a','#6fc3d8'];
+
+const hachage = (s)=>{
+  let h = 0; const n = String(s||'').trim().toUpperCase();
+  for(let i=0;i<n.length;i++) h = (h*31 + n.charCodeAt(i)) >>> 0;
+  return h;
+};
+
+/* Couleur d'une matière, prise seule : stable dans le temps parce qu'elle dérive du NOM.
+   Sert au formulaire, où l'on n'a pas le reste de l'emploi du temps sous la main. */
+const teinte = (c)=>c.couleur || PALETTE_EDT[hachage(c.activite) % PALETTE_EDT.length];
+
+/* Couleurs de TOUT un emploi du temps. Le hachage seul donnait la même teinte à des
+   matières différentes (Chimie, DS et Accompagnement tous bleus) : illisible, alors que
+   distinguer les matières est exactement le rôle de la couleur. On garde donc le hachage
+   comme premier choix — c'est lui qui rend la couleur stable — puis on décale vers la
+   première teinte libre en cas de collision. Le résultat ne change que si la LISTE des
+   matières change, pas à chaque rendu. */
+function palettePour(creneaux){
+  const noms = [...new Set(creneaux.map((c)=>String(c.activite||'').trim()))].sort();
+  const pris = new Set(), out = new Map();
+  for(const n of noms){
+    const fixee = (creneaux.find((c)=>c.activite === n && c.couleur) || {}).couleur;
+    if(fixee){ out.set(n, fixee); pris.add(fixee); continue; }
+    let i = hachage(n) % PALETTE_EDT.length;
+    for(let k = 0; k < PALETTE_EDT.length && pris.has(PALETTE_EDT[i]); k++)
+      i = (i+1) % PALETTE_EDT.length;
+    out.set(n, PALETTE_EDT[i]); pris.add(PALETTE_EDT[i]);
+  }
+  return out;
+}
+
+const enMin = (t)=>{ const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m ? +m[1]*60 + +m[2] : null; };
+const enHM  = (m)=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+
+/* Les collèges annoncent tantôt « semaine A/B », tantôt « semaine paire/impaire ».
+   On affiche les DEUX : « A » seul ne dit pas laquelle c'est, et se tromper de
+   semaine, c'est envoyer un enfant avec le mauvais cartable. */
+const libelleQuinzaine = (lettre)=>{
+  const aEstPaire = REGLAGES.quinzaine_paire === '1';
+  return (lettre === 'A') === aEstPaire ? 'paire' : 'impaire';
+};
+
+/* Découpe une journée en grappes de créneaux qui se chevauchent, et attribue à chacun
+   sa colonne dans la grappe. Sans ça, deux activités à la même heure se recouvrent et
+   l'une devient invisible — le genre de défaut qu'on ne voit qu'une fois les vraies
+   données saisies. */
+function disposer(list){
+  const tri = list.slice().sort((a,b)=>a.deb-b.deb || a.fin-b.fin);
+  const out = [], grappe = [];
+  const vider = ()=>{
+    const cols = [];
+    for(const c of grappe){
+      let k = cols.findIndex((finCol)=>finCol <= c.deb);
+      if(k < 0){ k = cols.length; cols.push(0); }
+      cols[k] = c.fin; c.col = k;
+    }
+    for(const c of grappe){ c.nbCol = cols.length; out.push(c); }
+    grappe.length = 0;
+  };
+  let finMax = -1;
+  for(const c of tri){
+    if(grappe.length && c.deb >= finMax) vider();
+    grappe.push(c); finMax = Math.max(finMax, c.fin);
+  }
+  if(grappe.length) vider();
+  return out;
+}
+
+const PX_MIN = 1.25;          // 1 minute = 1,25 px -> une journée de 10 h tient en ~750 px
+const DUREE_DEFAUT = 55;      // créneau sans heure de fin
+
+VUES.edt = ()=>{
+  const gens = MEMBRES.filter((m)=>m.actif && !m.collectif);
+  const mien = CRENEAUX.filter((c)=>c.personne===EDT_QUI);
+  const COUL = palettePour(mien);
+  const coul = (c)=>COUL.get(String(c.activite||'').trim()) || teinte(c);
+
+  /* Samedi et dimanche n'apparaissent que s'ils servent : une grille avec deux colonnes
+     vides en permanence gaspille la largeur utile aux jours de classe. */
+  const jours = JOURS.filter((j)=>['Lun','Mar','Mer','Jeu','Ven'].includes(j)
+    || mien.some((c)=>c.jour===j));
+
+  const situes = [], sansHeure = [];
+  for(const c of mien){
+    const d = enMin(c.debut);
+    if(d === null){ sansHeure.push(c); continue; }
+    const f = enMin(c.fin);
+    situes.push({...c, deb:d, fin:(f !== null && f > d) ? f : d + DUREE_DEFAUT});
+  }
+
+  if(!situes.length && !sansHeure.length) return enteteEdt(gens, mien) +
+    `<div class="carte"><div class="vide-txt">Aucun créneau pour ${e(EDT_QUI)}.<br>
+      Utilise « + Ajouter un créneau », ou clique directement dans une colonne de la grille.</div></div>`;
+
+  /* Bornes de la grille : l'heure pleine avant le premier cours, celle après le dernier. */
+  const dep = situes.length ? Math.floor(Math.min(...situes.map((c)=>c.deb))/60)*60 : 8*60;
+  const arr = situes.length ? Math.ceil (Math.max(...situes.map((c)=>c.fin))/60)*60 : 18*60;
+  const H = Math.max(120, (arr-dep) * PX_MIN);
+  const y = (m)=>(m-dep) * PX_MIN;
+
+  const lignes = [];
+  for(let m = dep; m <= arr; m += 30)
+    lignes.push(`<div class="ligne ${m%60?'demi':''}" style="top:${y(m)}px"></div>`);
+
+  const heures = [];
+  for(let m = dep; m <= arr; m += 60)
+    heures.push(`<div class="hl" style="top:${y(m)}px">${Math.floor(m/60)}h</div>`);
+
+  const colonne = (j)=>{
+    const blocs = disposer(situes.filter((c)=>c.jour===j)).map((c)=>{
+      const haut = (c.fin-c.deb) * PX_MIN;
+      const larg = 100/c.nbCol;
+      return `<div class="bloc ${c.categorie==='activite'?'activite':''} ${c.actif?'':'off'}
+                    ${haut<34?'court':''}"
+        data-cre="${e(c.id)}"
+        style="top:${y(c.deb)}px;height:${haut-2}px;left:calc(${c.col*larg}% + 2px);
+               width:calc(${larg}% - 4px);background:${e(coul(c))};--bord:${e(coul(c))}">
+        <div class="n">${e(c.activite)}</div>
+        ${haut>=34?`<div class="h">${e(enHM(c.deb))} – ${e(enHM(c.fin))}</div>`:''}
+        ${haut>=58 && (c.salle||c.prof) ? `<div class="d">${e([c.salle,c.prof].filter(Boolean).join(' · '))}</div>` : ''}
+        ${c.quinzaine?`<span class="badge">${e(c.quinzaine)}</span>`:''}
+      </div>`;
+    }).join('');
+    return `<div class="ecol" data-col="${j}" data-dep="${dep}" style="height:${H}px">${lignes.join('')}${blocs}</div>`;
+  };
+
+  /* Légende : une couleur par matière, dans l'ordre d'apparition dans la semaine. */
+  const vues = new Map();
+  for(const c of mien) if(!vues.has(c.activite)) vues.set(c.activite, coul(c));
+
+  return enteteEdt(gens, mien) + `
+  ${sansHeure.length ? `<div class="carte" style="padding:13px 15px">
+    <div style="font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:8px">
+      Sans horaire — clique pour leur en donner un</div>
+    <div class="sansh">${sansHeure.map((c)=>
+      `<div class="bloc ${c.categorie==='activite'?'activite':''}" data-cre="${e(c.id)}"
+            style="background:${e(coul(c))};--bord:${e(coul(c))}">
+         <div class="n">${e(c.jour)} · ${e(c.activite)}</div></div>`).join('')}</div>
+  </div>` : ''}
+
+  <div class="edt-boite">
+    <div class="edt" style="grid-template-columns:56px repeat(${jours.length},minmax(0,1fr))">
+      <div class="eh"></div>
+      ${jours.map((j)=>`<div class="eh">${e(JOURSL[j])}
+        <button class="plus" data-jour="${j}" title="Ajouter">＋</button></div>`).join('')}
+      <div class="egut" style="height:${H}px">${heures.join('')}</div>
+      ${jours.map(colonne).join('')}
+    </div>
+    ${vues.size ? `<div class="legende">${[...vues].map(([n,c])=>
+      `<span style="background:${e(c)}">${e(n)}</span>`).join('')}</div>` : ''}
+  </div>`;
+};
+
+function enteteEdt(gens, mien){
+  return `
+  <div class="entete">
+    <div><h2>Emploi du temps</h2>
+      <div class="s">${mien.length} créneau(x) · nous sommes en <b>semaine ${e(ETAT.quinzaine)}</b> (${libelleQuinzaine(ETAT.quinzaine)})</div></div>
+    <div class="actions">
+      <button class="btn doux" id="copier">Copier une journée</button>
+      <button class="btn" id="ajouter">+ Ajouter un créneau</button>
+    </div>
+  </div>
+
+  <div class="onglets">${gens.map((m)=>
+    `<button data-qui="${e(m.nom)}" aria-pressed="${m.nom===EDT_QUI}">
+       <span class="rond" style="background:${e(m.couleur||'#888')}"></span>${e(m.nom)}</button>`).join('')}</div>
+
+  <div class="info">Clique un bloc pour le modifier, ou <b>clique dans une colonne vide</b>
+    pour créer un créneau à cette heure-là. La hauteur d'un bloc suit sa durée réelle.
+    Un cours limité à la <b>semaine A</b> ou <b>B</b> porte son badge et ne s'affiche sur
+    l'écran mural que la semaine concernée.</div>`;
+}
+
+function editerCreneau(c){
+  const neuf = !c.id;
+  const gens = MEMBRES.filter((m)=>m.actif && !m.collectif);
+  modale(`${neuf?'Nouveau créneau':'Modifier le créneau'}`, `
+    <div class="form">
+      <div class="ch large"><label class="ch">Intitulé (matière ou activité)</label>
+        <input id="f_activite" value="${e(c.activite||'')}" placeholder="Mathématiques, Judo…"></div>
+      <div class="ch"><label class="ch">Personne</label><select id="f_personne">
+        ${gens.map((m)=>`<option ${m.nom===(c.personne||EDT_QUI)?'selected':''}>${e(m.nom)}</option>`).join('')}
+      </select></div>
+      <div class="ch"><label class="ch">Type</label><select id="f_categorie">
+        ${[['cours','Cours'],['activite','Activité'],['garde','Garde'],['autre','Autre']]
+          .map(([v,l])=>`<option value="${v}" ${(c.categorie||'cours')===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+      <div class="ch"><label class="ch">Jour</label><select id="f_jour">
+        ${JOURS.map((j)=>`<option value="${j}" ${(c.jour||'Lun')===j?'selected':''}>${JOURSL[j]}</option>`).join('')}
+      </select></div>
+      <div class="ch"><label class="ch">Début</label><input id="f_debut" type="time" value="${e(c.debut||'')}"></div>
+      <div class="ch"><label class="ch">Fin</label><input id="f_fin" type="time" value="${e(c.fin||'')}"></div>
+      <div class="ch"><label class="ch">Semaine</label><select id="f_quinzaine">
+        <option value="">Toutes les semaines</option>
+        <option value="A" ${c.quinzaine==='A'?'selected':''}>Semaine A (${libelleQuinzaine('A')})</option>
+        <option value="B" ${c.quinzaine==='B'?'selected':''}>Semaine B (${libelleQuinzaine('B')})</option>
+      </select>
+      <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+        Un créneau en A ou B n'apparaît sur l'écran que la bonne semaine.
+        En ce moment : <b>semaine ${e(ETAT.quinzaine||'?')}</b>.</div></div>
+      <div class="ch"><label class="ch">Salle</label><input id="f_salle" value="${e(c.salle||'')}" placeholder="B204"></div>
+      <div class="ch"><label class="ch">Professeur / encadrant</label><input id="f_prof" value="${e(c.prof||'')}"></div>
+      <div class="ch"><label class="ch">Lieu</label><input id="f_lieu" value="${e(c.lieu||'')}" placeholder="Collège, Gymnase…"></div>
+      <div class="ch large"><label class="ch">Couleur du bloc</label>
+        <div class="nuancier" id="f_nuancier">
+          <button type="button" data-c="" aria-pressed="${c.couleur?'false':'true'}"
+                  title="Automatique d'après le nom"
+                  style="background:${e(teinte(c))};box-shadow:inset 0 0 0 2px var(--card)">A</button>
+          ${PALETTE_EDT.map((p)=>`<button type="button" data-c="${p}"
+            aria-pressed="${c.couleur===p?'true':'false'}" style="background:${p}"></button>`).join('')}
+        </div>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+          « A » = automatique : toutes les occurrences d'une même matière prennent
+          la même teinte, sans avoir à la choisir.</div></div>
+      <div class="ch large"><label class="ch">
+        <input type="checkbox" id="f_actif" ${c.actif!==false?'checked':''} style="width:auto;margin-right:7px">
+        Actif (décocher pour masquer pendant les vacances, sans supprimer)</label></div>
+    </div>`,
+    async ()=>{
+      const v = (id)=>$('#f_'+id).value.trim();
+      if(!v('activite')) return toast('Il faut au moins un intitulé.');
+      const choisie = $('#f_nuancier [aria-pressed="true"]');
+      await api('POST','/api/admin/planning', {
+        id:c.id, personne:v('personne'), jour:v('jour'), debut:v('debut'), fin:v('fin'),
+        activite:v('activite'), lieu:v('lieu'), categorie:v('categorie'),
+        prof:v('prof'), salle:v('salle'), quinzaine:v('quinzaine'), actif:$('#f_actif').checked,
+        couleur: choisie ? choisie.dataset.c : '',
+      });
+      EDT_QUI = v('personne');
+      toast(neuf?'Créneau ajouté.':'Créneau modifié.');
+    },
+    neuf ? null : async ()=>{
+      await api('DELETE','/api/admin/planning/'+c.id);
+      toast('Créneau supprimé.');
+    });
+
+  /* Nuancier : sélection exclusive, et la pastille « A » suit le nom saisi pour qu'on
+     voie la couleur automatique avant de valider. */
+  const pastilles = $$('#f_nuancier button');
+  pastilles.forEach((b)=>b.onclick = ()=>pastilles.forEach((x)=>x.setAttribute('aria-pressed', x===b)));
+  const nom = $('#f_activite');
+  if(nom) nom.oninput = ()=>{ pastilles[0].style.background = teinte({activite:nom.value}); };
+}
+
+/* =====================================================================
+   Vue — Repas (bibliothèque de plats)
+   ===================================================================== */
+VUES.plats = ()=>`
+  <div class="entete">
+    <div><h2>Repas</h2><div class="s">${PLATS.length} plats dans la bibliothèque</div></div>
+    <div class="actions">
+      <button class="btn doux" id="idees">💡 Des idées de plats</button>
+      <button class="btn doux" id="photos">🖼️ Trouver les photos manquantes</button>
+      <button class="btn doux" id="completer">✨ Compléter les fiches vides</button>
+      <button class="btn" id="ajouter">+ Ajouter un plat</button>
+    </div>
+  </div>
+  <div class="info">Les plats saisis librement depuis l'écran ou l'app atterrissent ici
+    automatiquement — d'où les doublons possibles. Le bouton <b>Fusionner</b> les recolle
+    en repointant le menu vers le plat conservé.<br>
+    <b>Compléter les fiches vides</b> demande à l'IA une recette pour les plats qui n'en
+    ont pas. Rien ne tourne en tâche de fond : c'est toi qui déclenches, et aucun champ
+    déjà rempli n'est touché.</div>
+  <div id="completer_etat"></div>
+  <div class="carte">
+    ${PLATS.length ? `<table><thead><tr>
+      <th style="width:62px"></th><th>Plat</th><th>Recette</th><th>Ingrédients</th><th></th>
+    </tr></thead><tbody>${PLATS.map((p)=>`<tr>
+      <td>${p.photo
+        ? `<img class="vignette" src="${e(p.photo)}" alt="" loading="lazy">`
+        : `<div class="vignette-vide">${e(p.emoji||'🍽️')}</div>`}</td>
+      <td><b>${e(p.nom)}</b>
+        <div style="color:var(--faint);font-size:12.5px">${e([p.categorie, p.portions, p.duree].filter(Boolean).join(' · '))}</div></td>
+      <td>${p.etapes
+        ? `<span class="puce ok">${String(p.etapes).split('\n').filter((l)=>l.trim()).length} étape(s)</span>`
+        : '<span class="puce">—</span>'}
+        ${p.appareils?`<div style="color:var(--faint);font-size:12px;margin-top:4px">${e(p.appareils)}</div>`:''}</td>
+      <td style="color:var(--muted);font-size:13px">${e(p.ingredients||'—')}</td>
+      <td><div class="actions">
+        <button class="btn doux mini" data-plat="${e(p.id)}">Modifier</button>
+        <button class="btn doux mini" data-fus="${e(p.id)}">Fusionner</button>
+      </div></td></tr>`).join('')}</tbody></table>`
+    : '<div class="vide-txt">Aucun plat.</div>'}
+  </div>`;
+
+/* Ce que le serveur sait faire, en fonction de la configuration. Chargé une fois. */
+let SOURCES = { lien: true, nom: false, photo: false, pourquoi: '' };
+fetch('/api/recette/sources').then((r)=>r.json()).then((s)=>{ SOURCES = s; }).catch(()=>{});
+
+function editerPlat(p){
+  const neuf = !p.id;
+  modale(neuf?'Nouveau plat':'Modifier le plat', `
+    <div class="info">Trois façons de remplir cette fiche sans tout retaper. Rien ne
+      s'enregistre tant que tu n'as pas validé — tu relis et tu corriges d'abord.</div>
+
+    <div class="sources">
+      <button type="button" class="btn doux" id="src_lien">🔗 Depuis un lien</button>
+      <button type="button" class="btn doux" id="src_chercher">🔎 Trouver en ligne</button>
+      <button type="button" class="btn doux" id="src_nom" ${SOURCES.nom?'':'disabled style="opacity:.45"'}>✨ Demander à l'IA</button>
+      <button type="button" class="btn doux" id="src_photo" ${SOURCES.photo?'':'disabled style="opacity:.45"'}>📷 Depuis une photo</button>
+    </div>
+    <div class="info" style="margin-top:10px">🔎 <b>Trouver en ligne</b> cherche la recette sur 750g
+      d'après son nom : c'est la seule source qui rapporte une <b>vraie photo</b> sans avoir de lien
+      sous la main. L'IA, elle, écrit de mémoire — elle ne peut jamais photographier un plat.</div>
+    <label class="ch" style="margin-top:10px">
+      <input type="checkbox" id="src_remplacer" style="width:auto;margin-right:7px">
+      Remplacer ce qui est déjà rempli — sinon l'import ne complète que les cases vides
+      (ta correction à la main gagne toujours).</label>
+    ${SOURCES.pourquoi ? `<div class="info" style="margin-top:10px">${e(SOURCES.pourquoi)}</div>` : ''}
+    <div id="src_etat" style="margin-top:10px"></div>
+
+    <div class="form" style="margin-top:16px">
+      <div class="ch large"><label class="ch">Nom</label><input id="f_nom" value="${e(p.nom||'')}"></div>
+
+      <div class="ch large"><label class="ch">Photo du plat</label>
+        <div class="apercu">
+          <img id="f_apercu" src="${e(p.photo||'')}" alt=""
+               style="${p.photo?'':'display:none'}">
+          <div style="flex:1">
+            <input type="hidden" id="f_photo" value="${e(p.photo||'')}">
+            <button type="button" class="btn doux mini" id="f_choisir">Choisir une image…</button>
+            <button type="button" class="btn doux mini" id="f_retirer"
+                    style="${p.photo?'':'display:none'}">Retirer</button>
+            <input type="file" id="f_fichier" accept="image/*" style="display:none">
+            <div style="color:var(--faint);font-size:12.5px;margin-top:7px">
+              Téléchargée et rangée en local : l'écran garde ses vignettes même sans Internet.</div>
+          </div>
+        </div></div>
+
+      <div class="ch"><label class="ch">Pictogramme</label>
+        <input id="f_emoji" value="${e(p.emoji||'')}" placeholder="🥔" maxlength="4"></div>
+      <div class="ch"><label class="ch">Catégorie</label>
+        <input id="f_categorie" value="${e(p.categorie||'')}" placeholder="Plat, Entrée…"></div>
+      <div class="ch"><label class="ch">Pour combien</label>
+        <input id="f_portions" value="${e(p.portions||'')}" placeholder="4 personnes"></div>
+      <div class="ch"><label class="ch">Durée</label>
+        <input id="f_duree" value="${e(p.duree||'')}" placeholder="45 min"></div>
+
+      <div class="ch large"><label class="ch">Ingrédients (séparés par des virgules)</label>
+        <input id="f_ingredients" value="${e(p.ingredients||'')}"
+               placeholder="pommes de terre, reblochon, lardons"></div>
+
+      <div class="ch large"><label class="ch">Étapes — une par ligne</label>
+        <textarea class="ch" id="f_etapes" placeholder="Préchauffer le four à 200 °C&#10;Éplucher les pommes de terre…">${e(p.etapes||'')}</textarea></div>
+
+      <div class="ch"><label class="ch">Appareils utiles</label>
+        <input id="f_appareils" value="${e(p.appareils||'')}" placeholder="Ninja Woodfire, Magimix"></div>
+      <div class="ch"><label class="ch">Source (lien)</label>
+        <input id="f_source_url" value="${e(p.source_url||'')}" placeholder="https://…"></div>
+    </div>`,
+    async ()=>{
+      const v = (id)=>$('#f_'+id).value.trim();
+      if(!v('nom')) return toast('Il faut un nom.');
+      await api('POST','/api/admin/plats',{id:p.id, nom:v('nom'), emoji:v('emoji'),
+        categorie:v('categorie'), ingredients:v('ingredients'), etapes:v('etapes'),
+        portions:v('portions'), duree:v('duree'), source_url:v('source_url'),
+        appareils:v('appareils'), photo:v('photo')});
+      toast(neuf?'Plat ajouté.':'Plat modifié.');
+    },
+    neuf ? null : async ()=>{ await api('DELETE','/api/admin/plats/'+p.id); toast('Plat supprimé.'); });
+
+  brancherRecette();
+}
+
+/* Remplit le formulaire à partir d'une proposition. N'écrase JAMAIS un champ déjà
+   rempli sans le dire : on ne fait pas disparaître une correction faite à la main. */
+function appliquerRecette(r){
+  /* Par défaut on ne comble que les vides : une recette corrigée à la main est plus
+     juste que tout ce qu'un import peut ramener. La case « Remplacer » lève la
+     protection, en connaissance de cause. */
+  const remplacer = $('#src_remplacer') && $('#src_remplacer').checked;
+  const mettre = (id, val)=>{
+    const n = $('#f_'+id);
+    if(!n || !val) return;
+    if(remplacer || !String(n.value).trim()) n.value = val;
+  };
+  mettre('nom', r.nom);
+  mettre('ingredients', (r.ingredients||[]).join(', '));
+  mettre('etapes', (r.etapes||[]).join('\n'));
+  mettre('portions', r.portions);
+  mettre('duree', r.duree);
+  mettre('source_url', r.url);
+  mettre('appareils', (r.appareils||[]).join(', '));
+  if(r.photo && (remplacer || !$('#f_photo').value)){ $('#f_photo').value = r.photo; montrerPhoto(r.photo); }
+
+  const sur = r.confiance === 'sure';
+  $('#src_etat').innerHTML = `<span class="badge-src ${sur?'sure':'estimee'}">
+    ${sur ? '✓ publiée par le site — fiable' : '~ estimée par l\'IA — relis avant de valider'}</span>
+    <span style="color:var(--faint);font-size:12.5px;margin-left:8px">
+      ${(r.ingredients||[]).length} ingrédient(s), ${(r.etapes||[]).length} étape(s)</span>`;
+}
+
+function montrerPhoto(url){
+  const img = $('#f_apercu'), ret = $('#f_retirer');
+  if(img){ img.src = url || ''; img.style.display = url ? '' : 'none'; }
+  if(ret) ret.style.display = url ? '' : 'none';
+}
+
+const patienter = (t)=>{ $('#src_etat').innerHTML =
+  `<span style="color:var(--muted);font-size:13.5px">⏳ ${e(t)}</span>`; };
+
+function brancherRecette(){
+  const lireFichier = (f)=>new Promise((ok, ko)=>{
+    const r = new FileReader();
+    r.onload = ()=>ok(String(r.result).split(',')[1]);   // on ne garde que le base64
+    r.onerror = ()=>ko(new Error('Lecture impossible.'));
+    r.readAsDataURL(f);
+  });
+
+  $('#src_lien').onclick = async ()=>{
+    const url = prompt('Colle le lien de la recette (Marmiton, CuisineAZ, 750g, un blog…)');
+    if(!url) return;
+    patienter('Lecture de la page…');
+    try{
+      const d = await api('POST','/api/recette/lien',{url});
+      appliquerRecette(d.recette);
+    }catch(err){ $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(err.message)}</span>`; }
+  };
+
+  $('#src_chercher').onclick = async ()=>{
+    const nom = ($('#f_nom').value.trim()) || prompt('Nom du plat ?');
+    if(!nom) return;
+    patienter(`Recherche de « ${nom} » sur 750g…`);
+    try{
+      const d = await api('POST','/api/recette/chercher',{nom});
+      appliquerRecette(d.recette);
+      /* On dit QUEL titre a été retenu : un import silencieux ne se conteste
+         pas, et une photo qui ne correspond pas se remarque tout de suite sur
+         le mur de la cuisine. */
+      const c = d.recette.correspondance;
+      if(c) $('#src_etat').innerHTML += `<div style="color:var(--muted);font-size:12.5px;margin-top:6px">
+        Trouvé sur ${e(c.site)} : « <b>${e(c.titre)}</b> » — correspondance ${c.score}%.
+        Si ce n'est pas le bon plat, corrige à la main avant de valider.</div>`;
+    }catch(err){
+      /* Les candidats écartés sont plus utiles qu'un « rien trouvé » : on
+         reconnaît souvent le bon titre du premier coup d'œil, et un clic suffit
+         alors à l'importer. */
+      const cands = (err.data && err.data.candidats) || [];
+      $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(err.message)}</span>`
+        + (cands.length ? `<div style="margin-top:8px">
+            <div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">Écartés faute de
+              ressemblance suffisante — clique si l'un d'eux est le bon :</div>
+            ${cands.map((c)=>`<button type="button" class="btn doux mini" data-cand="${e(c.url)}"
+              style="margin:0 6px 6px 0">${e(c.titre)} · ${c.score}%</button>`).join('')}
+          </div>` : '')
+        + `<div style="color:var(--faint);font-size:12.5px;margin-top:6px">Sinon : « 🔗 Depuis un lien »
+           avec l'adresse exacte, ou « ✨ Demander à l'IA » pour le texte seul (sans photo).</div>`;
+      document.querySelectorAll('[data-cand]').forEach((b)=>b.onclick = async ()=>{
+        patienter('Lecture de la page choisie…');
+        try{ appliquerRecette((await api('POST','/api/recette/lien',{url:b.dataset.cand})).recette); }
+        catch(e2){ $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(e2.message)}</span>`; }
+      });
+    }
+  };
+
+  $('#src_nom').onclick = async ()=>{
+    const nom = ($('#f_nom').value.trim()) || prompt('Nom du plat ?');
+    if(!nom) return;
+    patienter(`Recherche de « ${nom} »…`);
+    try{
+      const d = await api('POST','/api/recette/nom',{nom});
+      appliquerRecette(d.recette);
+    }catch(err){ $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(err.message)}</span>`; }
+  };
+
+  $('#src_photo').onclick = ()=>{
+    const f = document.createElement('input');
+    f.type = 'file'; f.accept = 'image/*';
+    f.onchange = async ()=>{
+      const fichier = f.files && f.files[0];
+      if(!fichier) return;
+      patienter('Lecture de la photo…');
+      try{
+        const d = await api('POST','/api/recette/photo',
+          { image: await lireFichier(fichier), type: fichier.type });
+        appliquerRecette(d.recette);
+      }catch(err){ $('#src_etat').innerHTML = `<span style="color:var(--alerte);font-size:13.5px">✗ ${e(err.message)}</span>`; }
+    };
+    f.click();
+  };
+
+  /* Photo du plat, déposée à la main */
+  $('#f_choisir').onclick = ()=>$('#f_fichier').click();
+  $('#f_fichier').onchange = async (ev)=>{
+    const fichier = ev.target.files && ev.target.files[0];
+    if(!fichier) return;
+    try{
+      const d = await api('POST','/api/plat/photo',
+        { image: await lireFichier(fichier), type: fichier.type });
+      $('#f_photo').value = d.photo; montrerPhoto(d.photo); toast('Photo enregistrée.');
+    }catch(err){ toast('✗ '+err.message); }
+  };
+  $('#f_retirer').onclick = ()=>{ $('#f_photo').value = ''; montrerPhoto(''); };
+}
+
+function fusionnerPlat(p){
+  const autres = PLATS.filter((x)=>x.id!==p.id);
+  if(!autres.length) return toast('Il faut au moins deux plats.');
+  modale('Fusionner un doublon', `
+    <p style="color:var(--muted);margin:0 0 15px">
+      <b>${e(p.nom)}</b> sera <b>conservé</b>. Le plat choisi ci-dessous part à la corbeille
+      et les jours de menu qui le référencent basculent sur ${e(p.nom)}.</p>
+    <div class="ch"><label class="ch">Doublon à absorber</label>
+      <select id="f_absorbe">${autres.map((x)=>`<option value="${e(x.id)}">${e(x.nom)}</option>`).join('')}</select></div>`,
+    async ()=>{
+      await api('POST','/api/admin/plats/fusionner',{garde:p.id, absorbe:$('#f_absorbe').value});
+      toast('Plats fusionnés.');
+    });
+}
+
+/* =====================================================================
+   Vue — Famille
+   ===================================================================== */
+VUES.famille = ()=>`
+  <div class="entete">
+    <div><h2>Famille</h2><div class="s">${MEMBRES.filter((m)=>m.actif).length} membres actifs</div></div>
+    <div class="actions"><button class="btn" id="ajouter">+ Ajouter un membre</button></div>
+  </div>
+  <div class="info">Le <b>code d'accès</b> protège l'app et ce portail. Il est stocké haché
+    (scrypt), jamais en clair — personne, pas même ici, ne peut le relire : on ne peut que
+    le remplacer. Mail et téléphone serviront aux notifications quand le Mac mini sera là.</div>
+  <div class="carte">
+    <table><thead><tr>
+      <th style="width:44px"></th><th>Nom</th><th>Rôle</th><th>Contact</th><th>Accès</th><th></th>
+    </tr></thead><tbody>${MEMBRES.map((m)=>`<tr class="${m.actif?'':'inactif'}">
+      <td><span class="pastille" style="background:${e(m.couleur||'#ccd')}">${e(init(m.nom))}</span></td>
+      <td><b>${e(m.nom)}</b>${m.classe?`<div style="color:var(--faint);font-size:12.5px">${e(m.classe)}${
+        m.etablissement?' · '+e(m.etablissement):''}</div>`:''}</td>
+      <td><span class="puce">${e(m.role||'—')}</span></td>
+      <td style="font-size:13px;color:var(--muted)">${e([m.email,m.telephone].filter(Boolean).join(' · ')||'—')}</td>
+      <td>${m.collectif ? '<span class="puce">collectif</span>'
+        : `<span class="puce ${m.a_code?'ok':'non'}">${m.a_code?'code ✓':'sans code'}</span>
+           ${m.admin?'<span class="puce ok">admin</span>':''}`}</td>
+      <td><div class="actions">
+        <button class="btn doux mini" data-membre="${e(m.id)}">Modifier</button>
+        ${m.collectif?'':`<button class="btn doux mini" data-code="${e(m.nom)}">Code</button>`}
+      </div></td></tr>`).join('')}</tbody></table>
+  </div>
+
+  <div class="carte">
+    <h3>🎂 Anniversaires</h3>
+    <div class="info" style="margin-top:0">Ceux du foyer se saisissent dans la <b>fiche du membre</b>
+      (champ « Naissance ») — une personne n'est jamais décrite à deux endroits. Ajoute ici les
+      <b>autres</b> : grands-parents, cousins, amis.<br>
+      L'écran mural affiche l'anniversaire du jour, et une notification part
+      <b>${e(REGLAGES.rappels_anniversaire_jours||'7')} jours avant</b> — de quoi prévoir le cadeau.
+      Année inconnue ? mets <code>0000</code> : la date sera fêtée, l'âge ne sera pas annoncé.</div>
+
+    ${ANNIV_JOUR.length ? `<div class="avert" style="margin-bottom:12px">🎉 Aujourd'hui :
+      ${ANNIV_JOUR.map((a)=>`<b>${e(a.nom)}</b>${a.age!=null?` (${a.age} ans)`:''}`).join(', ')}</div>` : ''}
+
+    ${ANNIVS.length ? `<table><thead><tr><th>Nom</th><th>Date</th><th>Lien</th><th></th></tr></thead>
+      <tbody>${ANNIVS.map((a)=>{
+        const [an,m,j] = String(a.naissance).split('-');
+        const dateLisible = `${j}/${m}${an && an!=='0000' ? '/'+an : ''}`;
+        return `<tr>
+        <td><b>${e(a.nom)}</b></td>
+        <td style="color:var(--muted)">${e(dateLisible)}</td>
+        <td>${a.foyer?'<span class="puce ok">foyer</span>':`<span class="puce">${e(a.relation||'—')}</span>`}</td>
+        <td><div class="actions">${a.foyer
+          ? '<span style="color:var(--faint);font-size:12.5px">via la fiche du membre</span>'
+          : `<button class="btn doux mini" data-anniv="${e(a.id)}">Modifier</button>`}</div></td>
+      </tr>`;}).join('')}</tbody></table>`
+      : '<div class="vide-txt">Aucun anniversaire enregistré.</div>'}
+    <div style="margin-top:12px"><button class="btn" id="ajouterAnniv">+ Ajouter un anniversaire</button></div>
+  </div>
+
+  <div class="carte">
+    <h3>Appareils enrôlés</h3>
+    ${APPAREILS.length ? `<table><thead><tr><th>Appareil</th><th>Personne</th><th>Vu</th><th></th></tr></thead>
+      <tbody>${APPAREILS.map((a)=>`<tr class="${a.revoque?'inactif':''}">
+        <td>${e(a.nom||'(sans nom)')}</td><td>${e(a.personne)}</td>
+        <td style="font-size:13px;color:var(--muted)">${e(a.vu_le||'—')}</td>
+        <td><div class="actions">${a.revoque?'<span class="puce">révoqué</span>'
+          :`<button class="btn danger mini" data-revoque="${e(a.id)}">Révoquer</button>`}</div></td>
+      </tr>`).join('')}</tbody></table>`
+      : `<div class="vide-txt">Aucun appareil enrôlé pour l'instant.<br>
+         Ouvre <b>/app/</b> sur un iPhone pour l'enregistrer.</div>`}
+  </div>`;
+
+function editerMembre(m){
+  const neuf = !m.id;
+  modale(neuf?'Nouveau membre':'Modifier '+e(m.nom), `
+    <div class="form">
+      <div class="ch"><label class="ch">Prénom</label><input id="f_nom" value="${e(m.nom||'')}"></div>
+      <div class="ch"><label class="ch">Couleur</label>
+        <input id="f_couleur" type="color" value="${e(m.couleur||'#5b9bff')}" style="height:42px;padding:4px"></div>
+      <div class="ch"><label class="ch">Rôle</label><select id="f_role">
+        ${[['parent','Parent'],['enfant','Enfant'],['collectif','Valeur collective']]
+          .map(([v,l])=>`<option value="${v}" ${(m.role||'parent')===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+      <div class="ch"><label class="ch">Ordre d'affichage</label>
+        <input id="f_ordre" type="number" value="${e(m.ordre??0)}"></div>
+      <div class="ch"><label class="ch">Adresse mail</label><input id="f_email" type="email" value="${e(m.email||'')}"></div>
+      <div class="ch"><label class="ch">Téléphone</label><input id="f_telephone" value="${e(m.telephone||'')}"></div>
+      <div class="ch"><label class="ch">Établissement</label>
+        <input id="f_etablissement" value="${e(m.etablissement||'')}" placeholder="Collège…"></div>
+      <div class="ch"><label class="ch">Classe</label><input id="f_classe" value="${e(m.classe||'')}" placeholder="5e B"></div>
+      <div class="ch"><label class="ch">🎂 Naissance</label>
+        <input id="f_naissance" type="date" value="${e(m.naissance||'')}">
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">Affiche l'anniversaire sur
+          l'écran mural le jour J, et prévient la famille quelques jours avant.</div></div>
+      <div class="ch large"><label class="ch">
+        <input type="checkbox" id="f_admin" ${m.admin?'checked':''} style="width:auto;margin-right:7px">
+        Administrateur (accès à ce portail)</label>
+        <label class="ch" style="margin-top:8px">
+        <input type="checkbox" id="f_notif" ${m.notif!==false?'checked':''} style="width:auto;margin-right:7px">
+        Reçoit les notifications</label>
+        <label class="ch" style="margin-top:8px">
+        <input type="checkbox" id="f_actif" ${m.actif!==false?'checked':''} style="width:auto;margin-right:7px">
+        Actif</label></div>
+    </div>
+    ${neuf?'':`<div class="info" style="margin-top:14px">Renommer une personne met à jour
+      ses tâches, son planning et ses post-it automatiquement.</div>`}`,
+    async ()=>{
+      const v = (id)=>$('#f_'+id).value.trim();
+      if(!v('nom')) return toast('Il faut un prénom.');
+      await api('POST','/api/admin/membres',{
+        id:m.id, nom:v('nom'), couleur:v('couleur'), role:v('role'), ordre:Number(v('ordre'))||0,
+        email:v('email'), telephone:v('telephone'), etablissement:v('etablissement'), classe:v('classe'),
+        naissance:v('naissance'),
+        admin:$('#f_admin').checked, notif:$('#f_notif').checked, actif:$('#f_actif').checked,
+        collectif: v('role')==='collectif',
+      });
+      toast(neuf?'Membre ajouté.':'Membre modifié.');
+    },
+    neuf||m.nom===MOI.nom ? null : async ()=>{
+      await api('DELETE','/api/admin/membres/'+m.id); toast('Membre désactivé.');
+    });
+}
+
+/* Anniversaire d'une personne HORS foyer. Ceux du foyer passent par la fiche du
+   membre : deux formulaires pour la même donnée finiraient par diverger. */
+function editerAnniv(a){
+  const neuf = !a.id;
+  modale(neuf?'Nouvel anniversaire':'Modifier '+e(a.nom), `
+    <div class="form">
+      <div class="ch"><label class="ch">Nom</label>
+        <input id="f_nom" value="${e(a.nom||'')}" placeholder="Mamie Jeanne"></div>
+      <div class="ch"><label class="ch">Lien</label>
+        <input id="f_relation" value="${e(a.relation||'')}" placeholder="grand-mère, cousin…"></div>
+      <div class="ch"><label class="ch">Date de naissance</label>
+        <input id="f_naissance" type="date" value="${e((a.naissance||'').startsWith('0000')?'':a.naissance||'')}"></div>
+      <div class="ch"><label class="ch">
+        <input type="checkbox" id="f_sansannee" ${String(a.naissance||'').startsWith('0000')?'checked':''}
+               style="width:auto;margin-right:7px">
+        Je ne connais pas l'année</label>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">La date sera fêtée,
+          l'âge ne sera pas annoncé.</div></div>
+      <div class="ch large"><label class="ch">
+        <input type="checkbox" id="f_rappel" ${a.rappel!==false?'checked':''} style="width:auto;margin-right:7px">
+        Me prévenir quelques jours avant</label></div>
+    </div>`,
+    async ()=>{
+      const nom = $('#f_nom').value.trim();
+      const d = $('#f_naissance').value;
+      if(!nom) return toast('Il faut un nom.');
+      if(!d) return toast('Il faut une date.');
+      /* Année inconnue : on garde le jour et le mois, on neutralise l'année.
+         Mieux vaut fêter sans l'âge que ne pas fêter. */
+      const naissance = $('#f_sansannee').checked ? '0000'+d.slice(4) : d;
+      await api('POST','/api/admin/anniversaires',
+        {id:a.id, nom, relation:$('#f_relation').value.trim(), naissance, rappel:$('#f_rappel').checked});
+      toast(neuf?'Anniversaire ajouté.':'Modifié.');
+    },
+    neuf ? null : async ()=>{
+      await api('DELETE','/api/admin/anniversaires/'+a.id); toast('Supprimé.');
+    });
+}
+
+function editerCode(nom){
+  modale('Code d\'accès — '+e(nom), `
+    <div class="ch"><label class="ch">Nouveau code (4 à 8 chiffres)</label>
+      <input id="f_code" type="password" inputmode="numeric" maxlength="8" placeholder="••••"></div>
+    <div class="info" style="margin-top:14px">Laisse vide et valide pour <b>retirer</b> le code.
+      Tant qu'on est en HTTP sur le réseau local, ce code circule en clair : il protège des
+      erreurs et des curieux, pas d'un attaquant déterminé. Face ID viendra avec HTTPS.</div>`,
+    async ()=>{
+      const c = $('#f_code').value.trim();
+      if(c && !/^\d{4,8}$/.test(c)) return toast('4 à 8 chiffres.');
+      await api('POST','/api/admin/membres/'+encodeURIComponent(nom)+'/code',{code:c||null});
+      toast(c?'Code défini.':'Code retiré.');
+    });
+}
+
+/* =====================================================================
+   Vue — Notifications
+   ===================================================================== */
+VUES.notifs = ()=>{
+  const gens = MEMBRES.filter((m)=>m.actif && !m.collectif);
+  return `
+  <div class="entete"><div><h2>Notifications</h2>
+    <div class="s">Apparaissent en direct sur l'écran mural et sur les appareils ouverts</div></div></div>
+
+  <div class="info">⚠️ Aujourd'hui la notification s'affiche sur les écrans <b>allumés et
+    ouverts</b> sur l'app ou le bento. Le vrai push iOS (téléphone verrouillé, dans la poche)
+    exige HTTPS et l'app installée sur l'écran d'accueil : il arrivera avec le Mac mini
+    et Tailscale. L'historique ci-dessous est conservé, donc un téléphone éteint la
+    retrouvera à son réveil.</div>
+
+  <div class="carte">
+    <h3>Envoyer</h3>
+    <div class="form">
+      <div class="ch large"><label class="ch">Titre</label>
+        <input id="n_titre" placeholder="Réunion parents-profs"></div>
+      <div class="ch large"><label class="ch">Message</label>
+        <input id="n_message" placeholder="Jeudi 18 h au collège"></div>
+      <div class="ch"><label class="ch">Destinataire</label><select id="n_pour">
+        <option value="">Tout le foyer</option>
+        ${gens.map((m)=>`<option value="${e(m.nom)}">${e(m.nom)}</option>`).join('')}
+      </select></div>
+      <div class="ch"><label class="ch">Niveau</label><select id="n_niveau">
+        <option value="info">Information</option>
+        <option value="important">Important</option>
+        <option value="urgent">Urgent</option>
+      </select></div>
+    </div>
+    <div class="pied"><button class="btn" id="envoyer">Envoyer maintenant</button></div>
+  </div>
+
+  <div class="carte">
+    <h3>Historique</h3>
+    ${NOTIFS.length ? `<table><thead><tr><th>Quand</th><th>Titre</th><th>Pour</th><th>De</th><th></th></tr></thead>
+      <tbody>${NOTIFS.map((n)=>`<tr>
+        <td style="font-size:13px;color:var(--muted);white-space:nowrap">${e(n.cree_le||'')}</td>
+        <td><b>${e(n.titre)}</b>${n.message?`<div style="color:var(--muted);font-size:13px">${e(n.message)}</div>`:''}</td>
+        <td><span class="puce">${e(n.pour||'tout le foyer')}</span></td>
+        <td style="font-size:13px;color:var(--muted)">${e(n.de||'—')}</td>
+        <td><div class="actions">
+          <button class="btn danger mini" data-delnotif="${e(n.id)}">Supprimer</button></div></td>
+      </tr>`).join('')}</tbody></table>` : '<div class="vide-txt">Aucune notification.</div>'}
+  </div>`;
+};
+
+/* =====================================================================
+   Vue — Présence des enfants (garde alternée)
+
+   LECTURE SEULE sur le calendrier, à la demande de Rémi : « garde-le en
+   lecture, si on doit modifier c'est dans le calendrier ». Cet écran sert donc
+   à VÉRIFIER ce que le serveur a compris — pas à saisir. Seuls les réglages de
+   lecture (marqueurs, vacances scolaires) sont modifiables, dans Réglages.
+   ===================================================================== */
+let GARDE = null;
+
+VUES.garde = ()=>{
+  if(!GARDE) return `<div class="entete"><div><h2>Présence</h2></div></div>
+    <div class="carte"><div class="vide-txt">Chargement…</div></div>`;
+
+  const a = GARDE.aujourdhui || {};
+  const dateCourte = (iso)=>{
+    const d = new Date(iso+'T12:00');
+    return d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
+  };
+
+  return `
+  <div class="entete">
+    <div><h2>Présence des enfants</h2>
+      <div class="s">Lue dans le calendrier iCloud — ${GARDE.evenements} événements</div></div>
+    <div class="actions"><button class="btn doux" id="gardeFrais">↻ Relire le calendrier</button></div>
+  </div>
+
+  <div class="info">⏱️ Le calendrier est <b>relu toutes les 10 minutes</b>. Après une modification
+    dans iCloud, utilise le bouton ci-dessus pour ne pas attendre.<br>
+    ⚠️ iCloud a <b>en plus son propre délai de publication</b> : une suppression faite à l'instant
+    peut mettre quelques minutes à apparaître dans le flux, et ce bouton n'y change rien.</div>
+
+  ${GARDE.agendaBranche ? '' : `<div class="avert">⚠️ Aucun calendrier n'est branché
+    (onglet <b>Réglages</b> → « Agenda personnel »). Sans lui, la présence est
+    seulement déduite du rythme de 14 jours.</div>`}
+
+  <div class="info">🔒 <b>Cet écran ne modifie rien.</b> La présence vient des marqueurs que tu poses
+    dans ton agenda iCloud — <code>Les enfants</code> pour un week-end, <code>Vacances enfant…</code>
+    pour une période. Pour changer une date, c'est <b>dans le calendrier</b>, et l'écran suivra au
+    prochain rafraîchissement (10 min de cache).</div>
+
+  <div class="carte">
+    <h3>Aujourd'hui</h3>
+    <div class="grille stats">
+      <div class="stat"><b>${a.couverts ?? '—'}</b><span>à table</span></div>
+      <div class="stat" style="grid-column:span 2"><b style="font-size:17px">${e((a.presents||[]).join(', '))}</b>
+        <span>${e(a.type||'')} · ${e(a.source||'')}</span></div>
+    </div>
+    ${GARDE.aujourdhui && GARDE.aujourdhui.prochaine ? '' : ''}
+  </div>
+
+  <div class="carte">
+    <h3>Les trois prochaines semaines</h3>
+    <table><thead><tr><th>Jour</th><th>À table</th><th>Qui</th><th>D'où vient l'info</th></tr></thead>
+      <tbody>${(GARDE.jours||[]).map((j)=>{
+        const plein = (j.presents||[]).length > 2;
+        return `<tr class="${plein?'':'inactif'}">
+          <td style="white-space:nowrap">${e(dateCourte(j.date))}</td>
+          <td><b>${j.couverts}</b></td>
+          <td style="font-size:13px">${e((j.presents||[]).join(', '))}</td>
+          <td style="font-size:12.5px;color:var(--muted)">${e(j.type)}
+            <span class="puce">${e(String(j.source).split(' (')[0])}</span></td>
+        </tr>`;}).join('')}</tbody></table>
+  </div>
+
+  <div class="carte">
+    <h3>Vacances scolaires à venir</h3>
+    <div class="info" style="margin-top:0">Une vacance <b>sans marqueur</b> est comprise comme
+      « les enfants sont chez leur autre parent ». C'est souvent juste — mais parfois c'est
+      seulement que la saisie n'a pas encore été faite. La différence compte, alors la voici.</div>
+    ${(GARDE.vacances||[]).length ? `<table><thead><tr>
+      <th>Période</th><th>Vacances</th><th>Présence marquée dans l'agenda ?</th>
+    </tr></thead><tbody>${GARDE.vacances.map((v)=>`<tr class="${v.marque?'':'inactif'}">
+      <td style="white-space:nowrap">${e(dateCourte(v.du))} → ${e(dateCourte(v.au))}</td>
+      <td>${e(v.libelle||'—')}</td>
+      <td>${v.marque
+        ? `<span class="puce ok">oui</span> <span style="color:var(--muted);font-size:13px">${e(dateCourte(v.marque.du))} → ${e(dateCourte(v.marque.au))} — « ${e(v.marque.titre)} »</span>`
+        : `<span class="puce">aucune</span> <span style="color:var(--faint);font-size:12.5px">ajoute un événement
+           « Vacances enfant … » dans iCloud sur la moitié où ils sont chez vous</span>`}</td>
+    </tr>`).join('')}</tbody></table>`
+      : '<div class="vide-txt">Aucune vacance scolaire renseignée (onglet Réglages).</div>'}
+  </div>
+
+  <div class="carte">
+    <h3>Périodes trouvées dans le calendrier</h3>
+    ${(GARDE.periodes||[]).length ? `<table><thead><tr>
+      <th>Du</th><th>Au</th><th>Durée</th><th>Type</th><th>Intitulé dans l'agenda</th>
+    </tr></thead><tbody>${GARDE.periodes.map((p)=>`<tr>
+      <td>${e(dateCourte(p.du))}</td><td>${e(dateCourte(p.au))}</td>
+      <td>${p.jours} j</td>
+      <td><span class="puce ${p.type==='vacances'?'ok':''}">${e(p.type)}</span></td>
+      <td style="color:var(--muted);font-size:13px">« ${e(p.titre)} »</td>
+    </tr>`).join('')}</tbody></table>`
+      : `<div class="vide-txt">Aucune période trouvée. Vérifie que les marqueurs du calendrier
+         correspondent à ceux réglés dans l'onglet <b>Réglages</b>.</div>`}
+    <div class="info" style="margin-bottom:0">Un marqueur de week-end posé sur le seul samedi est
+      <b>étendu au vendredi et au dimanche</b> — les garçons arrivent le vendredi (« Recup garcons »)
+      et repartent le dimanche. Si ce n'est pas le cas chez vous, ajuste dans <b>Réglages</b>.</div>
+  </div>`;
+};
+
+/* =====================================================================
+   Vue — Journal technique
+   ===================================================================== */
+const ICONE_NIVEAU = {info:'·', alerte:'⚠️', erreur:'❌'};
+
+VUES.journal = ()=>{
+  const dateCourte = (s)=>{
+    /* Les dates sont stockées en UTC par SQLite ; on les affiche à l'heure d'ici,
+       sinon on cherche un incident « d'il y a deux heures » qui vient d'arriver. */
+    const d = new Date(String(s||'').replace(' ','T')+'Z');
+    return isNaN(d) ? (s||'') : d.toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  };
+  return `
+  <div class="entete">
+    <div><h2>Journal</h2><div class="s">Ce que le serveur a rencontré — pannes réseau comprises</div></div>
+    <div class="actions">
+      <button class="btn doux" id="rappelsTest">🔔 Déclencher les rappels</button>
+      <button class="btn doux" id="journalVu">Marquer comme lu</button>
+      <button class="btn danger" id="journalVider">Vider</button>
+    </div>
+  </div>
+
+  <div class="info">Avant, une panne n'existait que dans la console du serveur : sur le mur, un
+    calendrier iCloud injoignable ressemblait à <b>un agenda vide</b>, et un flux d'actualités mort
+    à un bandeau masqué. Les occurrences identiques sont regroupées et comptées — une panne qui se
+    répète toutes les dix minutes ne doit pas noyer le reste.</div>
+
+  <div id="rappels_etat"></div>
+
+  <div class="carte">
+    ${JOURNAL.length ? `<table><thead><tr>
+      <th style="width:34px"></th><th>Quand</th><th>Source</th><th>Message</th><th style="width:60px"></th>
+    </tr></thead><tbody>${JOURNAL.map((l)=>`<tr class="${l.vu?'inactif':''}">
+      <td>${ICONE_NIVEAU[l.niveau]||'·'}</td>
+      <td style="white-space:nowrap;color:var(--muted);font-size:13px">${e(dateCourte(l.cree_le))}</td>
+      <td><span class="puce">${e(l.source)}</span></td>
+      <td>${e(l.message)}${l.detail?`<div style="color:var(--faint);font-size:12px;margin-top:3px">${e(String(l.detail).split('\n')[0])}</div>`:''}</td>
+      <td>${l.nb>1?`<span class="puce">×${l.nb}</span>`:''}</td>
+    </tr>`).join('')}</tbody></table>`
+    : '<div class="vide-txt">Rien à signaler — c’est bon signe.</div>'}
+  </div>`;
+};
+
+/* =====================================================================
+   Vue — Réglages
+   ===================================================================== */
+/* [clé, libellé, type, aide, (libellés du choix : valeur 0 puis valeur 1)] */
+const REGLAGES_CONNUS = [
+  ['planning_exemple', 'Marquer les plannings comme « données d\'exemple »', 'choix',
+   "Affiche un bandeau d'avertissement sur l'écran mural. À décocher dès que les vrais emplois du temps sont saisis.",
+   ['Non — ce sont les vraies données', 'Oui — afficher le bandeau']],
+  ['quinzaine_paire', 'Semaine A = semaine paire', 'choix',
+   "Collèges et lycées alternent deux emplois du temps. Ce réglage dit laquelle des deux semaines du "
+   + "calendrier est la « A ». Un créneau marqué A ou B n'apparaît sur l'écran mural que la bonne semaine ; "
+   + "un créneau sans marque vaut toutes les semaines. Vérifie une fois sur le carnet de correspondance : "
+   + "se tromper décale tout d'une semaine.",
+   ['Non — la semaine A est impaire', 'Oui — la semaine A est paire']],
+  ['couverts_defaut', 'Nombre de couverts par défaut', 'nombre',
+   "Utilisé quand aucun nombre n'est fixé sur un repas. Les quantités des recettes et des courses sont recalculées à partir de là."],
+  ['equipements', 'Appareils de cuisine du foyer', 'texte',
+   "Séparés par des virgules. Transmis à l'IA pour qu'elle écrive les étapes avec ce que vous avez vraiment (Ninja Woodfire, Magimix…) plutôt qu'une recette générique."],
+  ['ville', 'Ville (météo)', 'texte',
+   "Le nom affiché sur l'écran. Les coordonnées se règlent juste en dessous."],
+  ['meteo_lat', 'Latitude (météo)', 'texte',
+   "Source : Open-Meteo, gratuite et sans compte. Roubaix = 50.6942. Prise en compte au prochain rafraîchissement, sans redémarrer."],
+  ['meteo_lon', 'Longitude (météo)', 'texte', 'Roubaix = 3.1746.'],
+  ['veille_minutes', 'Mise en veille après (minutes)', 'nombre',
+   "Écran mural. Une notification réveille l'écran quoi qu'il arrive."],
+  ['agenda_ics', 'Agenda personnel — lien .ics', 'texte',
+   "⚠️ JAMAIS l'agenda pro. Lien d'abonnement iCloud ou Google, en lecture seule. Vide = tuile Agenda vide."],
+  ['news_rss', 'Bandeau actualités — flux RSS', 'texte',
+   'Plusieurs flux possibles, séparés par des virgules. Vide = bandeau masqué.'],
+  ['garde_actif', 'Garde alternée — tenir compte de la présence', 'choix',
+   "Quand c'est actif, l'écran propose le bon nombre de couverts selon qui est à la maison. Onglet « Présence » pour vérifier.",
+   ['Non — tout le monde est toujours là', 'Oui — suivre le calendrier de garde']],
+  ['garde_marqueur_we', 'Marqueur d’un week-end de présence', 'texte',
+   "L'intitulé exact posé dans l'agenda iCloud, par exemple « Les enfants ». La casse et les accents n'ont pas d'importance."],
+  ['garde_marqueur_vacances', 'Marqueur d’une période de vacances', 'texte',
+   "Suffit qu'il soit contenu dans l'intitulé : « vacances enfant » reconnaît « Vacances enfant maison »."],
+  ['garde_we_avant', 'Jours ajoutés AVANT le marqueur de week-end', 'nombre',
+   "Le marqueur est souvent posé sur le seul samedi, alors que les enfants arrivent le vendredi. 1 = on compte aussi le vendredi."],
+  ['garde_we_apres', 'Jours ajoutés APRÈS le marqueur', 'nombre',
+   "1 = on compte aussi le dimanche."],
+  ['garde_ignorer_we_en_vacances', 'Filet : ignorer un week-end récurrent pendant les vacances', 'choix',
+   "Sert de garde-fou si une occurrence récurrente a été oubliée dans le calendrier pendant des vacances. "
+   + "⚠️ À DÉCOCHER si les enfants viennent parfois un week-end isolé pendant des vacances où ils sont sinon absents : "
+   + "la règle les masquerait à tort.",
+   ['Non — le calendrier fait foi en toutes circonstances', 'Oui — garder le filet']],
+  ['garde_vacances_scolaires', 'Vacances scolaires — une période par ligne', 'zone',
+   "Format : 2026-10-17 → 2026-11-01  # Toussaint. ⚠️ PENDANT ces périodes, sans marqueur dans le calendrier, "
+   + "les enfants sont considérés chez leur autre parent. Les dates ci-dessous sont une ESTIMATION zone B : "
+   + "vérifie-les sur le calendrier officiel, elles changent chaque année."],
+  ['garde_socle', 'Toujours à la maison', 'texte', 'Séparés par des virgules.'],
+  ['garde_semaine', 'Présents en semaine (partent un week-end sur deux)', 'texte', 'Séparés par des virgules.'],
+  ['garde_alternes', 'Présents un week-end sur deux et la moitié des vacances', 'texte', 'Séparés par des virgules.'],
+  ['ia_modele', 'Modèle IA — recettes', 'texte',
+   "claude-opus-5 par défaut. Ici la qualité prime sur la vitesse : une fiche de recette se lit posément."],
+  ['ia_modele_vocal', 'Modèle IA — assistant vocal', 'texte',
+   "Laisser vide reprend le modèle ci-dessus. ⚡ Mesuré sur ce serveur : claude-opus-5 répond en 2,5 à 7 s "
+   + "(irrégulier), claude-haiku-4-5 en 1,6 à 2,6 s (constant) — et il énonce mieux les nombres à l'oral. "
+   + "À la voix, la régularité compte autant que la vitesse : un délai qui varie du simple au triple donne "
+   + "l'impression d'une panne. Les tournures courantes (« ajoute … aux courses ») ne passent de toute façon "
+   + "par aucun modèle : elles répondent en 0 ms."],
+];
+
+VUES.reglages = ()=>`
+  <div class="entete"><div><h2>Réglages</h2>
+    <div class="s">Stockés en base — ils remplacent peu à peu le fichier <code>.env</code></div></div></div>
+
+  <div class="carte">
+    <h3>🎙️ Voix de l'assistant</h3>
+    <div class="info" style="margin-top:0">Ces réglages s'appliquent à <b>l'écran mural</b> : il n'a
+      volontairement aucun écran de configuration — on ne règle pas un objet posé sur un mur.<br>
+      ⚠️ La <b>liste des voix ci-dessous est celle de CETTE machine</b>. Windows, macOS et le
+      Raspberry n'ont pas les mêmes. On enregistre donc le <b>nom</b> de la voix, pas son identifiant :
+      l'écran mural cherchera le même nom, et retombera sur la meilleure voix française s'il ne la
+      trouve pas. Le vrai saut de qualité viendra des voix « premium » de macOS ou de Piper.</div>
+
+    <div class="form">
+      <div class="ch large"><label class="ch">Voix</label>
+        <select id="v_voix"><option>chargement…</option></select></div>
+
+      <div class="ch"><label class="ch">Débit — <span id="v_debitVal">1.00</span></label>
+        <input id="v_debit" type="range" min="0.7" max="1.3" step="0.02" value="1"></div>
+      <div class="ch"><label class="ch">Grave / aigu — <span id="v_tonVal">1.00</span></label>
+        <input id="v_ton" type="range" min="0.5" max="1.5" step="0.02" value="1"></div>
+
+      <div class="ch"><label class="ch">Façon de parler</label>
+        <select id="v_perso">
+          <option value="jarvis">Majordome — vouvoiement, posé, à la JARVIS</option>
+          <option value="neutre">Neutre — sobre et direct</option>
+        </select>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+          Le style « majordome » vouvoie, annonce ce qui est fait sans emphase, et se permet un
+          trait d'esprit <b>rarement</b> — jamais sur un rappel, jamais envers un enfant.
+          Il ne change rien aux règles de sécurité : l'assistant ne peut toujours rien supprimer.</div></div>
+      <div class="ch"><label class="ch">Dose d'esprit</label>
+        <select id="v_humour">
+          <option value="leger">Léger — pince-sans-rire, une réponse sur trois</option>
+          <option value="rare">Rare — un mot d'esprit de temps en temps</option>
+          <option value="jamais">Aucun — strictement factuel</option>
+        </select>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+          Règle tenue quel que soit le réglage : <b>l'information d'abord, le trait d'esprit après</b>
+          — jamais à la place. Et l'esprit est <b>coupé d'office</b> face à un enfant, ainsi que sur
+          tout rappel, échéance ou urgence.</div></div>
+      <div class="ch"><label class="ch">Appellation</label>
+        <input id="v_appellation" placeholder="Monsieur">
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+          Employée avec parcimonie. Laisse vide pour n'utiliser que les prénoms.</div></div>
+      <div class="ch"><label class="ch">…pour qui</label>
+        <input id="v_appellation_pour" placeholder="Rémi">
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
+          Prénoms séparés par des virgules. Les <b>autres sont appelés par leur prénom</b> — sans
+          cette liste, « Monsieur » était servi à tout le monde, y compris à Amandine. Les
+          <b>enfants n'y ont jamais droit</b>, quel que soit ce réglage.</div></div>
+
+      <div class="ch"><label class="ch">Mot d'éveil</label>
+        <input id="v_eveil" value="jarvis" placeholder="jarvis">
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">Pour « jarvis », les
+          approximations de la transcription (jarvisse, jarvice…) sont déjà reconnues. Un autre mot
+          ne sera reconnu qu'exactement.</div></div>
+      <div class="ch"><label class="ch">
+        <input type="checkbox" id="v_exiger" checked style="width:auto;margin-right:7px">
+        Exiger le mot d'éveil</label>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px">Décoché, <b>tout ce qui est dit
+          près du micro</b> part vers le serveur puis vers l'IA. Coché, le mot est cherché
+          <b>sur l'appareil</b> : rien ne sort avant qu'il soit prononcé.</div></div>
+    </div>
+
+    <div class="actions" style="justify-content:flex-start;margin-top:12px">
+      <button class="btn doux" id="v_essai">▶︎ Écouter la voix</button>
+      <button class="btn doux" id="v_jarvis">🤵 Réglage « Jarvis »</button>
+      <button class="btn" id="v_enregistrer">Enregistrer</button>
+    </div>
+  </div>
+
+  <div class="carte">
+    <h3>🗣️ Essayer le ton</h3>
+    <div class="info" style="margin-top:0">Pose une phrase, lis la réponse, ajuste, recommence —
+      <b>sans micro et sans rien écrire</b> dans les courses ou le menu. Les réglages ci-dessus sont
+      pris en compte <b>avant même d'être enregistrés</b> : on essaie d'abord, on garde ensuite.</div>
+    <div class="form">
+      <div class="ch large"><label class="ch">Ce qu'on dit</label>
+        <input id="t_texte" value="Qu'est-ce qu'on mange ce soir ?"></div>
+      <div class="ch"><label class="ch">Qui parle</label><select id="t_qui"></select></div>
+    </div>
+    <div class="actions" style="justify-content:flex-start;margin-top:10px">
+      <button class="btn" id="t_lancer">Demander</button>
+      <button class="btn doux" id="t_comparer">Comparer les trois doses d'esprit</button>
+    </div>
+    <div id="t_exemples" style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px"></div>
+    <div id="t_resultat" style="margin-top:12px"></div>
+  </div>
+
+  <div class="carte">
+    <h3>🎚️ Tester le microphone</h3>
+    <div class="info" style="margin-top:0">Teste le micro de <b>cette machine</b> — pas celui de
+      l'écran mural s'il est ailleurs.<br>
+      💡 <b>Si aucun son ne rentre</b>, le remède qui a fonctionné ici : passer un appel test dans
+      <b>Teams</b>, raccrocher, revenir. Ouvrir puis relâcher le micro réinitialise l'entrée audio de
+      Windows ; tant que personne ne l'a activée, le navigateur capture un flux muet
+      <b>sans lever d'erreur</b>.</div>
+
+    <div class="form">
+      <div class="ch large"><label class="ch">Entrée audio</label>
+        <select id="m_liste"><option>—</option></select></div>
+    </div>
+    <div style="margin-top:12px">
+      <label class="ch">Niveau — <b>parle maintenant</b></label>
+      <div style="height:22px;background:var(--card2);border-radius:11px;overflow:hidden;border:1px solid var(--bord)">
+        <div id="m_barre" style="height:100%;width:0;background:var(--ok);transition:width .06s"></div>
+      </div>
+    </div>
+    <div class="actions" style="justify-content:flex-start;margin-top:12px">
+      <button class="btn doux" id="m_test">🎙️ Tester 10 secondes</button>
+    </div>
+    <div id="m_verdict" class="info" style="margin-top:12px">Clique sur « Tester » et parle.</div>
+  </div>
+
+  <div class="carte">
+    <h3>Configuration</h3>
+    <div class="form">
+      ${REGLAGES_CONNUS.map(([cle,lib,type,aide,choix])=>`
+        <div class="ch large"><label class="ch">${e(lib)}</label>
+          ${type==='choix'
+            ? `<select id="r_${cle}">
+                 <option value="0" ${REGLAGES[cle]!=='1'?'selected':''}>${e((choix||['Non','Oui'])[0])}</option>
+                 <option value="1" ${REGLAGES[cle]==='1'?'selected':''}>${e((choix||['Non','Oui'])[1])}</option></select>`
+            : type==='zone'
+              /* Multi-ligne : une liste de périodes se relit et se corrige mal
+                 dans un champ d'une seule ligne. */
+              ? `<textarea id="r_${cle}" rows="7" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">${e(REGLAGES[cle]||'')}</textarea>`
+              : `<input id="r_${cle}" type="${type==='nombre'?'number':'text'}" value="${e(REGLAGES[cle]||'')}">`}
+          <div style="color:var(--faint);font-size:12.5px;margin-top:5px">${e(aide)}</div></div>`).join('')}
+    </div>
+    <div class="pied"><button class="btn" id="enregistrerReglages">Enregistrer</button></div>
+  </div>
+
+  <div class="carte">
+    <h3>Ce qui attend le Mac mini</h3>
+    <div class="info" style="margin:0">
+      <b>Face ID</b> (WebAuthn), <b>notifications push</b> hors application et <b>accès hors
+      maison</b> exigent tous les trois du HTTPS, que ce PC ne peut pas fournir sans droits
+      administrateur. Tailscale, sur le Mac mini, apporte un vrai certificat et débloque
+      les trois d'un coup. Le schéma est déjà prêt à les accueillir (colonne
+      <code>passkey</code>, table <code>abonnements_push</code>).
+    </div>
+  </div>
+
+  <div class="carte">
+    <h3>Sauvegarde</h3>
+    <div class="info" style="margin:0">Le fichier <code>maison.db</code> est la seule copie
+      des données de la famille. Lance <code>node outils/sauvegarder.js</code> avant toute
+      opération risquée — les 30 dernières sauvegardes sont conservées.</div>
+  </div>`;
+
+/* =====================================================================
+   Fenêtre modale : un seul mécanisme pour toutes les éditions
+   ===================================================================== */
+let surValider = null, surSupprimer = null;
+
+function modale(titre, corps, valider, supprimer){
+  surValider = valider; surSupprimer = supprimer || null;
+  $('#modale').innerHTML = `<h3>${titre}</h3>${corps}
+    <div class="pied">
+      ${supprimer?'<button class="btn danger gauche" id="m_suppr">Supprimer</button>':''}
+      <button class="btn doux" id="m_annuler">Annuler</button>
+      <button class="btn" id="m_ok">Enregistrer</button>
+    </div>`;
+  $('#voile').classList.add('on');
+  $('#m_annuler').onclick = fermer;
+  $('#m_ok').onclick = ()=>lancer(surValider);
+  if(supprimer) $('#m_suppr').onclick = ()=>{
+    /* Suppression en deux temps, comme sur l'écran mural : un doigt sur une tablette
+       se pose vite, et il n'y a pas d'annulation ici. */
+    const b = $('#m_suppr');
+    if(b.dataset.sur){ lancer(surSupprimer); return; }
+    b.dataset.sur = '1'; b.textContent = 'Confirmer ?';
+    setTimeout(()=>{ if(b.isConnected){ delete b.dataset.sur; b.textContent='Supprimer'; } }, 4000);
+  };
+  const p = $('#modale input,#modale select'); if(p) p.focus();
+}
+
+async function lancer(fn){
+  if(!fn) return fermer();
+  try{ await fn(); fermer(); await recharger(); rendre(); }
+  catch(err){ toast('✗ ' + err.message); }
+}
+function fermer(){ $('#voile').classList.remove('on'); $('#modale').innerHTML=''; }
+$('#voile').onclick = (ev)=>{ if(ev.target.id==='voile') fermer(); };
+document.addEventListener('keydown', (ev)=>{ if(ev.key==='Escape') fermer(); });
+
+/* =====================================================================
+   Branchement des évènements — refait après chaque rendu
+   ===================================================================== */
+function brancher(){
+  $$('[data-va]').forEach((b)=>b.onclick = ()=>aller(b.dataset.va));
+
+  /* Emploi du temps */
+  $$('[data-qui]').forEach((b)=>b.onclick = ()=>{ EDT_QUI = b.dataset.qui; rendre(); });
+  $$('[data-cre]').forEach((n)=>n.onclick = (ev)=>{
+    ev.stopPropagation();                       // sinon le clic crée AUSSI un créneau vide
+    const c = CRENEAUX.find((x)=>x.id===n.dataset.cre); if(c) editerCreneau(c);
+  });
+  $$('.eh .plus').forEach((b)=>b.onclick = (ev)=>{
+    ev.stopPropagation();
+    editerCreneau({personne:EDT_QUI, jour:b.dataset.jour, categorie:'cours'});
+  });
+
+  /* Cliquer dans le vide d'une colonne crée un créneau à l'heure pointée, arrondie au
+     quart d'heure. Saisir un emploi du temps entier via un formulaire vierge à chaque
+     fois est décourageant ; là, on désigne l'endroit. */
+  $$('.ecol').forEach((col)=>col.onclick = (ev)=>{
+    const dep = Number(col.dataset.dep);
+    const min = dep + Math.round(((ev.clientY - col.getBoundingClientRect().top) / PX_MIN) / 15) * 15;
+    editerCreneau({personne:EDT_QUI, jour:col.dataset.col, categorie:'cours',
+                   debut:enHM(Math.max(0, Math.min(23*60+45, min))),
+                   fin:enHM(Math.max(0, Math.min(23*60+55, min+55)))});
+  });
+  if($('#copier')) $('#copier').onclick = ()=>{
+    modale('Copier une journée', `
+      <p style="color:var(--muted);margin:0 0 15px">Recopie tous les créneaux d'un jour vers
+        un autre, pour <b>${e(EDT_QUI)}</b>. Les créneaux existants du jour d'arrivée sont
+        conservés — la copie s'ajoute.</p>
+      <div class="form">
+        <div class="ch"><label class="ch">Depuis</label><select id="f_de">
+          ${JOURS.map((j)=>`<option value="${j}">${JOURSL[j]}</option>`).join('')}</select></div>
+        <div class="ch"><label class="ch">Vers</label><select id="f_vers">
+          ${JOURS.map((j)=>`<option value="${j}">${JOURSL[j]}</option>`).join('')}</select></div>
+      </div>`,
+      async ()=>{
+        const de = $('#f_de').value, vers = $('#f_vers').value;
+        if(de===vers) return toast('Choisis deux jours différents.');
+        const r = await api('POST','/api/admin/planning/copier',{personne:EDT_QUI, de, vers});
+        toast(r.copies + ' créneau(x) copié(s).');
+      });
+  };
+
+  /* Plats */
+  $$('[data-plat]').forEach((b)=>b.onclick = ()=>editerPlat(PLATS.find((p)=>p.id===b.dataset.plat)||{}));
+  $$('[data-fus]').forEach((b)=>b.onclick = ()=>fusionnerPlat(PLATS.find((p)=>p.id===b.dataset.fus)||{}));
+
+  /* Des plats qu'on n'a PAS. Complémentaire de « Proposer la semaine » sur
+     l'écran mural, qui lui ne sait composer qu'avec la bibliothèque existante :
+     l'un fait tourner ce qu'on a, l'autre élargit ce qu'on a. */
+  if($('#idees')) $('#idees').onclick = async ()=>{
+    $('#completer_etat').innerHTML = '<div class="info">⏳ Recherche d’idées de saison…</div>';
+    let liste;
+    try{ liste = (await api('POST','/api/admin/plats/idees',{combien:5})).idees; }
+    catch(err){ return void ($('#completer_etat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`); }
+    if(!liste || !liste.length)
+      return void ($('#completer_etat').innerHTML = '<div class="info">Aucune idée nouvelle cette fois — relance.</div>');
+
+    $('#completer_etat').innerHTML = `<div class="carte">
+      <h3>💡 Idées de plats</h3>
+      <div class="info" style="margin-top:0">Choisis ce qui te tente. Les plats retenus rejoignent la
+        bibliothèque <b>sans recette</b> — tu les compléteras ensuite avec « 🔎 Trouver en ligne ».
+        Rien n'est ajouté sans ton accord.</div>
+      ${liste.map((i,k)=>`<label class="ch" style="display:flex;gap:11px;align-items:flex-start;margin:10px 0">
+        <input type="checkbox" class="idee" data-k="${k}" style="width:20px;height:20px;margin-top:3px">
+        <span><b>${e(i.emoji||'')} ${e(i.nom)}</b>
+          <span class="puce" style="margin-left:6px">${e(i.categorie||'plat')}</span>
+          <div style="color:var(--muted);font-size:13px;margin-top:3px">${e(i.pourquoi)}</div></span>
+      </label>`).join('')}
+      <div class="actions" style="justify-content:flex-start;margin-top:12px">
+        <button class="btn" id="ideesAjouter">Ajouter les plats cochés</button>
+        <button class="btn doux" id="ideesAutres">↻ D'autres idées</button>
+      </div></div>`;
+
+    $('#ideesAjouter').onclick = async ()=>{
+      const choisis = [...document.querySelectorAll('.idee:checked')].map((c)=>liste[Number(c.dataset.k)]);
+      if(!choisis.length) return toast('Rien de coché.');
+      try{
+        const r = await api('POST','/api/admin/plats/ajouter-lot',{plats:choisis});
+        toast(r.ajoutes+' plat(s) ajouté(s).');
+        $('#completer_etat').innerHTML = '';
+        await recharger(); rendre();
+      }catch(err){ toast('✗ '+err.message); }
+    };
+    $('#ideesAutres').onclick = ()=>$('#idees').click();
+  };
+
+  if($('#photos')) $('#photos').onclick = async ()=>{
+    const sans = PLATS.filter((p)=>!String(p.photo||'').trim()).length;
+    if(!sans) return toast('Tous les plats ont déjà une photo.');
+    try{
+      /* On enchaîne les lots jusqu'au bout, en avançant le curseur `depuis` :
+         les plats introuvables ne doivent pas monopoliser les places du lot
+         suivant. Le bouton fait le tour complet, on ne le reclique pas dix fois. */
+      let depuis = 0, trouvees = 0, rates = [], echecs = [], total = sans, tours = 0;
+      while(tours++ < 12){
+        $('#completer_etat').innerHTML = `<div class="info">⏳ Recherche des photos —
+          ${depuis} / ${total} plat(s) examinés, ${trouvees} trouvée(s). Ne ferme pas la page…</div>`;
+        const b = (await api('POST','/api/admin/plats/photos',{depuis})).bilan;
+        trouvees += b.trouvees;
+        rates = rates.concat(b.sansCorrespondance);
+        echecs = echecs.concat(b.echecs);
+        /* Le curseur n'avance QUE des plats non résolus : ceux qui ont reçu une
+           photo sortent de la liste d'eux-mêmes au tour suivant. */
+        depuis += b.traites - b.trouvees;
+        if(!b.restants || !b.traites) break;
+      }
+      $('#completer_etat').innerHTML = `<div class="info">
+        ✓ ${trouvees} photo(s) trouvée(s) sur ${total} plat(s) sans image.
+        ${rates.length?`<br><b>Aucune correspondance assez sûre</b> pour :
+          ${e(rates.join(' · '))}.<br>Mieux vaut pas de photo qu'une photo fausse — ouvre la fiche
+          et utilise « 🔗 Depuis un lien », ou renomme le plat plus simplement.`:''}
+        ${echecs.length?`<br>Échecs : ${e(echecs.join(' · '))}`:''}</div>`;
+      await recharger(); rendre();
+    }catch(err){ $('#completer_etat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`; }
+  };
+
+  if($('#completer')) $('#completer').onclick = async ()=>{
+    const vides = PLATS.filter((p)=>!String(p.etapes||'').trim()).length;
+    if(!vides) return toast('Toutes les fiches ont déjà une recette.');
+    $('#completer_etat').innerHTML =
+      `<div class="info">⏳ ${vides} fiche(s) à compléter — quelques secondes chacune, ne ferme pas la page…</div>`;
+    try{
+      const r = await api('POST','/api/admin/plats/completer');
+      const b = r.bilan;
+      $('#completer_etat').innerHTML = `<div class="info">
+        ✓ ${b.remplis} fiche(s) complétée(s) sur ${b.candidats}.
+        ${b.restants?`Il en reste ${b.restants} — relance pour continuer.`:''}
+        ${b.echecs.length?`<br>Non traitées : ${e(b.echecs.join(' · '))}`:''}</div>`;
+      await recharger(); rendre();
+    }catch(err){
+      $('#completer_etat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`;
+    }
+  };
+
+  /* Famille */
+  $$('[data-membre]').forEach((b)=>b.onclick = ()=>editerMembre(MEMBRES.find((m)=>m.id===b.dataset.membre)||{}));
+  $$('[data-code]').forEach((b)=>b.onclick = ()=>editerCode(b.dataset.code));
+  $$('[data-anniv]').forEach((b)=>b.onclick = ()=>editerAnniv(ANNIVS.find((a)=>a.id===b.dataset.anniv)||{}));
+  if($('#ajouterAnniv')) $('#ajouterAnniv').onclick = ()=>editerAnniv({});
+
+  /* Journal */
+  if($('#journalVu')) $('#journalVu').onclick = async ()=>{
+    try{ await api('POST','/api/admin/journal/vu'); await recharger(); rendre(); }catch(err){ toast('✗ '+err.message); }
+  };
+  if($('#journalVider')) $('#journalVider').onclick = async ()=>{
+    try{ const r = await api('DELETE','/api/admin/journal');
+      toast(r.retires+' ligne(s) effacée(s)'); await recharger(); rendre(); }catch(err){ toast('✗ '+err.message); }
+  };
+  if($('#rappelsTest')) $('#rappelsTest').onclick = async ()=>{
+    $('#rappels_etat').innerHTML = '<div class="info">⏳ Envoi des rappels…</div>';
+    try{
+      const b = (await api('POST','/api/admin/rappels/tester')).bilan;
+      $('#rappels_etat').innerHTML = b.saute
+        ? `<div class="info">Rien envoyé : ${e(b.saute)}.</div>`
+        : `<div class="info">✓ ${b.anniversaires} anniversaire(s), ${b.echeances} rappel(s) d'échéance,
+            ${b.ranges} article(s) rangé(s). Regarde l'écran mural et les téléphones ouverts.</div>`;
+      await recharger(); rendre();
+    }catch(err){ $('#rappels_etat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`; }
+  };
+  $$('[data-revoque]').forEach((b)=>b.onclick = async ()=>{
+    try{ await api('DELETE','/api/admin/appareils/'+b.dataset.revoque);
+      toast('Appareil révoqué.'); await chargerAppareils(); rendre(); }
+    catch(err){ toast('✗ '+err.message); }
+  });
+
+  /* Notifications */
+  if($('#envoyer')) $('#envoyer').onclick = async ()=>{
+    const t = $('#n_titre').value.trim();
+    if(!t) return toast('Il faut un titre.');
+    try{
+      await api('POST','/api/notif',{titre:t, message:$('#n_message').value.trim(),
+        pour:$('#n_pour').value, niveau:$('#n_niveau').value});
+      $('#n_titre').value=''; $('#n_message').value='';
+      toast('Notification envoyée.'); await recharger(); rendre();
+    }catch(err){ toast('✗ '+err.message); }
+  };
+  $$('[data-delnotif]').forEach((b)=>b.onclick = async ()=>{
+    try{ await api('DELETE','/api/notif/'+b.dataset.delnotif);
+      await recharger(); rendre(); }catch(err){ toast('✗ '+err.message); }
+  });
+
+  /* ---- Voix : le paramétrage vit ICI, plus dans /vocal.html ---- */
+  if($('#v_voix')) brancherVoix();
+
+  /* Réglages */
+  if($('#enregistrerReglages')) $('#enregistrerReglages').onclick = async ()=>{
+    const corps = {};
+    for(const [cle] of REGLAGES_CONNUS){ const n = $('#r_'+cle); if(n) corps[cle] = n.value; }
+    try{ await api('POST','/api/admin/reglages', corps); toast('Réglages enregistrés.');
+      await recharger(); rendre(); }catch(err){ toast('✗ '+err.message); }
+  };
+
+  /* Bouton « Ajouter » de l'en-tête : ce qu'il crée dépend de la vue affichée. */
+  if($('#ajouter')) $('#ajouter').onclick = ()=>({
+    edt:    ()=>editerCreneau({personne:EDT_QUI, jour:'Lun', categorie:'cours'}),
+    plats:  ()=>editerPlat({}),
+    famille:()=>editerMembre({role:'parent'}),
+  }[VUE] || (()=>{}))();
+
+  if(VUE==='famille' && !APPAREILS.length) chargerAppareils().then(()=>{
+    if(VUE==='famille' && APPAREILS.length) rendre();
+  });
+
+  /* La présence demande une lecture du calendrier : chargée à l'ouverture de
+     l'onglet, pas au démarrage — inutile de ralentir tout le portail pour un
+     écran qu'on ouvre rarement. */
+  if(VUE==='garde' && !GARDE) chargerGarde().then(()=>{ if(VUE==='garde') rendre(); });
+  if($('#gardeFrais')) $('#gardeFrais').onclick = async ()=>{
+    $('#gardeFrais').textContent = '↻ lecture…';
+    await chargerGarde(true);
+    rendre();
+    toast('Calendrier relu.');
+  };
+}
+
+/* =====================================================================
+   Voix et microphone — le paramétrage de l'assistant vocal
+
+   Il vivait dans /vocal.html ; il appartient ici, avec le reste de la
+   configuration. /vocal.html redevient ce qu'il aurait dû rester : un banc
+   d'essai qui montre ce qui se passe, pas un panneau de réglages.
+   ===================================================================== */
+let VOIX_LISTE = [];
+
+function voixDisponibles(){
+  if(!('speechSynthesis' in window)) return [];
+  VOIX_LISTE = speechSynthesis.getVoices();
+  return VOIX_LISTE;
+}
+
+function remplirVoix(){
+  const sel = $('#v_voix');
+  if(!sel) return;
+  const toutes = voixDisponibles();
+  if(!toutes.length){ sel.innerHTML = '<option value="">Aucune voix installée sur cette machine</option>'; return; }
+  const fr = toutes.filter((v)=>/^fr/i.test(v.lang));
+  const autres = toutes.filter((v)=>!/^fr/i.test(v.lang));
+  const choisi = REGLAGES.voix_nom || '';
+  const opt = (v)=>`<option value="${e(v.name)}" ${v.name===choisi?'selected':''}>${e(v.name)} — ${e(v.lang)}${v.localService?'':' (en ligne)'}</option>`;
+  sel.innerHTML = `<option value="">Automatique — meilleure voix française</option>`
+    + (fr.length?`<optgroup label="Français">${fr.map(opt).join('')}</optgroup>`:'')
+    + (autres.length?`<optgroup label="Autres langues (accent étranger)">${autres.map(opt).join('')}</optgroup>`:'');
+}
+
+function direEssai(){
+  if(!('speechSynthesis' in window)) return toast('Pas de synthèse vocale ici.');
+  const u = new SpeechSynthesisUtterance(
+    "Bonsoir. Le dîner est prêt, il reste six articles sur la liste de courses.");
+  u.lang = 'fr-FR';
+  const nom = $('#v_voix').value;
+  const v = VOIX_LISTE.find((x)=>x.name===nom) || VOIX_LISTE.find((x)=>/^fr/i.test(x.lang));
+  if(v) u.voice = v;
+  u.rate = Number($('#v_debit').value) || 1;
+  u.pitch = Number($('#v_ton').value) || 1;
+  /* Chrome perd l'énoncé si `cancel()` est suivi immédiatement de `speak()`,
+     et met parfois sa file en pause : mêmes précautions que dans voix.js. */
+  try{ speechSynthesis.cancel(); }catch(_){}
+  setTimeout(()=>{ try{ speechSynthesis.resume(); speechSynthesis.speak(u); }catch(err){ toast('✗ '+err.message); } }, 80);
+}
+
+function brancherVoix(){
+  remplirVoix();
+  if('speechSynthesis' in window) speechSynthesis.onvoiceschanged = remplirVoix;
+
+  const maj = ()=>{
+    $('#v_debitVal').textContent = Number($('#v_debit').value).toFixed(2);
+    $('#v_tonVal').textContent = Number($('#v_ton').value).toFixed(2);
+  };
+  $('#v_debit').value = REGLAGES.voix_debit || '1';
+  $('#v_ton').value = REGLAGES.voix_ton || '1';
+  $('#v_eveil').value = REGLAGES.voix_eveil || 'jarvis';
+  $('#v_exiger').checked = REGLAGES.voix_exiger_eveil !== '0';
+  $('#v_perso').value = REGLAGES.voix_personnalite || 'jarvis';
+  $('#v_humour').value = REGLAGES.voix_humour || 'leger';
+  $('#v_appellation').value = REGLAGES.voix_appellation ?? 'Monsieur';
+  $('#v_appellation_pour').value = REGLAGES.voix_appellation_pour ?? 'Rémi';
+  maj();
+
+  $('#v_debit').oninput = maj;
+  $('#v_ton').oninput = maj;
+  $('#v_voix').onchange = direEssai;
+  $('#v_essai').onclick = direEssai;
+
+  /* Un timbre plus grave et un débit posé : c'est ce qui rapproche le plus une
+     voix de synthèse du personnage d'Iron Man sans changer de moteur. */
+  $('#v_jarvis').onclick = ()=>{
+    const masculine = VOIX_LISTE.find((v)=>/^fr/i.test(v.lang)
+      && /(thomas|paul|nicolas|henri|male|homme|daniel|guillaume)/i.test(v.name));
+    if(masculine) $('#v_voix').value = masculine.name;
+    $('#v_debit').value = '0.94'; $('#v_ton').value = '0.82'; maj();
+    toast(masculine ? 'Voix '+masculine.name : "Aucune voix masculine française ici — c'est le moteur qu'il faut enrichir");
+    direEssai();
+  };
+
+  $('#v_enregistrer').onclick = async ()=>{
+    try{
+      await api('POST','/api/admin/reglages',{
+        voix_nom: $('#v_voix').value,
+        voix_debit: $('#v_debit').value,
+        voix_ton: $('#v_ton').value,
+        voix_eveil: $('#v_eveil').value.trim().toLowerCase() || 'jarvis',
+        voix_exiger_eveil: $('#v_exiger').checked ? '1' : '0',
+        voix_personnalite: $('#v_perso').value,
+        voix_humour: $('#v_humour').value,
+        voix_appellation: $('#v_appellation').value.trim(),
+        voix_appellation_pour: $('#v_appellation_pour').value.trim(),
+      });
+      toast('Voix enregistrée — l’écran mural l’applique au prochain rafraîchissement.');
+      await recharger();
+    }catch(err){ toast('✗ '+err.message); }
+  };
+
+  brancherMicro();
+  brancherEssaiTon();
+}
+
+/* ---- essayer le ton, sans micro et sans rien écrire ----
+   Répond à « comment on teste la voix ? » : on juge le STYLE, pas les effets.
+   Les réglages du formulaire sont envoyés tels quels, donc on peut comparer
+   avant d'enregistrer quoi que ce soit. */
+const ESSAIS = [
+  "Qu'est-ce qu'on mange ce soir ?",
+  'Ajoute du lait aux courses',
+  "Qu'est-ce qu'il y a dans l'agenda aujourd'hui ?",
+  'On sera combien à table samedi ?',
+  'Rappelle à Martial de sortir la poubelle demain',
+  'Vide la liste de courses',
+];
+
+function brancherEssaiTon(){
+  const gens = MEMBRES.filter((m)=>m.actif && !m.collectif);
+  $('#t_qui').innerHTML = gens.map((m)=>
+    `<option value="${e(m.nom)}" ${m.nom===MOI.nom?'selected':''}>${e(m.nom)}${m.role==='enfant'?' (enfant)':''}</option>`).join('');
+
+  $('#t_exemples').innerHTML = ESSAIS.map((t,i)=>
+    `<button type="button" class="btn doux mini" data-essai="${i}">${e(t)}</button>`).join('');
+  $$('[data-essai]').forEach((b)=>b.onclick = ()=>{
+    $('#t_texte').value = ESSAIS[Number(b.dataset.essai)];
+    $('#t_lancer').click();
+  });
+
+  const reglagesFormulaire = ()=>({
+    personnalite: $('#v_perso').value,
+    humour: $('#v_humour').value,
+    appellation: $('#v_appellation').value.trim(),
+    personne: $('#t_qui').value,
+  });
+
+  const demander = async (surcharge)=>{
+    const corps = { texte: $('#t_texte').value.trim(), ...reglagesFormulaire(), ...surcharge };
+    if(!corps.texte) { toast('Écris une phrase.'); return null; }
+    return api('POST','/api/admin/voix/essai',corps);
+  };
+
+  $('#t_lancer').onclick = async ()=>{
+    $('#t_resultat').innerHTML = '<div class="info">⏳ …</div>';
+    try{
+      const r = await demander();
+      if(!r) return;
+      $('#t_resultat').innerHTML = `<div class="carte" style="margin:0">
+        <div style="font-size:17px;font-weight:600">🔊 ${e(r.reponse)}</div>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:7px">
+          ${e(r.action||'')} · ${e(r.source==='regle'?'règle locale (0 ms, sans IA)':(r.modele||r.source||''))}
+          · rien n'a été écrit</div></div>`;
+    }catch(err){ $('#t_resultat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`; }
+  };
+
+  /* Trois doses côte à côte : c'est en comparant qu'on choisit, pas en
+     imaginant. */
+  $('#t_comparer').onclick = async ()=>{
+    $('#t_resultat').innerHTML = '<div class="info">⏳ trois demandes en cours…</div>';
+    try{
+      const doses = ['jamais','rare','leger'];
+      const libelles = {jamais:'Aucun esprit', rare:'Rare', leger:'Léger (défaut)'};
+      const rs = await Promise.all(doses.map((h)=>demander({humour:h})));
+      $('#t_resultat').innerHTML = rs.map((r,i)=>`<div class="carte" style="margin:0 0 10px">
+        <div style="color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:5px">
+          ${e(libelles[doses[i]])}</div>
+        <div style="font-size:16px">🔊 ${e(r ? r.reponse : '—')}</div></div>`).join('');
+    }catch(err){ $('#t_resultat').innerHTML = `<div class="avert">✗ ${e(err.message)}</div>`; }
+  };
+}
+
+/* ---- test du micro ----
+   `no-speech` en boucle veut dire que le navigateur ouvre le micro et n'entend
+   RIEN. Aucune page ne peut réparer ça — mais elle peut prouver d'où vient le
+   silence, ce qui évite de chercher un bug dans le code. */
+let microEnCours = false;
+
+async function listerMicros(){
+  try{
+    const entrees = (await navigator.mediaDevices.enumerateDevices()).filter((d)=>d.kind==='audioinput');
+    $('#m_liste').innerHTML = entrees.length
+      ? entrees.map((d,i)=>`<option value="${e(d.deviceId)}">${e(d.label||('Entrée '+(i+1)+' — nom masqué avant autorisation'))}</option>`).join('')
+      : '<option value="">Aucune entrée audio détectée</option>';
+    return entrees;
+  }catch(_){ return []; }
+}
+
+function brancherMicro(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('#m_verdict').innerHTML = '❌ Ce navigateur ne donne pas accès au micro.';
+    $('#m_test').disabled = true;
+    return;
+  }
+  if(!window.isSecureContext){
+    $('#m_verdict').innerHTML = `❌ <b>Micro bloqué : contexte non sécurisé.</b><br>Les navigateurs
+      n'ouvrent le micro qu'en <b>HTTPS</b> ou sur <b>localhost</b>. Ouvre cette page depuis la
+      machine qui fait tourner le serveur (<code>http://localhost:8090/admin/</code>).`;
+    $('#m_test').disabled = true;
+    return;
+  }
+  listerMicros();
+  $('#m_test').onclick = testerMicro;
+}
+
+async function testerMicro(){
+  if(microEnCours) return;
+  const verdict = $('#m_verdict'), barre = $('#m_barre');
+  verdict.textContent = 'Ouverture du micro…';
+
+  let flux;
+  try{
+    const id = $('#m_liste').value;
+    flux = await navigator.mediaDevices.getUserMedia({ audio: id ? {deviceId:{exact:id}} : true });
+  }catch(err){
+    verdict.innerHTML = `❌ <b>Impossible d'ouvrir le micro</b> (${e(err.name)}).<br>
+      Sous Windows : <i>Paramètres → Confidentialité → Microphone</i>, et surtout
+      <b>« Autoriser les applications de bureau »</b>.`;
+    return;
+  }
+  await listerMicros();          // les noms n'apparaissent qu'une fois l'autorisation donnée
+  microEnCours = true;
+
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const an = ctx.createAnalyser(); an.fftSize = 512;
+  ctx.createMediaStreamSource(flux).connect(an);
+  const tampon = new Uint8Array(an.fftSize);
+  let maxi = 0; const t0 = Date.now();
+
+  (function boucle(){
+    an.getByteTimeDomainData(tampon);
+    let crete = 0;
+    for(const v of tampon) crete = Math.max(crete, Math.abs(v-128));
+    const niveau = Math.min(100, Math.round(crete/128*300));   // ×3 : la parole normale est basse
+    maxi = Math.max(maxi, niveau);
+    barre.style.width = niveau+'%';
+    barre.style.background = niveau>6 ? 'var(--ok)' : 'var(--faint)';
+    if(Date.now()-t0 < 10000){
+      verdict.textContent = `Parle… (${Math.ceil((10000-(Date.now()-t0))/1000)} s)`;
+      requestAnimationFrame(boucle);
+    }else{
+      flux.getTracks().forEach((t)=>t.stop()); ctx.close();
+      microEnCours = false; barre.style.width = '0';
+      verdict.innerHTML = maxi > 15
+        ? `✅ <b>Le micro entend bien</b> (niveau ${maxi}%).<br>Si la dictée dit quand même
+           « no-speech », Windows n'utilise pas CE micro par défaut : <i>Paramètres → Son → Entrée</i>.`
+        : maxi > 4
+          ? `⚠️ <b>Signal très faible</b> (${maxi}%). Monte le volume d'entrée et rapproche-toi.`
+          : `❌ <b>Aucun son ne rentre</b> (${maxi}%).<br>
+             <b>Essaie d'abord</b> : un appel test Teams, raccrocher, revenir — c'est ce qui a
+             débloqué ici.<br>Puis : touche de coupure micro du clavier (souvent F4) ·
+             <i>Son → Entrée</i> (bon périphérique ? volume ?) · une visio restée ouverte.`;
+    }
+  }());
+}
+
+async function chargerGarde(frais){
+  try{ GARDE = await api('GET','/api/admin/presence'+(frais?'?frais=1':'')); }
+  catch(err){ toast('✗ '+err.message); }
+}
+
+async function chargerAppareils(){
+  try{ APPAREILS = (await api('GET','/api/admin/appareils')).appareils; }catch(_){}
+}
+
+/* =====================================================================
+   Thème — même principe que sur l'écran mural (choix mémorisé, appliqué tôt)
+   ===================================================================== */
+const T = localStorage.getItem('theme-admin');
+if(T) document.documentElement.dataset.theme = T;
+$('#theme').onclick = ()=>{
+  const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = n;
+  localStorage.setItem('theme-admin', n);
+};
+
+/* =====================================================================
+   Amorçage : une session encore valide évite de redemander le code
+   ===================================================================== */
+(async ()=>{
+  await preparerConnexion();
+  if(JETON){
+    try{
+      const d = await (await fetch('/api/session',{headers:{'x-session':JETON}})).json();
+      if(d.moi && d.moi.admin){ MOI = d.moi; return demarrer(); }
+    }catch(_){}
+    localStorage.removeItem('admin-jeton'); JETON='';
+  }
+})();
+</script>

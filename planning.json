@@ -1,0 +1,61 @@
+{
+  "_lisezmoi": "Plannings hebdo des enfants. DONNÉES D'EXEMPLE — à remplacer à la rentrée. Modifiable directement ici : le serveur relit le fichier à chaque rafraîchissement de l'écran, pas besoin de redémarrer. Jours acceptés : Lun Mar Mer Jeu Ven Sam Dim. Types : ecole, activite, perso.",
+  "exemple": true,
+  "personnes": [
+    {
+      "nom": "Enora",
+      "couleur": "#ff7ab8",
+      "semaine": {
+        "Lun": [
+          { "h": "08:00", "fin": "17:00", "quoi": "Collège", "ou": "Externat", "type": "ecole" },
+          { "h": "17:45", "fin": "19:00", "quoi": "Danse", "ou": "Salle Watremez", "type": "activite" }
+        ],
+        "Mar": [
+          { "h": "08:00", "fin": "16:00", "quoi": "Collège", "ou": "Externat", "type": "ecole" }
+        ],
+        "Mer": [
+          { "h": "08:00", "fin": "12:00", "quoi": "Collège", "ou": "Externat", "type": "ecole" },
+          { "h": "14:00", "fin": "15:30", "quoi": "Piscine", "ou": "Piscine de Roubaix", "type": "activite" }
+        ],
+        "Jeu": [
+          { "h": "08:00", "fin": "17:00", "quoi": "Collège", "ou": "Externat", "type": "ecole" },
+          { "h": "18:00", "fin": "19:30", "quoi": "Danse", "ou": "Salle Watremez", "type": "activite" }
+        ],
+        "Ven": [
+          { "h": "08:00", "fin": "16:00", "quoi": "Collège", "ou": "Externat", "type": "ecole" }
+        ],
+        "Sam": [
+          { "h": "10:00", "fin": "11:30", "quoi": "Solfège", "ou": "Conservatoire", "type": "activite" }
+        ],
+        "Dim": []
+      }
+    },
+    {
+      "nom": "Martial",
+      "couleur": "#4fd1c5",
+      "semaine": {
+        "Lun": [
+          { "h": "08:30", "fin": "16:30", "quoi": "École", "ou": "Classe de CM2", "type": "ecole" }
+        ],
+        "Mar": [
+          { "h": "08:30", "fin": "16:30", "quoi": "École", "ou": "Classe de CM2", "type": "ecole" },
+          { "h": "17:15", "fin": "18:30", "quoi": "Judo", "ou": "Dojo municipal", "type": "activite" }
+        ],
+        "Mer": [
+          { "h": "09:00", "fin": "12:00", "quoi": "Centre de loisirs", "ou": "", "type": "activite" }
+        ],
+        "Jeu": [
+          { "h": "08:30", "fin": "16:30", "quoi": "École", "ou": "Classe de CM2", "type": "ecole" },
+          { "h": "17:15", "fin": "18:30", "quoi": "Judo", "ou": "Dojo municipal", "type": "activite" }
+        ],
+        "Ven": [
+          { "h": "08:30", "fin": "16:30", "quoi": "École", "ou": "Classe de CM2", "type": "ecole" }
+        ],
+        "Sam": [
+          { "h": "10:30", "fin": "12:00", "quoi": "Foot", "ou": "Stade Dubrulle", "type": "activite" }
+        ],
+        "Dim": []
+      }
+    }
+  ]
+}

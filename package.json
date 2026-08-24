@@ -1,0 +1,28 @@
+{
+  "name": "maison-app",
+  "version": "1.0.0",
+  "description": "Écran Maison — tableau de bord familial : écran mural en cuisine + app iPhone, base SQLite locale, synchro temps réel. Hébergé sur le PC, portable sur le Mac mini.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sauvegarder": "node outils/sauvegarder.js",
+    "migrer": "node outils/migrer-notion-vers-sqlite.js",
+    "icones": "node outils/faire-icones.js",
+    "admin": "node outils/admin.js",
+    "recettes": "node outils/remplir-recettes.js --etat",
+    "test": "node outils/tester-tout.js --court",
+    "test-detail": "node outils/tester-tout.js",
+    "tester": "node outils/tester-recette.js --quantites",
+    "vocal": "node outils/tester-vocal.js --lot --sec"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-ical": "^0.18.0"
+  }
+}
