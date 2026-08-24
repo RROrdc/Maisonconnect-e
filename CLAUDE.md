@@ -890,6 +890,25 @@ Corrigé au passage, même famille : les occurrences récurrentes de journée en
 ### Vérifié
 **194 tests, 0 échec.** Vérifié en vrai : *« du télétravail de midi à dix-sept heures, puis Le Touquet »*.
 
+## 2 sexdecies. 📦 LE CODE EST SUR GITHUB (24/08/2026)
+Dépôt **privé** : `https://github.com/RROrdc/Maisonconnect-e` — 61 fichiers, branche `main`.
+
+### Ce qui n'y est PAS, et pourquoi
+Le § 6 l'interdisait déjà ; le `.gitignore` le rend impossible.
+- **`.env`** — clé Anthropic et token Notion **en clair**. ⚠️ Un dépôt privé se clone, se partage, se transfère : une clé exposée reste exposée, et **l'historique Git garde tout**, même après suppression du fichier. C'est pour ça qu'on ne l'y met pas *au départ* plutôt que de l'en retirer ensuite.
+- **`maison.db` + `sauvegardes/`** — menus, courses, emplois du temps des enfants, dates de naissance, appareils enrôlés. La seule copie des données du foyer : elle se sauvegarde, elle ne se publie pas.
+- **`public/plats/`** — 8,5 Mo de photos récupérées sur des sites de cuisine. Ce n'est pas à nous de les redistribuer, et elles se régénèrent en un clic (/admin/ → Repas).
+- **`node_modules/`** — `npm ci` les reconstruit à l'identique.
+- **`.claude/settings.local.json`** — spécifique à cette machine.
+
+**Vérifié avant ET après le push**, pas seulement à l'écriture du `.gitignore` : recherche de `sk-ant-api03`, `ntn_`, et de l'URL du calendrier publié dans **tous les fichiers indexés**, puis contrôle du contenu réellement arrivé sur GitHub. Aucun secret.
+
+### `README.md` ajouté
+Ce que fait le projet, l'architecture, les trois principes tenus dans le code (la machine propose / rien ne se supprime vraiment / aucune destruction par la voix), la mise en route, les tests, les sauvegardes, ce qui est délibérément exclu du dépôt, et la feuille de route matériel. `CLAUDE.md` reste la mémoire détaillée — c'est lui qui a permis de reconstruire le serveur après la quarantaine.
+
+### ⚠️ Rappel du § 5 quater, obstacle n° 4
+Le projet est développé sur une machine dont Rémi n'est pas administrateur, sur un réseau d'entreprise. Le pousser sur un GitHub **personnel** est cohérent avec le conseil « migrer sur du matériel personnel avant tout développement à visée commerciale » — mais le développement, lui, se fait toujours sur le poste professionnel. Le point reste ouvert.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
