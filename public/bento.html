@@ -964,9 +964,12 @@ function render(){
     const row=S.menu.find(m=>(m.jour||'').startsWith(d))||{};
     const fiche=(S.plats||[]).find(p=>p.id===row.soirId);
     const ouvrable=fiche&&fiche.recette;
+    /* L'emoji vient du SERVEUR (fiche du plat, ou déduit du nom là-bas) : c'est
+       la même valeur que voit l'app, et elle est corrigeable dans /admin/.
+       `picto()` ne sert plus que de filet si un vieux cache répond sans lui. */
     const vignette=row.soirPhoto
       ? `<img src="${esc(row.soirPhoto)}" alt="" loading="lazy">`
-      : (fiche&&fiche.emoji?esc(fiche.emoji):picto(row.soir));
+      : esc(row.soirEmoji || (fiche&&fiche.emoji) || picto(row.soir));
     return `<div class="repas ${i===ti?'today':''}"><span class="j">${d}</span>
       <span class="pic ${row.soirPhoto?'aphoto':''} ${ouvrable?'clic':''}"
             ${ouvrable?`onclick="event.stopPropagation();ouvrirRecette('${row.soirId}',${row.soirCouverts||4})"`:''}
@@ -1376,7 +1379,7 @@ function body(k){
          montrer : un bouton qui ouvre une page vide use la confiance. */
       const f=(S.plats||[]).find(p=>p.id===m.soirId);
       return `<div class="pill" style="display:block;background:var(--card)">
-        <div class="jsep">${m.soirPhoto?`<img src="${esc(m.soirPhoto)}" alt="" style="width:26px;height:26px;border-radius:7px;object-fit:cover;vertical-align:-7px;margin-right:6px">`:picto(m.soir)} ${esc(m.jour)}
+        <div class="jsep">${m.soirPhoto?`<img src="${esc(m.soirPhoto)}" alt="" style="width:26px;height:26px;border-radius:7px;object-fit:cover;vertical-align:-7px;margin-right:6px">`:esc(m.soirEmoji||picto(m.soir))} ${esc(m.jour)}
           ${f&&f.recette?`<button class="rec-courses" onclick="ouvrirRecette('${m.soirId}',${m.soirCouverts||4})">Voir la recette</button>`:''}</div>
         ${menuRow(m,'midi')}${menuRow(m,'soir')}</div>`;
     }).join('');
@@ -1707,14 +1710,15 @@ function renderSaver(){
   const ev=evtsDuJour(new Date());
   const dernier=[...S.postits].sort((a,b)=>(b.pin?1:0)-(a.pin?1:0))[0];
   const co=S.courses.filter(x=>!x.pris).length,to=S.todos.filter(x=>!x.done).length;
-  const soir=(S.menu.find(m=>(m.jour||'').startsWith(DAYS[todayIdx()]))||{}).soir;
+  const repasSoir=S.menu.find(m=>(m.jour||'').startsWith(DAYS[todayIdx()]))||{};
+  const soir=repasSoir.soir;
 
   document.getElementById('svGrid').innerHTML=`
     <div class="sv-w"><div class="wt">Aujourd'hui</div>${
       ev.length?ev.slice(0,4).map(e=>`<div class="row"><b>${heureEvt(e)}</b><span>${esc(e.summary)}</span></div>`).join('')
               :'<div class="wm">Rien de prévu</div>'}</div>
     <div class="sv-w"><div class="wt">Ce soir</div>
-      <div class="wm">${picto(soir)} ${esc(soir)||'à définir'}</div>
+      <div class="wm">${esc(repasSoir.soirEmoji||picto(soir))} ${esc(soir)||'à définir'}</div>
       <div class="ws">${co} article(s) à acheter · ${to} tâche(s) à faire</div></div>
     <div class="sv-w"><div class="wt">Dernier mot</div>${
       dernier?`<div class="wm">${esc(dernier.message)}</div><div class="ws">— ${esc(dernier.who)}</div>`

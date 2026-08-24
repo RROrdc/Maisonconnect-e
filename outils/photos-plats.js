@@ -18,6 +18,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const donnees = require(path.join(__dirname, '..', 'donnees'));
 const recettes = require(path.join(__dirname, '..', 'recettes'));
 const recherche = require(path.join(__dirname, '..', 'recettes', 'recherche'));
+const pictos = require(path.join(__dirname, '..', 'recettes', 'pictos'));
 
 const args = process.argv.slice(2);
 const VRAIMENT = args.includes('--vraiment');
@@ -31,7 +32,7 @@ const GEN = donnees.reglage('photos_generiques', '');
   if (!plats.length) { console.log('\n✓ Tous les plats ont déjà une photo.\n'); return; }
 
   console.log(`\n${plats.length} plat(s) sans photo${VRAIMENT ? '' : '  —  SIMULATION, rien ne sera écrit'}\n`);
-  let trouvees = 0; const refuses = [];
+  let trouvees = 0; let emojis = 0; const refuses = [];
 
   for (const plat of plats) {
     if (String(plat.photo || '').trim()) { console.log(`  = ${plat.nom} — a déjà une photo, laissée telle quelle`); continue; }
@@ -46,6 +47,18 @@ const GEN = donnees.reglage('photos_generiques', '');
           ? ` — meilleur écarté « ${c.titre} » : ${!c.teteOk ? 'pas le même plat'
             : (!c.tousCouverts ? 'il manque un mot du plat' : 'trop de mots étrangers')}`
           : ' — aucun résultat'));
+
+        /* Pas de photo ⇒ au moins un emoji. Une case vide sur un mur, ce n'est
+           pas « pas d'image », c'est un trou dans la mise en page. Il est
+           ENREGISTRÉ (et non simplement deviné à l'affichage) pour que Rémi
+           puisse le corriger dans /admin/ ; un emoji choisi n'est jamais
+           écrasé. */
+        if (!String(plat.emoji || '').trim()) {
+          const em = pictos.deviner(plat.nom);
+          emojis++;
+          if (VRAIMENT) donnees.enregistrerPlat({ ...plat, emoji: em });
+          console.log(`       ${em}  emoji ${VRAIMENT ? 'posé' : 'à poser'} faute de photo`);
+        }
         continue;
       }
 
@@ -70,11 +83,12 @@ const GEN = donnees.reglage('photos_generiques', '');
   }
 
   console.log(`\n${trouvees}/${plats.length} plat(s) ${VRAIMENT ? 'ont reçu' : 'recevraient'} une photo.`);
+  if (emojis) console.log(`${emojis} plat(s) ${VRAIMENT ? 'ont reçu' : 'recevraient'} un emoji à défaut de photo.`);
   if (refuses.length) {
-    console.log(`\n${refuses.length} sans correspondance : ${refuses.join(', ')}`);
+    console.log(`\n${refuses.length} sans photo : ${refuses.join(', ')}`);
     console.log('  → souvent une faute de frappe dans le nom, ou un intitulé qui n\'est pas');
-    console.log('    un plat (« barbecue », « Soupe & tartines »). Corriger le nom dans');
-    console.log('    /admin/ → Repas suffit en général ; sinon un emoji fait très bien l\'affaire.');
+    console.log('    un plat. Corriger le nom dans /admin/ → Repas, ou chercher d\'autres');
+    console.log('    mots avec « 🔎 Trouver en ligne ». L\'emoji reste modifiable à la main.');
   }
   if (!VRAIMENT && trouvees) console.log('\n(simulation — relance avec --vraiment pour enregistrer)');
   console.log('');

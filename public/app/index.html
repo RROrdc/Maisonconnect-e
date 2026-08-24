@@ -189,6 +189,12 @@ main{padding:4px 18px 34px}
 /* Vignette du plat dans le menu — c'est aussi le bouton qui ouvre la recette. */
 .mini{width:42px;height:42px;border-radius:12px;object-fit:cover;flex:0 0 auto;
   box-shadow:var(--sh);display:block}
+/* Faute de photo, l'emoji occupe EXACTEMENT la même case : sans lui, les lignes
+   sans photo n'avaient pas la même indentation que les autres, et la colonne des
+   titres se décalait d'une ligne à l'autre. Pas d'ombre — c'est un pictogramme
+   posé sur la carte, pas une vignette. */
+.mini.emo{display:flex;align-items:center;justify-content:center;font-size:24px;
+  background:var(--card2);box-shadow:none}
 
 /* Choix du nombre de convives : des boutons, pas une liste déroulante — on s'en
    sert souvent d'une main, parfois en cuisinant. */
@@ -505,7 +511,8 @@ RENDU.jour = ()=>{
   <div class="carte"><h3><span class="pt" style="background:var(--menu)"></span>Repas du jour</h3>
     ${repas ? `<div class="li menu">
       ${repas.soirPhoto?`<img class="mini" src="${e(repas.soirPhoto)}" alt=""
-          ${platDe(repas.soirId)&&platDe(repas.soirId).recette?`data-recette="${e(repas.soirId)}" data-couverts="${e(repas.soirCouverts||4)}"`:''}>`:''}
+          ${platDe(repas.soirId)&&platDe(repas.soirId).recette?`data-recette="${e(repas.soirId)}" data-couverts="${e(repas.soirCouverts||4)}"`:''}>`
+        : (repas.soirEmoji?`<span class="mini emo">${e(repas.soirEmoji)}</span>`:'')}
       <div class="t">${e(repas.soir||'—')}
         <div class="d">midi · ${e(repas.midi||'—')}</div></div>
       ${platDe(repas.soirId)&&platDe(repas.soirId).recette
@@ -601,7 +608,7 @@ RENDU.menu = ()=>{
       ${m.soirPhoto
         ? `<img class="mini" src="${e(m.soirPhoto)}" alt="" loading="lazy"
              ${ouvrable?`data-recette="${e(m.soirId)}" data-couverts="${e(m.soirCouverts||4)}"`:''}>`
-        : ''}
+        : (m.soirEmoji?`<span class="mini emo">${e(m.soirEmoji)}</span>`:'')}
       <div class="t">${e(m.soir||'— à définir —')}
         <div class="d">midi · ${e(m.midi||'—')}${f&&f.duree?' · '+e(f.duree):''}${
           m.soirCouvertsChoisi?' · <b>'+e(m.soirCouverts)+' couverts</b>':''}</div></div>

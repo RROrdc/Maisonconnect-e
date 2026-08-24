@@ -1271,7 +1271,17 @@ app.post('/api/admin/plats/photos', async (req, res) => {
         /* Pas de correspondance assez nette : on le DIT, on ne prend rien.
            Une vignette fausse sur un mur de cuisine se remarque tout de suite,
            et fait douter de tout le reste. */
-        if (!r) { bilan.sansCorrespondance.push(plat.nom); continue; }
+        if (!r) {
+          bilan.sansCorrespondance.push(plat.nom);
+          /* Mais on ne laisse pas la case vide : un emoji déduit du nom vaut
+             mieux qu'un trou dans la mise en page. Enregistré, donc corrigeable
+             ici même ; un emoji déjà choisi n'est jamais écrasé. */
+          if (!String(plat.emoji || '').trim()) {
+            donnees.enregistrerPlat({ ...plat, emoji: recettes.pictos.deviner(plat.nom) });
+            bilan.emojis = (bilan.emojis || 0) + 1;
+          }
+          continue;
+        }
         donnees.enregistrerPlat({ ...plat, photo: r.photo, source_url: plat.source_url || r.url });
         bilan.trouvees++;
       } catch (e) { bilan.echecs.push(`${plat.nom} (${e.message})`); }

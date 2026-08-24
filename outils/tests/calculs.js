@@ -10,6 +10,7 @@ const rayons = require(path.join(__dirname, '..', '..', 'recettes', 'rayons'));
 const quantites = require(path.join(__dirname, '..', '..', 'recettes', 'quantites'));
 const recherche = require(path.join(__dirname, '..', '..', 'recettes', 'recherche'));
 const generiques = require(path.join(__dirname, '..', '..', 'recettes', 'generiques'));
+const pictos = require(path.join(__dirname, '..', '..', 'recettes', 'pictos'));
 
 /* Dates de Pâques connues : le seul moyen sérieux de valider l'algorithme est de
    le confronter à des valeurs établies ailleurs. */
@@ -77,6 +78,24 @@ const CAS_RECETTE = [
   ['Omelette / Tortillas', 'omelette epaisse ou tortilla', true],
   ['pates carbo', 'pates au pesto', false],
   ['galette sarazin jambon fromage', 'roule de galette de sarrasin a la spiruline', false],
+];
+
+/* Emoji déduit du nom. Les deux premiers sont les PIÈGES DE SOUS-CHAÎNE trouvés
+   sur les vrais plats du foyer — la même faute que sur les rayons devinés
+   (§ 2 nonies), héritée de la table client du bento. Les suivants vérifient
+   qu'on n'a pas surcorrigé : un pluriel n'est pas un autre mot. */
+const CAS_PICTOS = [
+  ['rigatonni chorizo burrata', '🍝', '🔑 « choRIZo » ne doit pas donner du riz'],
+  ['semoule orientale', '🍚', '🔑 « seMOULE » ne doit pas donner des huîtres'],
+  ['crevettes sautées', '🦐', 'le pluriel reste reconnu'],
+  ['galettes bretonnes', '🥞', 'le pluriel reste reconnu'],
+  ['cheeseburger', '🍔', 'un mot composé reste reconnu'],
+  ['citronnelle', '🍲', 'aucun motif ne doit se déclencher'],
+  ['butter chicken', '🍗', 'le nom anglais est prévu'],
+  ['Poulet Korma', '🍗', 'le premier motif de la TABLE gagne (poulet avant curry)'],
+  ['barbecue', '🍢', ''],
+  ['Soupe & tartines', '🍲', ''],
+  ['', '', 'pas de nom, pas d’emoji'],
 ];
 
 module.exports = async function (muet) {
@@ -154,6 +173,13 @@ module.exports = async function (muet) {
     recherche.motsUtiles('Taboulé libanais persil-menthe au Magimix').join(' '));
   t.dire(recherche.motsUtiles('Poêlée de légumes du soleil')[0] === 'poelee',
     'mais « poêlée » en TÊTE nomme bien le plat, on la garde');
+
+  t.titre('Emoji déduit du nom — le repli quand il n’y a pas de photo');
+  for (const [nom, attendu, pourquoi] of CAS_PICTOS) {
+    const obtenu = pictos.deviner(nom);
+    t.dire(obtenu === attendu, `« ${nom || '(vide)'} »`,
+      obtenu === attendu ? `${obtenu || 'rien'} — ${pourquoi}` : `${obtenu} au lieu de ${attendu}`);
+  }
 
   t.titre('Photos de plats — noms qui désignent un GENRE');
   const mots = (s) => recherche.motsUtiles(s);

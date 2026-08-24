@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { JOURS, COULEURS_FAMILLE, couleurDe, trierPersonnes } = require('./commun');
 const { migrer } = require('./migrations');
+const pictos = require('../recettes/pictos');
 
 const fichier = process.env.DB_FICHIER || path.join(__dirname, '..', 'maison.db');
 
@@ -288,19 +289,29 @@ function lireMenu(ref) {
   if (reglage('menu_glissant', '1') === '1') assurerSemaine(lundi);
 
   const defaut = couvertsDefaut();
-  return q(`SELECT m.*, pm.nom AS n_midi, pm.photo AS ph_midi, ps.nom AS n_soir, ps.photo AS ph_soir
+  return q(`SELECT m.*, pm.nom AS n_midi, pm.photo AS ph_midi, pm.emoji AS em_midi,
+                   ps.nom AS n_soir, ps.photo AS ph_soir, ps.emoji AS em_soir
             FROM menu m
             LEFT JOIN plats pm ON pm.id = m.midi_plat AND pm.supprime_le IS NULL
             LEFT JOIN plats ps ON ps.id = m.soir_plat AND ps.supprime_le IS NULL
             WHERE m.date BETWEEN ? AND ? ORDER BY m.date`, ymd(lundi), ymd(dim))
-    .map((m) => ({
+    .map((m) => {
+      const midi = m.n_midi || m.midi_libre || '';
+      const soir = m.n_soir || m.soir_libre || '';
+      return {
       id: sid(m.id), jour: m.jour, date: m.date,
-      midi: m.n_midi || m.midi_libre || '',
-      soir: m.n_soir || m.soir_libre || '',
+      midi, soir,
       midiId: m.n_midi ? sid(m.midi_plat) : '',
       soirId: m.n_soir ? sid(m.soir_plat) : '',
       midiPhoto: m.ph_midi || '',
       soirPhoto: m.ph_soir || '',
+      /* Emoji servi par le SERVEUR : celui de la fiche s'il existe, sinon déduit
+         du nom. Il couvre aussi les plats écrits librement, qui n'ont pas de
+         fiche du tout. L'app n'affichait rien sans photo ; le bento avait sa
+         propre table, seul de son côté — une deuxième copie qui aurait dérivé
+         à la première correction, comme les rayons avant elle. */
+      midiEmoji: m.em_midi || pictos.deviner(midi),
+      soirEmoji: m.em_soir || pictos.deviner(soir),
       /* `couvertsProposes` est branché par le serveur d'après la garde alternée :
          il PROPOSE, il ne remplace pas. Un nombre choisi à la main l'emporte
          toujours — c'est la règle du projet, la machine propose et l'humain
@@ -309,7 +320,8 @@ function lireMenu(ref) {
       soirCouverts: m.soir_couverts || defaut,
       midiCouvertsChoisi: m.midi_couverts != null,
       soirCouvertsChoisi: m.soir_couverts != null,
-    }));
+      };
+    });
 }
 
 /* Toutes les lignes de menu, brutes, pour savoir quand un plat a été mangé la

@@ -969,8 +969,29 @@ Remarque de Rémi, et elle est juste : « pour des noms comme soupe ou barbecue 
 
 **Les 6 restants sont des refus définitifs et assumés** : « butter chicken » (nom anglais absent de 750g), « semoule orientale protéiné » (plat inventé), « rigatoni chorizo burrata », « galette sarazin jambon fromage », « Gnocchis poêlés… » et « Brochettes de porc… » (le titre le plus proche est un autre plat). Pour eux : chercher d'autres mots avec « 🔎 Trouver en ligne », coller un lien, ou poser un **emoji**.
 
+### 😀 Un emoji quand il n'y a pas de photo — `recettes/pictos.js`
+Demande de Rémi : « mets les emoji pour le restant quand on trouve pas ». Une case vide sur un mur, ce n'est pas « pas d'image », c'est un **trou dans la mise en page**.
+
+La table existait depuis le 18/08… **uniquement dans `bento.html`, côté navigateur.** Trois raisons de la remonter au serveur :
+1. **L'app famille n'en avait AUCUNE** : sans photo elle n'affichait *rien*, là où l'écran mural montrait au moins un pictogramme.
+2. Le projet a déjà payé cette duplication : les rayons de courses étaient codés en dur des deux côtés avec des listes **différentes**, et un article rangé depuis le téléphone devenait invisible sur le mur (§ 2 octies).
+3. Depuis le serveur on peut **ENREGISTRER** l'emoji dans la fiche — donc le corriger dans /admin/, ce qu'une déduction faite dans le navigateur ne permettra jamais.
+
+🐞 **Et la table héritée portait le bug des rayons.** Elle cherchait de simples sous-chaînes, sans limite de mot. Vérifié sur les vrais plats, pas supposé :
+- « cho**riz**o » → 🍚 **riz** ⇒ « rigatonni chorizo burrata » sortait un bol de riz
+- « se**moule** » → 🦪 **moules** ⇒ « semoule orientale » sortait des huîtres
+
+⇒ Aucune **lettre** ne peut précéder le motif. À droite en revanche on laisse libre, pour que « crevette**s** » et « galette**s** » restent reconnus — un pluriel n'est pas un autre mot. Onze cas de test, dont les deux pièges et les trois surcorrections possibles.
+
+- `/api/data` sert `midiEmoji` / `soirEmoji` : la fiche du plat si elle en a un, **sinon déduit du nom** — ce qui couvre aussi les plats écrits librement, qui n'ont pas de fiche du tout. L'app et le bento affichent la **même** valeur.
+- L'outil et le bouton du back-office **posent l'emoji quand aucune photo n'est trouvée**. Un emoji déjà choisi n'est **jamais** écrasé (🌽 et 🥒, saisis par la famille, ont été laissés intacts).
+- Dans l'app, l'emoji occupe **exactement la case de la vignette** : sans ça, les lignes sans photo n'avaient pas la même indentation et la colonne des titres se décalait.
+
+**Résultat : sur 42 plats, 36 ont une photo et les 6 autres un emoji — plus une seule case vide.**
+
 ### Vérifié
-**239 tests, 0 échec** (les 195 précédents + 44 sur les photos : fautes d'orthographe, requêtes de repli, noms de genre — tous hors réseau, donc rejouables). Sauvegarde faite avant écriture. 11 photos ajoutées aux vraies données, aucune écrasée.
+**250 tests, 0 échec** (les 195 précédents + 55 sur les photos : fautes d'orthographe, requêtes de repli, noms de genre, pictogrammes — tous hors réseau, donc rejouables). Sauvegarde faite avant chaque écriture. 11 photos et 4 emoji ajoutés aux vraies données, rien d'écrasé.
+- ❔ Non vérifié : le **rendu** de l'emoji dans l'app et sur le mur (pas de capture, § 2 sexies). L'API sert bien la valeur, la classe CSS est posée — mais personne n'a regardé.
 
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).

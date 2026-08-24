@@ -13,6 +13,7 @@ const images = require('./images');
 const quantites = require('./quantites');
 const commun = require('./commun');
 const recherche = require('./recherche');
+const pictos = require('./pictos');
 const rayons = require('./rayons');
 
 /* Ce que le serveur sait faire ici et maintenant. Le back-office grise les
@@ -170,5 +171,5 @@ module.exports = {
   definirModele: ia.definirModele,
   fiche, agregerIngredients, normaliserArticle,
   devinerRayon: rayons.deviner,
-  images, quantites, commun, ia, recherche, rayons,
+  images, quantites, commun, ia, recherche, rayons, pictos,
 };
