@@ -138,6 +138,21 @@ module.exports = async function (muet) {
     'les mots de 3 lettres restent, les qualificatifs partent',
     recherche.motsUtiles('Bo bun express au poulet grillé').join(' '));
 
+  t.titre('Photos de plats — requêtes de repli');
+  /* 🔑 Le plancher est le garde-fou : sans lui, « tarte aux pommes » se
+     réduirait à « tarte » et accepterait une tarte aux poireaux. */
+  for (const court of ['tarte aux pommes', 'pates carbo', 'salade de quinoa a l orientale'])
+    t.dire(recherche.variantes(court).length === 1,
+      `« ${court} » n’est PAS réduit (moins de 4 mots)`, recherche.variantes(court).join(' | '));
+  const vLong = recherche.variantes('Poulet mariné au citron et origan, pommes de terre grenaille au four extérieur');
+  t.dire(vLong.length === 2 && vLong[1] === 'poulet citron origan',
+    'un nom d’assiette entière est réduit à son noyau', vLong.join(' | '));
+  t.dire(recherche.motsUtiles('Taboulé libanais persil-menthe au Magimix').join(' ') === 'taboule libanais persil menthe',
+    '🔑 l’appareil (« au Magimix ») ne compte pas comme un mot du plat',
+    recherche.motsUtiles('Taboulé libanais persil-menthe au Magimix').join(' '));
+  t.dire(recherche.motsUtiles('Poêlée de légumes du soleil')[0] === 'poelee',
+    'mais « poêlée » en TÊTE nomme bien le plat, on la garde');
+
   t.titre('Photos de plats — faux amis refusés');
   for (const [plat, titre, pourquoi] of CAS_PHOTO_NON)
     t.dire(!recherche.convientPourPhoto(recherche.detail(plat, titre, { photo: true })),

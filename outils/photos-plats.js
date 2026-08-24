@@ -48,15 +48,19 @@ const TOUT = args.includes('--tout');
         continue;
       }
 
+      /* Dire avec QUELS mots on a fini par trouver : quand le nom complet
+         échoue et que le noyau réussit, c'est la première chose à savoir — et
+         souvent le signe qu'il vaut mieux raccourcir le nom du plat. */
+      const via = t.requete && t.requete !== plat.nom ? `  (cherché « ${t.requete} »)` : '';
       if (!VRAIMENT) {
-        console.log(`  ✓ ${plat.nom}\n       → « ${t.titre} »  ${Math.round(t.score * 100)} %`);
+        console.log(`  ✓ ${plat.nom}\n       → « ${t.titre} »  ${Math.round(t.score * 100)} %${via}`);
         trouvees++;
       } else {
         const r = await recettes.photoPour(plat.nom);
         if (!r) { refuses.push(plat.nom); console.log(`  · ${plat.nom} — page trouvée mais aucune image exploitable`); continue; }
         donnees.enregistrerPlat({ ...plat, photo: r.photo, source_url: plat.source_url || r.url });
         trouvees++;
-        console.log(`  ✓ ${plat.nom}\n       → « ${r.titre} »  ${r.score} %  ·  ${r.photo}`);
+        console.log(`  ✓ ${plat.nom}\n       → « ${r.titre} »  ${r.score} %${via}  ·  ${r.photo}`);
       }
     } catch (e) { console.log(`  ✗ ${plat.nom} — ${e.message}`); }
     /* On reste poli avec le site : une pause entre deux recherches. */

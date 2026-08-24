@@ -943,8 +943,20 @@ Question de Rémi : « les 14 plats sans photo, c'est que j'ai mal orthographié
 
 **Les 8 restants sont des refus assumés** : noms qui ne désignent pas un plat (« barbecue », « Soupe & tartines »), nom anglais absent du site (« butter chicken »), plat inventé (« semoule orientale protéiné »). Mesuré : un renommage débloquerait certains, mais « galette complète » ramène une **gaufre** — donc on propose, on ne renomme pas.
 
+### 🍽️ Suite le même jour : « j'ai ajouté des plats, recettes trouvées mais pas de photo »
+Rémi a ajouté trois plats depuis les **idées IA**. Rappel qui vaut d'être réécrit : **l'IA écrit de mémoire, elle ne navigue pas — elle ne peut JAMAIS rapporter de photo.** Seule une page réellement lue en ramène une.
+
+Mais leurs noms ont révélé un problème **que le projet s'est créé lui-même** :
+- 🔑 **Les noms d'idées IA citent les APPAREILS du foyer**, puisque le § 2 quinquies demande explicitement à l'IA d'en tenir compte : « Taboulé libanais persil-menthe **au Magimix** », « … pommes de terre grenaille **au four extérieur** ». Ces mots ne figurent dans aucun titre de recette et condamnaient la recherche. ⇒ Liste `PREPARATION` (marques + modes de cuisson), retirée des mots attendus — **mais jamais en tête** : « poêlée de légumes » et « rôti de porc » nomment bien un plat. Bénéfice secondaire : « gaspacho de tomates **au thermomix** » n'est plus pénalisé comme un mot étranger.
+- 🔑 **Ces noms décrivent une ASSIETTE, pas une recette** : « Poulet mariné au citron et origan, **pommes de terre grenaille** ». Aucune page n'indexera jamais le plat principal ET son accompagnement. ⇒ **Requête de repli** : si le nom complet échoue, on réessaie avec les **3 premiers mots significatifs**.
+  - Ce qui rend la réduction sûre : elle ne garde que des mots **du plat lui-même** (jamais un mot inventé), conserve la tête, et **ne s'applique qu'à partir de 4 mots significatifs**. Sans ce plancher, « tarte aux pommes » se réduirait à « tarte » et accepterait une **tarte aux poireaux** — précisément ce qu'on interdit. Trois tests gardent ce plancher.
+
+**Résultat : 31 → 34 photos sur 42.** « Poulet mariné… » trouve via « poulet citron origan », le taboulé et le gaspacho directement. L'outil **affiche les mots qui ont servi** quand ils diffèrent du nom : c'est souvent le signe qu'il vaut mieux raccourcir le nom du plat.
+
+**Les 8 restants sont des refus assumés** et le resteront : intitulés qui ne désignent pas un plat (« barbecue », « Soupe & tartines »), nom anglais absent du site (« butter chicken »), plat inventé (« semoule orientale protéiné »), et des cas mixtes où le titre le plus proche est un autre plat. Pour eux : renommer dans /admin/ → Repas, chercher d'autres mots avec « 🔎 Trouver en ligne », coller un lien, ou poser un **emoji** — qui fait très bien l'affaire en vignette.
+
 ### Vérifié
-**224 tests, 0 échec** (les 195 précédents + 29 sur les photos et les fautes d'orthographe, tous hors réseau donc rejouables). Sauvegarde faite avant écriture. 6 photos ajoutées aux vraies données, aucune écrasée.
+**230 tests, 0 échec** (les 195 précédents + 35 sur les photos, les fautes d'orthographe et les requêtes de repli — tous hors réseau, donc rejouables). Sauvegarde faite avant écriture. 9 photos ajoutées aux vraies données, aucune écrasée.
 
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).

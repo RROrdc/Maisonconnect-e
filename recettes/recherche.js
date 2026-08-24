@@ -64,13 +64,36 @@ const VIDES = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'a', '
   'marine', 'marines', 'marinee', 'marinees', 'fait', 'faite', 'bon', 'bonne', 'super',
   'meilleur', 'meilleure', 'parfait', 'parfaite', 'veritable', 'vraie', 'vrai']);
 
+/* Appareils et modes de cuisson. Ils décrivent COMMENT on fait, jamais QUOI.
+
+   ⚠️ Ce cas est de notre fait : le projet demande explicitement à l'IA de tenir
+   compte des appareils du foyer (§ 2 quinquies), elle nomme donc les plats
+   « Taboulé libanais au MAGIMIX », « … pommes de terre grenaille au FOUR
+   EXTÉRIEUR ». Ces mots ne figurent dans aucun titre de recette, et comptés
+   comme attendus ils condamnaient la recherche à échouer.
+
+   ⚠️ Mais « rôti », « poêlée » ou « gratin » peuvent NOMMER le plat (« poêlée de
+   légumes », « rôti de porc »). On ne les retire donc que s'ils ne sont pas en
+   tête — voir `motsUtiles`. */
+const PREPARATION = new Set([
+  'magimix', 'thermomix', 'ninja', 'woodfire', 'slushi', 'cookeo', 'companion',
+  'airfryer', 'actifry', 'robot', 'cuiseur', 'autocuiseur', 'cocotte', 'friteuse',
+  'four', 'exterieur', 'exterieure', 'poele', 'poeles', 'poelee', 'poelees',
+  'vapeur', 'mijote', 'mijotee', 'roti', 'rotie', 'rotis', 'gratine', 'gratinee',
+  'saute', 'sautee', 'sautes', 'sautees', 'braise', 'braisee', 'confit', 'confite',
+  'croustillant', 'croustillante', 'fondant', 'fondante', 'crousti', 'plancha',
+]);
+
 /* ⚠️ Seuil à 3 lettres, pas 4. Avec 4, « bo » et « bun » disparaissaient : « Bo
    bun express au poulet grillé » cherchait [express, poulet] — c'est-à-dire tout
    sauf le nom du plat. Même chose pour « riz », « pho », « wok », « thé ». Les
    mots de 3 lettres sans intérêt sont couverts par la liste ci-dessus. */
 const motsUtiles = (s) => sansAccent(s)
   .replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/)
-  .filter((m) => m.length >= 3 && !VIDES.has(m));
+  .filter((m) => m.length >= 3 && !VIDES.has(m))
+  /* Le premier mot survit toujours : c'est lui qui nomme le plat, même si c'est
+     « poêlée » ou « rôti ». Les suivants, non — là ils décrivent la cuisson. */
+  .filter((m, i) => i === 0 || !PREPARATION.has(m));
 
 /* Distance de Levenshtein, deux lignes seulement. */
 function distance(a, b) {
@@ -288,10 +311,37 @@ const convientPourPhoto = (d) => !!d.teteOk
   && (d.tousCouverts || d.extras === 0)
   && d.score >= SEUIL_PHOTO;
 
-async function meilleurPourPhoto(nomPlat) {
-  const candidats = await chercher(nomPlat, { photo: true });
-  return candidats.find(convientPourPhoto) || null;
+/* Requêtes à essayer, de la plus fidèle à la plus courte.
+
+   Les noms venus des « idées de plats » décrivent une ASSIETTE entière —
+   « Poulet mariné au citron et origan, pommes de terre grenaille au four
+   extérieur » — là où un site de cuisine indexe des RECETTES. Aucune page ne
+   portera jamais le plat principal ET son accompagnement : cherché tel quel, ce
+   nom ne peut pas aboutir.
+
+   🔑 La règle qui rend la réduction sûre : on ne garde que des mots du plat
+   LUI-MÊME, jamais un mot inventé, et la tête est toujours conservée. Le
+   candidat est ensuite jugé CONTRE LA REQUÊTE employée — ce qui reste honnête,
+   puisqu'elle ne dit rien que le plat ne dise déjà.
+
+   ⚠️ Et on ne réduit qu'à partir de 4 mots significatifs, jamais en dessous de
+   3. Sans ce plancher, « tarte aux pommes » se réduirait à « tarte » et
+   accepterait une tarte aux poireaux — exactement ce qu'on interdit. */
+function variantes(nomPlat) {
+  const mots = motsUtiles(nomPlat);
+  const out = [nettoyerTexte(nomPlat)];
+  if (mots.length >= 4) out.push(mots.slice(0, 3).join(' '));
+  return out;
 }
 
-module.exports = { chercher, meilleur, meilleurPourPhoto, convientPourPhoto,
+async function meilleurPourPhoto(nomPlat) {
+  for (const requete of variantes(nomPlat)) {
+    const candidats = await chercher(requete, { photo: true });
+    const bon = candidats.find(convientPourPhoto);
+    if (bon) return { ...bon, requete };
+  }
+  return null;
+}
+
+module.exports = { chercher, meilleur, meilleurPourPhoto, convientPourPhoto, variantes,
   correspondance, detail, motsUtiles, distance, proches, SEUIL, SEUIL_PHOTO };
