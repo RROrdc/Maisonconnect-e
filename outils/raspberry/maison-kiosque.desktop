@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=Écran Maison (kiosque)
+Comment=Ouvre le bento en plein écran au démarrage de la session
+Exec=/home/pi/maison/outils/raspberry/kiosque.sh
+X-GNOME-Autostart-enabled=true
+
+# ============================================================================
+#  À copier dans ~/.config/autostart/
+#
+#  Pourquoi CE format et pas ~/.config/wayfire.ini ni ~/.config/lxsession/… :
+#  Raspberry Pi OS a changé de compositeur trois fois (LXDE/X11 → wayfire →
+#  labwc). Le lanceur XDG « autostart » est le seul mécanisme qu'ils honorent
+#  TOUS les trois. Un fichier de session qui ne marche que sur la version
+#  installée aujourd'hui casserait au premier `apt full-upgrade`.
+#
+#  Adapter le chemin d'Exec si l'utilisateur n'est pas `pi` :
+#    sed -i "s|/home/pi/|$HOME/|" ~/.config/autostart/maison-kiosque.desktop
+# ============================================================================

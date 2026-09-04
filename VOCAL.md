@@ -232,13 +232,37 @@ Mais soyons clairs sur ce qui joue vraiment : **la qualité vient du moteur, pas
 |---|---|---|
 | **Windows** | Voix Microsoft, franchement robotiques. Les curseurs aident un peu, pas plus. | — |
 | **macOS, voix système** | Nettement meilleur. Et surtout : *Réglages → Accessibilité → Contenu énoncé → Voix système* permet de télécharger les voix **« améliorées »** et **« premium »**, qui sont d'un autre niveau. **C'est le premier geste à faire sur le Mac mini.** | gratuit |
-| **Piper** (local, hors ligne) | 🥇 Synthèse neuronale, très naturelle, **licence MIT**. Voix françaises **masculines** : `fr_FR-tom-medium`, `fr_FR-gilles-low`, `fr_FR-upmc-medium`. Tourne sans réseau. | gratuit |
+| **Piper** (local, hors ligne) | 🥇 Synthèse neuronale, très naturelle. ⚠️ **GPL-3.0** depuis oct. 2025 — voir l'encadré licence ci-dessous. Voix françaises **masculines** : `fr_FR-tom-medium`, `fr_FR-gilles-low`, `fr_FR-upmc-medium`. Tourne sans réseau. | gratuit |
 | **Fish Audio / ElevenLabs** | Le plus proche du timbre du film. | payant, **et chaque phrase sort de la maison** |
+
+### ⚠️ Licence — vérifié le 04/09/2026, et ce n'est plus ce qui était écrit ici
+
+Ce guide annonçait « Piper, licence MIT ». **C'est faux depuis octobre 2025.**
+
+| | avant | aujourd'hui |
+|---|---|---|
+| dépôt | `rhasspy/piper` | **`OHF-Voice/piper1-gpl`** (Open Home Foundation) |
+| licence du MOTEUR | MIT | **GPL-3.0** |
+| état de l'ancien | actif | **archivé en lecture seule** (oct. 2025) |
+
+🔴 **Pourquoi ça compte ici** : le projet a explicitement écarté `Pawnote` au § 2 vicies
+parce que la GPL est virale et heurterait la piste commerciale du § 5 quater. La même
+vigilance s'applique.
+
+✅ **Et pourquoi ce n'est PAS bloquant** : Piper est un **programme**, pas une bibliothèque
+qu'on lie dans `server.js`. On l'invoque en ligne de commande — exactement le montage déjà
+retenu pour `pronotepy` (§ 2 duovicies) : on paie un `spawn`, on ne contamine rien. Lier
+une bibliothèque GPL dans le code serait un tout autre sujet ; l'appeler comme un binaire
+est l'usage prévu.
+
+⚠️ **Les VOIX sont un dépôt séparé** (`rhasspy/piper-voices` sur Hugging Face) et portent
+leurs propres licences, modèle par modèle : **à vérifier pour celle qu'on retiendra**, pas
+à supposer d'après le moteur.
 
 ### 🥇 Le libre existe, et il est bon : Piper
 
 Le dépôt [`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR)
-publie les modèles français sous **licence MIT**, dont plusieurs **voix masculines** (`tom`,
+publie les modèles français, dont plusieurs **voix masculines** (`tom`,
 `gilles`, `upmc`) — c'est ce qui manquait, la voix française la plus connue (`siwis`) étant
 féminine.
 
@@ -289,6 +313,90 @@ et c'est à Rémi de trancher, pas au code.
 ⚠️ Une limite qu'Apple impose : **le mot d'éveil de Siri ne se change pas.** Le raccourci peut
 s'appeler « Jarvis », il faudra quand même dire *« Dis Siri, Jarvis »*. Le vrai « Jarvis » sans
 Apple, c'est la voie du § 3 ci-dessus.
+
+---
+
+## Reconnaître qui parle
+
+Demandé par Rémi le 04/09/2026 — **et par les enfants eux-mêmes**. C'est ce qui change la
+nature de la fonction : la surveillance, c'est être observé sans l'avoir voulu. Ici c'est une
+demande, et l'assistant qui reconnaît la voix de chacun est précisément ce qui le rend
+amusant à utiliser.
+
+**La couture est posée et testée. Le modèle, lui, vivra sur le Pi ou le Mac.**
+
+### Ce que le service qui écoute doit envoyer
+
+Un champ de plus dans le corps de `POST /api/vocal`, c'est tout :
+
+```json
+{
+  "texte": "ajoute du lait aux courses",
+  "locuteur": { "nom": "Enora", "confiance": 0.91 }
+}
+```
+
+Le serveur **ne le croit pas sur parole** — même principe que partout ici, la machine propose
+et le code décide :
+
+| condition | résultat |
+|---|---|
+| `confiance` ≥ seuil **et** prénom connu en base | l'identité est retenue |
+| `confiance` sous le seuil | ignoré → on retombe sur l'appareil (donc « Écran » au mur) |
+| `confiance` absente | traitée comme **nulle** — un service qui oublie de l'envoyer ne gagne pas une confiance implicite |
+| prénom inconnu, ou valeur collective (« Toute la famille ») | ignoré |
+
+Seuil réglable dans **/admin/ → Réglages** (`voix_seuil_locuteur`, 0,75 par défaut), sans
+redémarrer.
+
+### 🔑 Ce que la voix reconnue pilote — et ce qu'elle ne pilotera jamais
+
+| | |
+|---|---|
+| ✅ **le TON** — appellation, tutoiement, ironie | se tromper s'entend, et se corrige à la phrase suivante |
+| ✅ **l'AUTEUR d'un ajout** — une course, un post-it | l'erreur y est bénigne et se répare d'un doigt |
+| ❌ **l'ASSIGNATION d'une tâche à quelqu'un** | envoyer une corvée au mauvais enfant parce qu'un micro a hésité, c'est le genre d'erreur qu'un écran ne se fait pas pardonner |
+
+L'assignation vient donc de la **phrase** (« dis à Martial de sortir la poubelle »), jamais de
+la voix reconnue. `vocal/index.js` le garantissait déjà : `ajouter_tache` lit `intention.pour`,
+pas l'identité de celui qui parle.
+
+⚠️ **Sous le seuil, on ne devine pas.** Un ton neutre est toujours juste ; appeler Amandine
+« Monsieur » ne l'est jamais — c'est le bug du § 2 quaterdecies, qu'une erreur de
+reconnaissance recréerait à l'identique. C'est pour ça que le repli est le silence, pas le
+pari.
+
+### Vérifié sur données réelles (04/09/2026)
+
+```
+sans locuteur (mur)    → Très bien. … figure désormais sur la liste.      auteur : Écran
+Rémi, sûr (0.93)       → C'est noté, Monsieur : …                          auteur : Rémi
+Rémi, hésitant (0.40)  → … rejoint la liste de courses.                    auteur : Écran
+Amandine, sûre (0.91)  → …, ajouté à la liste.                             auteur : Amandine
+Clovis (enfant, 0.90)  → Très bien. … figure désormais sur la liste.       auteur : Clovis
+prénom inconnu (0.99)  → …                                                 auteur : Écran
+```
+
+### Ce qui reste à faire sur le matériel
+
+**Whisper transcrit, il n'identifie pas** : il faut un second modèle. Piste retenue —
+vérification du locuteur par empreinte vocale (type **ECAPA-TDNN** de SpeechBrain), en local,
+avec un **enrôlement d'environ trente secondes par personne**.
+
+💡 **Le premier levier de fiabilité n'est pas le modèle, c'est le contexte.** Le module
+`presence/` sait déjà qui est à la maison, et la détection d'arrivée saura qui vient de
+rentrer. Restreindre les candidats à trois personnes au lieu de six améliore nettement le
+résultat sans toucher au modèle — en semaine à quinze heures, il n'y a souvent qu'un locuteur
+plausible.
+
+⚠️ **Trois règles pour l'enrôlement**, qui ne sont pas de la prudence mais de la conception :
+- **tout reste sur la machine** — c'est déjà la raison d'être du mot d'éveil local ;
+- **aucun historique de qui a parlé quand** (même règle que la détection d'arrivée) : un
+  journal qui existe finit par se consulter ;
+- l'enrôlement est un **geste délibéré**, jamais un apprentissage silencieux.
+
+⚠️ **Les voix d'enfants changent vite.** Prévoir de pouvoir ré-enrôler en une minute, sinon la
+reconnaissance se dégradera sans que personne sache pourquoi.
 
 ---
 

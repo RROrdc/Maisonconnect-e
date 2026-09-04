@@ -203,6 +203,16 @@ main{padding:4px 18px 34px}
   color:var(--txt);font-size:16px;font-weight:700;cursor:pointer}
 .cvt-choix button.on{background:var(--menu);color:var(--onac)}
 
+/* Devoirs — la pastille de l'enfant prend EXACTEMENT la place de la case à
+   cocher d'une tâche, sinon la colonne des textes se décale d'une liste à
+   l'autre (défaut déjà payé sur les vignettes de plats, § 2 septdecies). */
+.li.devoir .t{font-weight:500;font-size:15.5px}
+.li.devoir .mat{font-weight:800;color:var(--agenda)}
+.li.devoir a{color:var(--agenda);word-break:break-all}
+.pastille{flex:0 0 auto;width:28px;height:28px;border-radius:50%;display:grid;
+  place-items:center;font-weight:800;font-size:13px;color:#0f1620}
+.sectd{font-size:12.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--muted);margin:4px 4px 7px}
 .vide{text-align:center;color:var(--faint);padding:30px 10px;font-size:15px}
 .avert{background:var(--alerte-fond);color:var(--alerte);border-radius:var(--r2);
   padding:12px 15px;margin-bottom:13px;font-size:14px;font-weight:600}
@@ -330,6 +340,13 @@ let jeton = localStorage.getItem('maison-jeton') || '';
 let moi   = localStorage.getItem('maison-personne') || '';
 let ECRAN = localStorage.getItem('maison-onglet') || 'jour';
 let S = {}, NOTIFS = [], MES = [], DEVERROUILLE = false;
+/* ⚠️ Les données scolaires vivent À CÔTÉ de S, jamais dedans, et ce n'est pas
+   un détail de rangement : `charger()` fait `S = await api('/api/data')`, donc il
+   REMPLACE l'objet. Sur l'écran mural, les devoirs étaient rangés dans S et
+   disparaissaient à chaque rafraîchissement — la réponse atterrissait dans
+   l'objet abandonné, sans la moindre erreur (corrigé le 03/09). Une variable
+   distincte rend le défaut impossible ici. */
+let ECOLE = {eleves:[], mien:{devoirs:[], parEleve:{}, restants:0, personnel:false}};
 let EDT_JOUR = '';                      // jour affiché dans « Mon emploi du temps »
 
 const JOURS  = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -384,6 +401,18 @@ async function charger(silencieux){
   dessiner();
 }
 
+/* École — route SÉPARÉE, et chargée à part : la première lecture interroge les
+   espaces scolaires (quelques secondes), le cache serveur répond ensuite en
+   0,2 s. L'app doit s'ouvrir sans l'attendre.
+   🔒 C'est le SERVEUR qui filtre selon le jeton de l'appareil : un enfant ne
+   reçoit que ses devoirs. Ne jamais refaire ce tri ici — du code de navigateur
+   se contourne, et l'app n'aurait même pas les autres devoirs à trier.
+   ⚠️ On relit ECOLE APRÈS l'await, pour la raison expliquée plus haut. */
+async function chargerEcole(){
+  try{ const d = await api('/api/ecole'); ECOLE = d; dessiner(); }
+  catch(err){ console.warn('[ecole]', err.message); }   /* silencieux à l'écran, journalisé côté serveur */
+}
+
 /* Le même flux que l'écran mural : une coche faite en cuisine apparaît ici tout de suite. */
 function brancherFlux(){
   try{
@@ -425,6 +454,7 @@ const ECRANS = [
   {k:'menu',   t:'Menu de la semaine', c:'--menu'},
   {k:'course', t:'Courses', c:'--course'},
   {k:'todo',   t:'À faire', c:'--todo'},
+  {k:'devoirs',t:'Devoirs', c:'--agenda'},
   {k:'agenda', t:'Agenda', c:'--agenda'},
   {k:'edt',    t:'Mon emploi du temps', c:'--agenda'},
   {k:'post',   t:'Post-it', c:'--post'},
@@ -446,6 +476,8 @@ function majPastilles(){
     course: (S.courses||[]).filter((c)=>!c.pris).length,
     todo:   (S.todos||[]).filter((t)=>!t.done).length,
     notifs: NOTIFS.filter((x)=>!x.lu).length,
+    /* Le nombre de devoirs FAITS n'intéresse personne : on compte ce qui reste. */
+    devoirs: (ECOLE.mien && ECOLE.mien.restants) || 0,
   };
   for(const [k,v] of Object.entries(n)){
     const b = document.querySelector(`[data-cpt="${k}"]`);
@@ -462,6 +494,10 @@ $('#voile').onclick  = ()=>tiroir(false);
 
 function aller(k){
   ECRAN = k; localStorage.setItem('maison-onglet', k);
+  /* On ouvre « Devoirs » précisément pour savoir où on en est : on relit, sans
+     attendre. Le cache serveur de 15 min évite d'interroger les établissements
+     à chaque coup d'œil. */
+  if(k === 'devoirs') chargerEcole();
   $$('[data-ec]').forEach((b)=>b.setAttribute('aria-current', b.dataset.ec===k?'page':'false'));
   dessiner();
 }
@@ -494,10 +530,31 @@ RENDU.jour = ()=>{
   const jr = JOURS[(new Date().getDay()+6)%7];
   const repas = (S.menu||[]).find((m)=>String(m.jour||'').startsWith(jr.slice(0,3)));
   const rest = (S.courses||[]).filter((c)=>!c.pris).length;
-  const taches = (S.todos||[]).filter((t)=>!t.done && (!t.due || t.due <= aujourdhui()));
   const evts = (S.agenda||[]).filter((a)=>String(a.start).slice(0,10) === aujourdhui());
+
+  /* 🔑 QUI REGARDE. Un parent surveille le foyer, un enfant vient chercher SA
+     journée : ce ne sont pas les mêmes besoins, donc pas le même accueil.
+     Le rôle vient du serveur (`S.moi`, résolu depuis le jeton de l'appareil) —
+     jamais du prénom mémorisé dans le navigateur, qui se change à la main. */
+  const enfant = (S.moi||{}).role === 'enfant';
+  const monPlanning = ((S.plannings?.personnes)||[]).find((p)=>p.nom===moi);
+  const mesCours = (monPlanning && (monPlanning.semaine||{})[jr]) || [];
+  /* Les autres enfants : sans intérêt pour un enfant, essentiel pour un parent. */
   const mien = (S.plannings?.personnes||[]).map((p)=>({nom:p.nom, couleur:p.couleur, c:(p.semaine||{})[jr]||[]}))
-                 .filter((p)=>p.c.length);
+                 .filter((p)=>p.c.length && (!enfant || p.nom!==moi));
+  /* Une tâche SANS destinataire concerne le foyer : elle reste affichée à tout
+     le monde. Une tâche assignée à quelqu'un d'autre n'a rien à faire chez un
+     enfant — c'est pour ça que « À faire » lui paraissait vide ET encombré. */
+  const taches = (S.todos||[]).filter((t)=>!t.done && (!t.due || t.due <= aujourdhui())
+                 && (!enfant || !t.who || t.who===moi));
+  /* 🐞 On ne gardait que « aujourd'hui et demain ». Martial, dont les deux
+     devoirs tombent le 10/09, voyait donc un accueil SANS carte Devoirs — le
+     même mensonge que sur le mur (« tout est fait » alors qu'il reste deux
+     choses). On borne par le NOMBRE, pas par la date : les trois prochaines
+     échéances, et le compte total. Un résumé reste court sans rien cacher.
+     Le lien mène à l'écran Devoirs, qui a tout. */
+  const aRendre = (((ECOLE.mien||{}).devoirs)||[]).filter((d)=>!d.fait);
+  const devoirsProches = aRendre.slice(0, 3);
 
   return `
   ${S.meteo ? `<div class="carte" style="display:flex;align-items:center;gap:15px">
@@ -506,6 +563,14 @@ RENDU.jour = ()=>{
       <div style="font-size:13.5px;color:var(--muted)">${e(S.meteo.texte)} · ${e(S.meteo.ville)}</div></div>
     <div style="text-align:right;font-size:13.5px;color:var(--muted)">
       ${e(S.meteo.min)}° / <b style="color:var(--txt)">${e(S.meteo.max)}°</b></div>
+  </div>` : ''}
+
+  ${enfant ? `<div class="carte"><h3><span class="pt" style="background:${e(couleurDe(moi))}"></span>Ma journée
+    <span class="cpt">${mesCours.length}</span></h3>
+    ${mesCours.length ? mesCours.map((c)=>`<div class="li">
+      <div class="t">${e(c.quoi)}<div class="d">${e(c.h||'')}${c.fin?'–'+e(c.fin):''}${c.ou?' · '+e(c.ou):''}</div></div></div>`).join('')
+      : '<div class="vide">Pas de cours aujourd\'hui 🎉</div>'}
+    <div class="li" data-va="edt"><div class="t" style="color:var(--agenda);font-weight:700">Ma semaine →</div></div>
   </div>` : ''}
 
   <div class="carte"><h3><span class="pt" style="background:var(--menu)"></span>Repas du jour</h3>
@@ -521,22 +586,33 @@ RENDU.jour = ()=>{
       : '<div class="vide">Rien de prévu.</div>'}
   </div>
 
-  <div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>Agenda
+  <!-- ⚠️ C'est le calendrier iCloud du FOYER, pas celui de l'enfant : on le dit,
+       sinon Martial croit y lire son emploi du temps (ses cours sont dans « Ma
+       journée » juste au-dessus). -->
+  <div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>${enfant?'Agenda de la famille':'Agenda'}
     <span class="cpt">${evts.length}</span></h3>
     ${evts.length ? evts.slice(0,4).map((a)=>`<div class="li">
       <div class="t">${e(a.summary)}<div class="d">${e(heure(a))}${a.lieu?' · '+e(a.lieu):''}</div></div></div>`).join('')
       : '<div class="vide">Journée libre.</div>'}
   </div>
 
-  ${mien.length ? `<div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>Les enfants</h3>
+  ${mien.length ? `<div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>${enfant?'Les autres':'Les enfants'}</h3>
     ${mien.map((p)=>`<div class="li"><div class="t">${e(p.nom)}
       <div class="d">${p.c.map((x)=>e((x.h||'')+' '+x.quoi)).join(' · ')}</div></div></div>`).join('')}
   </div>` : ''}
 
-  <div class="carte"><h3><span class="pt" style="background:var(--todo)"></span>À faire aujourd'hui
+  <div class="carte"><h3><span class="pt" style="background:var(--todo)"></span>${enfant?'Ce que j\'ai à faire':'À faire aujourd\'hui'}
     <span class="cpt">${taches.length}</span></h3>
     ${taches.length ? taches.slice(0,5).map(ligneTache).join('') : '<div class="vide">Rien d\'urgent 🎉</div>'}
   </div>
+
+  ${devoirsProches.length ? `<div class="carte"><h3><span class="pt" style="background:var(--agenda)"></span>Devoirs
+    <span class="cpt">${aRendre.length}</span></h3>
+    ${devoirsProches.map((d)=>ligneDevoirApp(d, !ECOLE.mien.personnel, true)).join('')}
+    ${aRendre.length > devoirsProches.length
+      ? `<div class="li" data-va="devoirs"><div class="t" style="color:var(--agenda);font-weight:700">Voir tous les devoirs →</div></div>`
+      : ''}
+  </div>` : ''}
 
   <div class="carte" style="cursor:pointer" data-va="course">
     <h3><span class="pt" style="background:var(--course)"></span>Courses
@@ -588,6 +664,57 @@ RENDU.todo = ()=>{
   const l = (S.todos||[]).slice().sort((a,b)=>(a.done?1:0)-(b.done?1:0)
     || String(a.due||'9').localeCompare(String(b.due||'9')));
   return `<div class="carte">${l.length ? l.map(ligneTache).join('') : '<div class="vide">Rien à faire 🎉</div>'}</div>`;
+};
+
+/* ---------- Devoirs ----------
+   Lecture SEULE, et c'est un choix : cocher ici créerait un second état à côté
+   de celui de l'établissement, et « fait » existerait des deux côtés sans que
+   personne sache lequel croire. L'enfant coche dans Pronote ou EcoleDirecte,
+   et l'app suit — même règle que « le calendrier fait foi » pour la garde.
+   ⚠️ Ici les liens restent ENTIERS et cliquables : sur le mur en kiosque une
+   URL est un déchet visuel, sur un téléphone c'est le devoir lui-même
+   (« répondre au questionnaire de rentrée » EST un lien). */
+const LIENS_D = /(https?:\/\/[^\s]+)/g;
+const contenuDevoir = (t)=>e(String(t||'')).replace(LIENS_D,
+  '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+/* Regroupé par ÉCHÉANCE et non par matière : la question que l'on se pose le
+   soir est « qu'est-ce qui est à rendre demain ? », jamais « qu'ai-je en maths ? ». */
+function grouperParDate(liste){
+  const par = new Map();
+  for(const d of liste){ if(!par.has(d.pour)) par.set(d.pour, []); par.get(d.pour).push(d); }
+  return [...par.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+}
+
+/* `avecDate` : sur l'écran Devoirs les lignes sont déjà groupées sous un titre
+   d'échéance — la répéter sous chaque devoir n'apprend rien et allonge la
+   ligne. Sur l'accueil il n'y a pas de groupe, donc la date est nécessaire. */
+const ligneDevoirApp = (d, avecQui, avecDate)=>`<div class="li devoir ${d.fait?'fini':''}">
+  ${avecQui?`<div class="pastille" style="background:${e(couleurEleve(d.eleve))}"
+       title="${e(d.eleve)}">${e(init(d.eleve))}</div>`:''}
+  <div class="t">${d.matiere && d.matiere!=='Matière non désignée'
+      ? `<span class="mat">${e(d.matiere)}</span> ` : ''}${contenuDevoir(d.contenu)}
+    ${(()=>{ const p=[avecDate?dateCourte(d.pour):'', avecQui?d.eleve:'',
+        d.interrogation?'<b>interrogation</b>':'', d.fait?'fait':''].filter(Boolean);
+      return p.length?`<div class="d">${p.join(' · ')}</div>`:''; })()}
+  </div></div>`;
+
+/* La couleur vient du serveur (donc de la base), comme sur le mur : Augustin n'a
+   aucun créneau de planning, il n'est donc pas dans S.personnes. */
+const couleurEleve = (n)=>((ECOLE.eleves||[]).find((x)=>x.prenom===n)||{}).couleur
+  || couleurDe(n);
+
+RENDU.devoirs = ()=>{
+  const m = ECOLE.mien || {devoirs:[], personnel:false};
+  const l = m.devoirs || [];
+  if(!l.length) return `<div class="info">Rien à rendre pour l'instant.${
+    m.personnel ? '' : " Les devoirs des enfants apparaissent ici dès que l'établissement les publie."}</div>`;
+  /* Un adulte voit plusieurs enfants : on montre alors la pastille de chacun.
+     Un enfant ne voit que les siens — une pastille répétée n'apprendrait rien. */
+  const avecQui = !m.personnel;
+  return grouperParDate(l).map(([date, siens])=>
+    `<div class="sectd">${e(dateCourte(date))}</div>
+     <div class="carte">${siens.map((d)=>ligneDevoirApp(d, avecQui, false)).join('')}</div>`).join('');
 };
 
 /* ---------- Menu de la semaine ---------- */
@@ -1248,8 +1375,12 @@ function demarrer(){
 function lancer(){
   dessinerNav();
   charger();
+  chargerEcole();                              // sans await : l'app s'ouvre d'abord
   brancherFlux();
   setInterval(()=>charger(true), 5*60*1000);   // filet + météo / agenda / actus
+  /* 15 min : c'est la durée du cache serveur. Plus souvent ne rapporterait rien,
+     moins souvent ferait rater un devoir publié dans la soirée. */
+  setInterval(chargerEcole, 15*60*1000);
 }
 
 $('#btnTheme').onclick = ()=>{

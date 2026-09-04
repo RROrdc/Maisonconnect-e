@@ -97,8 +97,12 @@ const couvertsDefaut = () => Number(reglage('couverts_defaut', 4)) || 4;
 
 /* ------------------------------------------------------------------ personnes */
 function lirePersonnes() {
-  return q(`SELECT nom, couleur, foyer FROM personnes WHERE actif = 1 ORDER BY ordre, nom`)
-    .map((p) => ({ nom: p.nom, couleur: p.couleur || COULEURS_FAMILLE[p.nom] || '', collectif: !p.foyer }));
+  /* `role` voyage avec la personne : sans lui, l'app ne peut pas adapter son
+     accueil à un enfant, et le rôle n'a rien de secret — il est déjà visible
+     dans le tiroir de chacun. */
+  return q(`SELECT nom, couleur, foyer, role FROM personnes WHERE actif = 1 ORDER BY ordre, nom`)
+    .map((p) => ({ nom: p.nom, couleur: p.couleur || COULEURS_FAMILLE[p.nom] || '',
+      role: p.role || '', collectif: !p.foyer }));
 }
 
 /* ------------------------------------------------------------------ courses */

@@ -13,7 +13,8 @@
     "test": "node outils/tester-tout.js --court",
     "test-detail": "node outils/tester-tout.js",
     "tester": "node outils/tester-recette.js --quantites",
-    "vocal": "node outils/tester-vocal.js --lot --sec"
+    "vocal": "node outils/tester-vocal.js --lot --sec",
+    "secrets": "node outils/verifier-secrets.js"
   },
   "engines": {
     "node": ">=22.5"
@@ -23,6 +24,8 @@
     "@notionhq/client": "^2.2.15",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "node-ical": "^0.18.0"
+    "jsqr": "^1.4.0",
+    "node-ical": "^0.18.0",
+    "pngjs": "^7.0.0"
   }
 }

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Écran Maison — démarrage automatique du serveur sur le Mac mini.
+
+  C'est un LaunchDAEMON, pas un LaunchAgent, et c'est délibéré : un Agent ne
+  démarre qu'à l'ouverture de session. Un Mac mini qui redémarre après une
+  coupure de courant, personne devant, n'ouvrirait jamais de session — et
+  l'écran mural resterait blanc jusqu'à ce que quelqu'un s'en aperçoive.
+  Un Daemon démarre au boot, sans personne.
+
+  `UserName` le fait tourner sous le compte de Rémi, pas sous root : la base et
+  le .env restent des fichiers utilisateur ordinaires, avec des droits normaux.
+
+  Installation — remplacer les trois marqueurs, puis :
+    sed -e "s|__NODE__|$(command -v node)|" \
+        -e "s|__CHEMIN__|$HOME/maison|" \
+        -e "s|__UTILISATEUR__|$(whoami)|" \
+        outils/mac/fr.maison.serveur.plist > /tmp/fr.maison.serveur.plist
+    sudo cp /tmp/fr.maison.serveur.plist /Library/LaunchDaemons/
+    sudo chown root:wheel /Library/LaunchDaemons/fr.maison.serveur.plist
+    sudo launchctl load -w /Library/LaunchDaemons/fr.maison.serveur.plist
+
+  Arrêter :  sudo launchctl unload /Library/LaunchDaemons/fr.maison.serveur.plist
+  Journal :  tail -f __CHEMIN__/serveur.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.maison.serveur</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__CHEMIN__/server.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__CHEMIN__</string>
+
+  <key>UserName</key>
+  <string>__UTILISATEUR__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Relance si le serveur meurt. Le throttle évite la boucle folle : si le
+       serveur plante au démarrage (base illisible, port pris), launchd
+       attendrait 10 s entre deux essais au lieu de saturer la machine. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__CHEMIN__/serveur.log</string>
+  <key>StandardErrorPath</key>
+  <string>__CHEMIN__/serveur.log</string>
+
+  <!-- Un daemon hérite d'un PATH minimal : sans ça, tout appel à un binaire
+       externe échouerait alors que la même commande marche dans le terminal. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

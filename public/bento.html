@@ -185,6 +185,27 @@
      de les ajouter — elles ne sont pas encore des articles de la liste */
   .box.on{background:var(--ac,var(--course));box-shadow:none;color:var(--onac)}
   .pill.fait .lt{color:var(--faint);text-decoration:line-through}
+  /* Devoirs — section basse de « À faire ». Volontairement PAS une tuile de
+     plus : la mise en page portrait est validée, on ne la redécoupe pas pour
+     autant d'enfants (§ 2 tervicies). Le filtre serveur garantit une à trois
+     lignes en régime normal, c'est lui qui empêche la surcharge.
+     Un devoir ne se coche pas ici (lecture seule) : la pastille de l'enfant
+     prend EXACTEMENT la place de la case, sinon la colonne des textes se
+     décale entre les deux groupes. */
+  .dvsep{display:flex;align-items:center;gap:8px;margin:10px 2px 6px;
+    font-size:11.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--faint)}
+  .dvsep::after{content:"";flex:1;height:1px;background:var(--line)}
+  .pill .av.sm{width:26px;height:26px;font-size:12px;border-radius:50%;display:grid;place-items:center;
+    flex:0 0 auto;font-weight:800;color:#0f1620}
+  .dv .mat{font-weight:700;margin-right:6px}
+  /* Le résumé : les pastilles se serrent sur une ligne et passent à la ligne
+     seulement s'il le faut — un quatrième enfant ne casserait pas la tuile. */
+  .pill.dv.resume{flex-wrap:wrap;gap:10px;cursor:pointer}
+  .dvq{display:flex;align-items:center;gap:6px}
+  .dvn{font-weight:700;font-size:14.5px}
+  .dvq.fini{opacity:.55}
+  .sheet .note{margin-top:14px;font-size:12.5px;color:var(--faint);text-align:center}
+  @media (orientation:portrait){ .pill .av.sm{width:30px;height:30px;font-size:14px} .dvsep{font-size:13px} }
   .tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;flex:0 0 auto;
     background:var(--card);color:var(--muted)}
   .tag.ac{background:color-mix(in srgb,var(--ac) 16%,var(--card));color:var(--ac)}
@@ -798,7 +819,7 @@ const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','
 /* « mai », « juin », « août » font 4 lettres ou moins : pas de point abréviatif (« août. » était faux) */
 const moisCourt=i=>MOIS[i].length<=4?MOIS[i]:MOIS[i].slice(0,4)+'.';
 
-let S={dishes:[],plats:[],menu:[],courses:[],todos:[],postits:[],agenda:[],plannings:{exemple:false,personnes:[]},meteo:null,saint:'',news:[],feries:[],anniversaires:{aujourdhui:[],prochains:[]}};
+let S={dishes:[],plats:[],menu:[],courses:[],todos:[],postits:[],agenda:[],plannings:{exemple:false,personnes:[]},meteo:null,saint:'',news:[],feries:[],anniversaires:{aujourdhui:[],prochains:[]},ecole:{eleves:[],aujourdhui:{devoirs:[],restants:0,presents:null}}};
 
 /* Jours fériés, indexés par date. Calculés par le serveur, sans réseau. */
 let FERIES={};
@@ -850,7 +871,16 @@ async function api(url,method,body){
   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||('HTTP '+r.status));}
   return r.json();
 }
-async function load(){try{S=await api('/api/data');render();if(saver.classList.contains('on'))renderSaver();
+/* ⚠️ Deux pièges ici, et le second a réellement mordu.
+   1. `S = await api(...)` REMPLACE l'objet entier : sans précaution, les
+      données scolaires disparaîtraient à chaque rafraîchissement.
+   2. 🐞 COURSE ENTRE LES DEUX CHARGEMENTS. La première version capturait
+      `S.ecole` AVANT l'`await`. Or /api/ecole répond en 0,2 s (cache serveur)
+      tandis que /api/data attend l'agenda, la météo et les actus : les devoirs
+      arrivaient donc PENDANT l'attente, et étaient écrasés par la valeur vide
+      capturée au départ. La course était perdue à chaque fois, et l'écran
+      restait vide sans la moindre erreur. On lit donc `S.ecole` APRÈS. */
+async function load(){try{const d=await api('/api/data');d.ecole=S.ecole||{eleves:[],aujourdhui:{devoirs:[],restants:0,presents:null}};S=d;render();if(saver.classList.contains('on'))renderSaver();
   /* Les réglages de voix arrivent avec les données : on les ré-applique à chaque
      fois, pour qu'un changement fait dans /admin/ prenne effet sans recharger
      l'écran mural — qu'on ne recharge jamais à la main. */
@@ -907,6 +937,60 @@ const enRetard=d=>!!d&&d<ymd(new Date());
 const triFait=(arr,champ)=>[...arr].sort((a,b)=>(a[champ]?1:0)-(b[champ]?1:0));
 const triTodos=arr=>[...arr].sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.due||'9999').localeCompare(b.due||'9999'));
 const personne=n=>((S.plannings&&S.plannings.personnes)||[]).find(p=>p.nom===n);
+/* Couleur d'un élève : elle vient du serveur (donc de la base). Augustin n'a
+   aucun créneau de planning, il n'est donc PAS dans S.plannings.personnes —
+   chercher la couleur là aurait marché pour Martial et Enora seulement. */
+const coulEleve=n=>{const e=(S.ecole.eleves||[]).find(x=>x.prenom===n);return (e&&e.couleur)||(personne(n)||{}).couleur||'var(--faint)';};
+/* Le contenu d’un devoir est du texte libre saisi par un professeur : on y
+   trouve des paragraphes de 200 caractères et des URL de formulaires entières.
+   Vu tel quel, un seul devoir mangeait quatre lignes de la tuile.
+   ⚠️ Une URL n’est ni cliquable ni utile sur un mur en kiosque : on la
+   remplace par un repère. Elle reste entière dans le panneau agrandi et dans
+   l’app, où l’enfant peut s’en servir. */
+const LIENS=/https?:\/\/\S+/g;
+const texteDevoir=(d,court)=>{
+  let t=String(d.contenu||"").replace(/\n+/g," · ");
+  t=t.replace(LIENS, court?"🔗":"$&");
+  /* Sur la tuile on tronque ; dans le panneau, la hauteur est abondante et le
+     texte complet a de la valeur (« voir le corpus en pièce jointe »). */
+  if(court&&t.length>118)t=t.slice(0,116).replace(/[\s·,;:.]+$/,"")+"…";
+  return t;
+};
+const ligneDevoir=(d,court)=>{
+  const mat=d.matiere&&d.matiere!=="Matière non désignée"?`<span class="mat">${esc(d.matiere)}</span>`:"";
+  return `<div class="pill dv ${d.fait?"fait":""}">
+    <span class="av sm" style="background:${esc(coulEleve(d.eleve))}" title="${esc(d.eleve)}">${esc((d.eleve||"?")[0])}</span>
+    <span class="lt">${mat}${esc(texteDevoir(d,court))}</span>
+    <span class="tag ${d.proche&&!d.fait?"urgent":""}">${dueLabel(d.pour)}</span></div>`;
+};
+/* Le RÉSUMÉ de la tuile : une ligne, quel que soit le nombre d'enfants.
+   Une pastille par enfant avec son compte, et c'est tout — le détail est
+   dans le panneau. Le coût en hauteur devient constant, là où une liste
+   grandissait avec la famille.
+   ⚠️ On compte les NON FAITS : « 4 devoirs » dont trois déjà cochés serait
+   un mensonge, et c'est le nombre qu'on lit de loin. */
+const resumeDevoirs=()=>{
+  const dv=(S.ecole.aujourdhui&&S.ecole.aujourdhui.devoirs)||[];
+  /* On compte SÉPARÉMENT ce qui reste et ce qui est fait : un enfant dont tout
+     est coché ne doit pas disparaître de la ligne — c'est justement le moment
+     où l'on veut le voir, avec un ✓. Sans ça, « et Martial ? » reste sans
+     réponse, et l'absence se lit comme une panne. */
+  const par=new Map();
+  for(const d of dv){
+    const e=par.get(d.eleve)||{reste:0,total:0};
+    e.total++; if(!d.fait)e.reste++;
+    par.set(d.eleve,e);
+  }
+  if(!par.size)return '';
+  const total=[...par.values()].reduce((a,e)=>a+e.reste,0);
+  return `<div class="dvsep">Devoirs</div>
+    <div class="pill dv resume" onclick="openTile('devoirs')">
+      ${[...par].map(([n,e])=>`<span class="dvq${e.reste?'':' fini'}">
+        <span class="av sm" style="background:${esc(coulEleve(n))}">${esc(n[0])}</span>
+        <span class="dvn">${esc(n)}</span><span class="tag">${e.reste||'✓'}</span></span>`).join('')}
+      <span class="lt"></span>
+      <span class="tag ac">${total?total+' à faire':'tout est fait'}</span></div>`;
+};
 function creneauxDuJour(p,i){return (p.semaine&&p.semaine[DAYS[i===undefined?todayIdx():i]])||[];}
 const slotLine=c=>`<div class="ks"><span class="kt">${c.fin?`${esc(c.h)}–${esc(c.fin)}`:esc(c.h)}</span>
   <span class="kq">${esc(c.quoi)}${c.ou?` <span class="ko">· ${esc(c.ou)}</span>`:''}</span></div>`;
@@ -994,6 +1078,9 @@ function render(){
       <span class="lt">${esc(x.tache)}</span>${x.who?`<span class="tag ac">${esc(x.who)}</span>`:''}
       ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}</div>`
   ).join('')||'<div class="vide">Rien à faire 🎉</div>';
+  /* Une seule ligne, quel que soit le nombre d'enfants : le détail est dans
+     le panneau « Devoirs des enfants », qu'un toucher sur la ligne ouvre. */
+  document.getElementById('todoBody').innerHTML+=resumeDevoirs();
 
   // agenda : mini-mois + événements du jour
   const auj=new Date(),ev=evtsDuJour(auj);
@@ -1043,6 +1130,26 @@ function majNews(idBloc,idVp){
 
 /* ---------- actions ---------- */
 async function refresh(){await load();if(openK)drawSheet(openK);}
+
+/* École — route SÉPARÉE de /api/data, et chargée à part (§ 2 tervicies) :
+   la première lecture prend quelques secondes (connexion aux espaces
+   scolaires), le cache serveur répond ensuite en 0,2 s. L'écran ne doit jamais
+   attendre après elle — d'où l'absence de `await` au démarrage.
+   Un échec est SILENCIEUX à l'écran : un mur de cuisine n'a pas à afficher
+   « EcoleDirecte a refusé le jeton ». La panne part au journal côté serveur,
+   qui est fait pour ça. */
+async function chargerEcole(){
+  /* 🐞 `S.ecole = await api(...)` était FAUX, et le défaut était intermittent.
+     En JS la cible d'une affectation résout sa base AVANT l'await : `S` était
+     donc capturé au départ, et `load()` remplace `S` par un objet NEUF entre
+     les deux. Les devoirs atterrissaient dans l'objet abandonné — aucune
+     erreur, aucune trace, une tuile vide. Au premier chargement /api/ecole est
+     froid (plusieurs secondes) donc /api/data gagne la course et l'écran reste
+     vide ; après un F5 le cache répond en 0,2 s et ça marche. D'où « ça marche
+     une fois sur deux ». On relit donc `S` APRÈS l'await. */
+  try{ const e=await api('/api/ecole'); S.ecole=e; render(); if(openK)drawSheet(openK); }
+  catch(e){ console.warn('[ecole]',e.message); }   /* rien à l'écran, mais une trace : § 2 octies */
+}
 async function toggleCourse(id,pris){try{await api('/api/course/'+id,'PATCH',{pris});await refresh();}catch(e){showErr(e.message);}}
 async function toggleTodo(id,done){try{await api('/api/todo/'+id,'PATCH',{done});await refresh();}catch(e){showErr(e.message);}}
 
@@ -1159,7 +1266,10 @@ const delBtn=(kind,id)=>`<button class="del" onclick="event.stopPropagation();as
 /* ---------- panneau ---------- */
 const IC={menu:['menu','Menu de la semaine','var(--menu)'],course:['cart','Liste de courses','var(--course)'],
   todo:['check','À faire','var(--todo)'],post:['note','Post-it famille','var(--post)'],
-  agenda:['cal','Agenda (perso)','var(--agenda)']};
+  agenda:['cal','Agenda (perso)','var(--agenda)'],
+  /* Panneau à part, comme les plannings : les devoirs ne sont pas des tâches
+     du foyer, et les mêler ferait une liste que personne ne sait plus lire. */
+  devoirs:['bag','Devoirs des enfants','var(--agenda)']};
 let openK=null;
 function drawSheet(k){
   let icone,titre,ac;
@@ -1310,6 +1420,28 @@ async function setCouverts(id,champ,valeur){
 }
 
 function body(k){
+  /* Devoirs — tout, groupé par enfant puis par échéance. Ici la hauteur est
+     abondante (le panneau fait 88 % de l'écran et défile) : aucune raison de
+     tronquer, et le texte complet a de la valeur (« voir le corpus en pièce
+     jointe »). Les liens restent des repères 🔗 : on ne clique pas une URL
+     sur un mur en kiosque. */
+  if(k==='devoirs'){
+    const dv=(S.ecole.aujourdhui&&S.ecole.aujourdhui.devoirs)||[];
+    if(!dv.length)return '<div class="vide">Rien à rendre dans les jours qui viennent.</div>';
+    const par=new Map();
+    for(const d of dv){ if(!par.has(d.eleve))par.set(d.eleve,[]); par.get(d.eleve).push(d); }
+    let h='';
+    for(const [nom,siens] of par){
+      const reste=siens.filter(d=>!d.fait).length;
+      h+=`<div class="dvsep"><span class="av sm" style="background:${esc(coulEleve(nom))}">${esc(nom[0])}</span>
+        ${esc(nom)} — ${reste?reste+' à faire':'tout est fait'}</div>`+siens.map(d=>ligneDevoir(d,false)).join('');
+    }
+    /* Dire d'où ça vient : sans ça, un cahier de textes vide passe pour une
+       panne de l'écran (§ 2 nonies — une panne qui n'existe que dans le
+       journal n'existe pour personne). */
+    const src=(S.ecole.eleves||[]).map(e=>e.prenom+' · '+e.source).join('   ');
+    return h+`<div class="note">Publié par les établissements. ${esc(src)}</div>`;
+  }
   if(k==='course'){
     const pris=S.courses.filter(x=>x.pris).length;
     let h=`<div class="form"><input type="text" id="cNew" placeholder="Ajouter un article…">
@@ -1350,6 +1482,9 @@ function body(k){
         <span class="lt">${esc(x.tache)}</span>${x.who?`<span class="tag ac">${esc(x.who)}</span>`:''}
         ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}${delBtn('todo',x.id)}</div>`
     ).join('')||'<div class="vide">Rien à faire 🎉</div>';
+  /* Le panneau « À faire » garde les TÂCHES ; les devoirs ont le leur, sinon
+     on y mélange ce que la famille décide et ce que l'école impose. */
+    h+=resumeDevoirs();
     return h;
   }
 
@@ -1879,8 +2014,12 @@ function basculeVoix(){
    féminine sous Windows. D'où « j'ai réglé une voix masculine et j'entends une
    voix féminine ». On attend, et on ré-applique à chaque rechargement. */
 load().then(()=>{ initVoix(); appliquerReglagesVoix(); });
+chargerEcole();                // sans await : l'écran s'affiche d'abord
 brancherFlux();
 setInterval(load,5*60*1000);   // filet de sécurité + météo / actus / agenda
+/* Toutes les 15 min : c'est la durée du cache serveur. Plus souvent ne
+   rapporterait rien, moins souvent ferait rater un devoir ajouté le soir. */
+setInterval(chargerEcole,15*60*1000);
 </script>
 </body>
 </html>

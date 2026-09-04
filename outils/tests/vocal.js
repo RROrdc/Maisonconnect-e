@@ -34,6 +34,80 @@ module.exports = async function (muet) {
   const vide = await A.api('/api/vocal', 'POST', { texte: '   ' });
   t.dire(vide.statut === 400 && !!vide.j.reponse, '400 avec une réponse DISIBLE', vide.j.reponse);
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     Reconnaissance du locuteur — demandée par Rémi le 04/09 (« c'est même
+     demandé par les enfants »). Le service qui écoute annonce
+     `locuteur: {nom, confiance}` ; le serveur ne le croit pas sur parole.
+
+     On passe par le CHEMIN RAPIDE (« ajoute … aux courses ») : il est
+     déterministe, là où le modèle a le droit de varier d'une fois sur l'autre.
+     Un test qui dépend de l'humeur d'un modèle ne prouve rien. */
+  t.titre('Reconnaissance du locuteur');
+  {
+    const dire = async (suffixe, locuteur) => {
+      const r = await A.api('/api/vocal', 'POST',
+        { texte: `ajoute ${A.MARQUE}-loc-${suffixe} aux courses`, ...(locuteur ? { locuteur } : {}) });
+      return r.j.reponse || '';
+    };
+
+    const sur = await dire('a', { nom: 'Rémi', confiance: 0.93 });
+    /* ⚠️ On n'affirme PAS « la réponse contient Monsieur » : le chemin rapide
+       choisit sa formulation par empreinte du TEXTE (§ 2 quaterdecies), et
+       l'appellation ne figure pas dans toutes les variantes — un tel test serait
+       vert ou rouge selon le nom de l'article, donc inutile.
+       La preuve déterministe est l'ÉCHO poussé sur le flux : il porte `de`,
+       c'est-à-dire l'identité que le serveur a retenue.
+       ⚠️ Et il faut le lire ICI, juste après l'appel : chaque phrase suivante
+       pousse son propre écho et écraserait celui qu'on veut observer. */
+    await A.attendre(400);
+    const echoVoix = flux.recus.filter((e) => e.type === 'notif' && e.data.vocal).pop();
+    t.dire(echoVoix && echoVoix.data.de === 'Rémi',
+      'la voix reconnue devient l’identité retenue', echoVoix && echoVoix.data.de);
+    void sur;
+    const flou = await dire('b', { nom: 'Rémi', confiance: 0.40 });
+    const madame = await dire('c', { nom: 'Amandine', confiance: 0.91 });
+    const enfant = await dire('d', { nom: 'Clovis', confiance: 0.90 });
+    const inconnu = await dire('e', { nom: 'Zoé', confiance: 0.99 });
+    const sansScore = await dire('f', { nom: 'Rémi' });
+
+    /* 🔑 En dessous du seuil on ne devine pas : un ton neutre est toujours juste,
+       appeler quelqu'un « Monsieur » à tort ne l'est jamais. C'est le bug du
+       § 2 quaterdecies qu'une erreur de reconnaissance recréerait. */
+    t.dire(!/Monsieur/.test(flou), 'sous le seuil → neutre, jamais une supposition', flou);
+    t.dire(!/Monsieur/.test(madame), 'Amandine n’est JAMAIS appelée « Monsieur »', madame);
+    t.dire(!/Monsieur/.test(enfant), 'un enfant reconnu ne reçoit pas d’appellation', enfant);
+    t.dire(!/Monsieur/.test(inconnu), 'un prénom absent de la base est ignoré', inconnu);
+    t.dire(!/Monsieur/.test(sansScore), 'une confiance absente vaut zéro',
+      'un service qui oublie de l’envoyer ne gagne pas une confiance implicite');
+
+    /* L'AUTEUR d'un ajout suit la voix reconnue — l'erreur y est bénigne et se
+       répare d'un doigt. C'est la preuve que la couture va jusqu'à la base. */
+    const courses = await A.api('/api/data');
+    const par = {};
+    for (const c of (courses.j.courses || [])) par[c.article] = c.who;
+    t.dire(par[`${A.MARQUE}-loc-a`] === 'Rémi', 'l’auteur d’un ajout suit la voix reconnue',
+      JSON.stringify(par[`${A.MARQUE}-loc-a`]));
+    t.dire(par[`${A.MARQUE}-loc-b`] === 'Écran', 'sous le seuil, l’auteur reste « Écran »',
+      JSON.stringify(par[`${A.MARQUE}-loc-b`]));
+    t.dire(par[`${A.MARQUE}-loc-e`] === 'Écran', 'un prénom inconnu n’écrit pas sous son nom');
+
+    /* 🔒 Ce qu'on N'AUTORISE PAS : qu'une voix reconnue assigne une tâche à
+       quelqu'un. Envoyer une corvée au mauvais enfant parce qu'un micro a
+       hésité, c'est le genre d'erreur qu'un écran ne se fait pas pardonner.
+       L'assignation vient de la PHRASE, jamais de l'identité. */
+    const t1 = await A.api('/api/vocal', 'POST',
+      { texte: `note ${A.MARQUE}-loc-tache`, locuteur: { nom: 'Enora', confiance: 0.99 } });
+    const apres = await A.api('/api/data');
+    const tache = (apres.j.todos || []).find((x) => x.tache && x.tache.includes(`${A.MARQUE}-loc-tache`));
+    t.dire(!tache || !tache.who, 'une voix reconnue n’ASSIGNE jamais une tâche',
+      tache ? 'assignée à ' + JSON.stringify(tache.who) : 'aucune tâche créée');
+
+    /* Ménage : tout ce qui porte la marque d'essai repart en corbeille. */
+    for (const c of (apres.j.courses || [])) if (String(c.article).startsWith(`${A.MARQUE}-loc-`)) await A.api(`/api/course/${c.id}`, 'DELETE');
+    if (tache) await A.api(`/api/todo/${tache.id}`, 'DELETE');
+    void t1;
+  }
+
   t.titre('Chemin rapide (aucun appel réseau côté serveur)');
   const t0 = Date.now();
   const rapide = await A.api('/api/vocal', 'POST',

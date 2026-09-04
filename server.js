@@ -26,6 +26,9 @@ const { creerRappels } = require('./rappels');
 const { creerMenu } = require('./menu');
 const { creerPresence } = require('./presence');
 const feries = require('./feries');
+const { Ecole } = require('./ecole');
+const pertinence = require('./ecole/pertinence');
+const ecole = new Ecole();
 
 /* Une panne réseau ne doit pas rester dans la console : sur un mur, un agenda
    injoignable ressemble à un agenda vide. Tout passe par le journal, consultable
@@ -73,6 +76,26 @@ const REGLAGES = {
      cherché ». Vide = la table par défaut de `recettes/generiques.js` s'applique
      seule ; ce champ ne fait que l'étendre ou la corriger. */
   photos_generiques: { env: '', defaut: '' },
+  /* École — horizon lu et durée du cache. Le cache n'est pas un confort : sans
+     lui, chaque rafraîchissement de l'écran mural relancerait une connexion par
+     compte EcoleDirecte ET un lancement de Python de ~2 s pour Pronote. */
+  ecole_jours:         { env: '', defaut: '7' },
+  ecole_cache_minutes: { env: '', defaut: '15' },
+  /* Combien de jours d'ÉCOLE de devoirs on montre sur le mur. Un soir de
+     semaine on prépare demain ; le week-end on prépare la semaine — demande
+     de Rémi : « Augustin le week-end doit afficher lundi, mardi et mercredi ». */
+  ecole_devoirs_semaine: { env: '', defaut: '1' },
+  ecole_devoirs_creux:   { env: '', defaut: '3' },
+  /* 🕐 Heure du rappel des devoirs, SÉPARÉE de `rappels_heure` (8 h). Un rappel
+     de devoirs le matin ne sert à rien : l'enfant part au collège. On veut le
+     soir, quand il peut encore s'y mettre. */
+  ecole_rappel_heure:    { env: '', defaut: '18' },
+  /* Reconnaissance du locuteur : en dessous de ce score, on ne devine pas —
+     on retombe sur l'identité de l'appareil, donc « Écran » sur le mur. Un ton
+     neutre est toujours juste ; appeler Amandine « Monsieur » ne l'est jamais
+     (c'est le bug du § 2 quaterdecies, qu'une erreur de reconnaissance
+     recréerait). Se règle dans /admin/ sans redémarrer. */
+  voix_seuil_locuteur:   { env: '', defaut: '0.75' },
   /* Garde alternée. La source de vérité est le CALENDRIER (décision de Rémi :
      « garde-le en lecture, si on doit modifier c'est dans le calendrier ») ;
      ces réglages ne servent qu'à dire COMMENT le lire.
@@ -239,6 +262,35 @@ const qui = (req) =>
   || (req.moi && req.moi.nom)
   || (req.body && req.body.who)
   || 'Écran';
+
+/* Qui vient de PARLER, d'après la reconnaissance vocale — quand elle est sûre.
+
+   Le service qui écoute (sur le Pi ou le Mac) envoie `locuteur: {nom, confiance}`
+   dans le corps de POST /api/vocal. Le serveur ne le croit pas sur parole :
+     · le prénom doit exister dans la base — sinon on ne devine pas ;
+     · le score doit atteindre le seuil — sinon on retombe sur l'appareil.
+   C'est le même principe que partout ici : la machine propose, le code décide.
+
+   🔑 Ce que ça pilote, et ce que ça ne pilote PAS :
+     ✅ le TON (appellation, tutoiement, ironie) — se tromper s'entend et se
+        corrige à la phrase suivante ;
+     ✅ l'AUTEUR d'un ajout (une course, un post-it) — l'erreur y est bénigne et
+        se répare d'un doigt ;
+     ❌ l'ASSIGNATION d'une tâche à quelqu'un. Celle-là vient de la PHRASE
+        (« dis à Martial de… »), jamais de la voix reconnue : envoyer une corvée
+        au mauvais enfant parce qu'un micro a hésité, c'est le genre d'erreur
+        qu'on ne pardonne pas à un écran. `vocal/index.js` le garantit déjà. */
+function locuteurReconnu(req) {
+  const l = req.body && req.body.locuteur;
+  if (!l || !l.nom) return null;
+  const seuil = Number(config('voix_seuil_locuteur'));
+  const score = Number(l.confiance);
+  /* Une confiance absente est traitée comme nulle : un service qui oublie de
+     l'envoyer ne doit pas obtenir une confiance implicite. */
+  if (!Number.isFinite(score) || score < (Number.isFinite(seuil) ? seuil : 0.75)) return null;
+  const connue = donnees.lirePersonnes().find((p) => donnees.clef(p.nom) === donnees.clef(l.nom));
+  return connue && !connue.collectif ? connue.nom : null;
+}
 
 /* ------------------------------------------------------------------ temps réel
    Une écriture aboutit -> on pousse `maj` à tous les abonnés (écran + téléphones),
@@ -628,6 +680,89 @@ app.get('/api/health', (_req, res) => res.json({
   nom: adresseNom(),
 }));
 
+/* ------------------------------------------------------------------ école
+   ⚠️ Route SÉPARÉE, volontairement PAS dans /api/data. Trois enfants × trente
+   devoirs à chaque rafraîchissement, sur un Raspberry, ce serait le gaspillage
+   déjà évité pour les recettes (§ 2 quinquies : les étapes ne sont pas dans
+   /api/data, il y a GET /api/plat/:id). L'écran ne demande l'école que s'il
+   l'affiche, et le cache du module absorbe le reste.
+
+   `?rafraichir=1` force la relecture — pour le bouton du back-office, parce
+   qu'attendre un quart d'heure pour vérifier une correction rend fou (leçon du
+   cache d'une heure sur le HTML, § 2 septies). */
+app.get('/api/ecole', async (req, res) => {
+  try {
+    if (req.query.rafraichir) Ecole.viderCache();
+    const charge = await ecole.tout({
+      jours: Number(config('ecole_jours')) || 7,
+      maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+    });
+    /* Les soucis remontent DANS la réponse plutôt qu'en erreur HTTP : un compte
+       fâché ne doit pas faire disparaître les enfants des autres comptes. Ils
+       partent aussi au journal, sinon une panne n'existe pour personne
+       (§ 2 nonies). */
+    for (const s of charge.soucis || []) {
+      noter('ecole', new Error(`${s.source}${s.eleve ? ' / ' + s.eleve : ''}${s.module ? ' / ' + s.module : ''} : ${s.message}`), 'alerte');
+    }
+    /* Qui est à la maison aujourd'hui ? Le module de garde alternée le sait
+       déjà, depuis le calendrier (§ 2 terdecies). Si l'agenda est injoignable,
+       on passe `null` : le filtre montre alors TOUT LE MONDE plutôt que rien —
+       un écran vide ferait croire à une panne. */
+    let presents = null;
+    try {
+      const agenda = await lireAgenda();
+      presents = presence.pour(new Date(), agenda).presents;
+    } catch (e) { noter('ecole', e, 'alerte'); }
+
+    const filtre = pertinence.devoirsDuMoment({
+      devoirs: charge.devoirs,
+      cours: charge.cours,
+      presents,
+      enSemaine: Number(config('ecole_devoirs_semaine')) || 1,
+      enCreux: Number(config('ecole_devoirs_creux')) || 3,
+    });
+    /* La couleur de chaque enfant vient de la BASE, comme partout ailleurs :
+       l'écran mural ne doit pas se fabriquer sa propre palette. Un enfant sans
+       créneau de planning (Augustin n'en a pas) n'apparaît pas dans
+       `plannings.personnes`, donc le front n'aurait aucun moyen de la trouver. */
+    const roles = {};
+    try {
+      const connues = {};
+      for (const p of await donnees.lirePersonnes()) { connues[p.nom] = p.couleur; roles[p.nom] = p.role; }
+      for (const e of charge.eleves) if (connues[e.prenom]) e.couleur = connues[e.prenom];
+    } catch (e) { noter('ecole', e, 'alerte'); }
+
+    charge.aujourdhui = {
+      presents,
+      devoirs: filtre.devoirs,
+      restants: filtre.restants,
+      faits: filtre.faits,
+      horizon: filtre.details,
+    };
+
+    /* 🔒 `mien` : ce que CET appareil a le droit de voir. L'app est personnelle
+       (§ 2 vicies : les notes ne vont jamais sur le mur), donc un enfant ne
+       reçoit QUE ses devoirs et un adulte reçoit ceux de tous.
+       ⚠️ Le prénom vient du jeton de l'appareil, jamais du corps de la requête
+       — c'est la règle posée pour « Mon emploi du temps » (§ 2 quater), et la
+       filtrer côté serveur plutôt que dans l'app est ce qui la rend réelle :
+       du code de navigateur se contourne.
+       Le mur n'a pas de jeton ⇒ `qui()` rend « Écran », donc aucun filtre —
+       il se sert de `aujourdhui` de toute façon. */
+    const moi = qui(req);
+    charge.mien = pertinence.devoirsDe({
+      devoirs: charge.devoirs, eleves: charge.eleves,
+      personne: moi, role: roles[moi] || null,
+    });
+    charge.moi = moi;
+
+    res.json(charge);
+  } catch (e) {
+    noter('ecole', e);
+    res.status(500).json({ erreur: "Les espaces scolaires n'ont pas répondu.", detail: String(e.message || e) });
+  }
+});
+
 /* ------------------------------------------------------------------ lecture principale */
 app.get('/api/data', async (req, res) => {
   try {
@@ -638,7 +773,17 @@ app.get('/api/data', async (req, res) => {
        le Raspberry n'a pas à transporter une année d'événements. */
     const limite = new Date(); limite.setDate(limite.getDate() + JOURS_AFFICHES);
     const agenda = complet.filter((e) => e.start <= limite.toISOString());
-    res.json({ ...base, agenda, meteo, news, saint: saintDuJour(),
+    /* 🔑 QUI REGARDE. Sans ça l'app sert la même page à tout le monde : Rémi,
+       connecté avec le compte de Martial, a vu l'accueil d'un parent — « les
+       enfants » listait Enora et Martial au lieu de SA journée.
+       Le prénom vient du jeton de l'appareil, jamais du corps de la requête
+       (§ 2 quater) ; l'écran mural, qui n'en a pas, reçoit `null` et garde la
+       vue du foyer — c'est bien ce qu'il doit montrer. */
+    const jeMappelle = req.appareil ? req.appareil.personne : (req.moi && req.moi.nom) || null;
+    const moi = jeMappelle
+      ? (base.personnes || []).find((p) => p.nom === jeMappelle) || { nom: jeMappelle }
+      : null;
+    res.json({ ...base, moi, agenda, meteo, news, saint: saintDuJour(),
       presence: presencePourEcran(complet),
       reglages: reglagesPublics(), rayons: listeRayons(),
       anniversaires: anniversairesPourEcran(),
@@ -941,7 +1086,11 @@ app.post('/api/vocal', async (req, res) => {
   const texte = String((req.body && req.body.texte) || '').trim();
   if (!texte) return res.status(400).json({ error: 'Phrase vide.', reponse: "Je n'ai rien entendu." });
 
-  const personne = qui(req);
+  /* Sur le mur il n'y a pas de jeton : sans reconnaissance, `qui()` rend
+     « Écran » et l'assistant parle à un anonyme. C'est précisément ce que la
+     reconnaissance vient réparer — et pourquoi elle intéresse les enfants. */
+  const parle = locuteurReconnu(req);
+  const personne = parle || qui(req);
   try {
     const [agenda, meteo] = await Promise.all([lireAgenda(), lireMeteo()]);
     /* Le RÔLE de celui qui parle change le ton : l'ironie, même légère, n'a rien
@@ -1351,6 +1500,32 @@ app.delete('/api/:kind/:id', async (req, res) => {
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Route inconnue.' }));
 
+/* Les devoirs à rappeler ce soir : ceux qui tombent au PROCHAIN JOUR D'ÉCOLE de
+   chaque enfant, déduit de son emploi du temps réel. Prendre « demain » en dur
+   serait faux le vendredi soir et pendant les vacances — et chaque enfant a son
+   propre calendrier, les établissements ne s'alignent pas.
+   ⚠️ AUCUN filtre de présence, contrairement au mur : la notification part sur
+   le téléphone de l'enfant, qu'il soit chez nous ou chez son autre parent. */
+async function devoirsDuSoir() {
+  const charge = await ecole.tout({
+    jours: Number(config('ecole_jours')) || 7,
+    maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+  });
+  const auj = pertinence.ymd(new Date());
+  const horizon = (charge.cours || []).reduce((max, c) => (c.jour > max ? c.jour : max), auj);
+  const retenus = [];
+  for (const d of charge.devoirs || []) {
+    /* Le jour même est EXCLU, comme sur le mur : à dix-huit heures, un devoir
+       « pour aujourd’hui » a été rendu en cours le matin. Rappeler ce qui est
+       déjà passé, c’est apprendre à ignorer les notifications. */
+    if (d.fait || d.pour <= auj) continue;
+    const jours = pertinence.joursEcoleDe(charge.cours || [], d.eleve);
+    const [prochain] = pertinence.prochainsJoursEcole(auj, jours, horizon, 1);
+    if (prochain && d.pour <= prochain) retenus.push(d);
+  }
+  return retenus;
+}
+
 /* ------------------------------------------------------------------ démarrage */
 donnees.purgerSessions?.();
 amorcerReglages();
@@ -1371,7 +1546,13 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
     /* Rappels : vérifiés au démarrage puis toutes les 15 min. C'est l'heure et
        la date du dernier passage qui décident, pas le minuteur — un serveur
        relancé cinq fois dans la matinée n'envoie rien cinq fois. */
-    rappels.planifier({ devinerRayon: recettes.devinerRayon, rayonsConnus: listeRayons() });
+    rappels.planifier({
+      devinerRayon: recettes.devinerRayon, rayonsConnus: listeRayons(),
+      /* La source est injectée : `rappels.js` ne connaît ni EcoleDirecte ni
+         Pronote, et un espace scolaire fâché n'empêche pas les anniversaires
+         de partir. Même inversion que `devinerRayon`. */
+      lireDevoirs: devoirsDuSoir,
+    });
     console.log('\n   Depuis la tablette et les iPhone (l\'IP change avec le réseau Wi-Fi) :');
     for (const a of liste) console.log(`     ${a}/bento.html   ·   ${a}/app/`);
     /* À privilégier pour le kiosque : un nom ne change pas quand le DHCP

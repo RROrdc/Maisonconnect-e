@@ -95,6 +95,53 @@ function creerRappels({ donnees, diffuser, config }) {
     return envoyes;
   }
 
+  /* ---------------------------------------------------------------- devoirs
+     🕐 SA PROPRE HEURE, et c'est tout l'intérêt. Les rappels de tâches partent
+     à 8 h ; un rappel de devoirs à 8 h ne sert à rien, l'enfant part au collège.
+     On veut le SOIR, quand il peut encore s'y mettre — d'où une passe séparée,
+     avec son heure (`ecole_rappel_heure`, 18 h) et sa propre trace du dernier
+     passage. Les deux passes partagent le même minuteur de 15 min : c'est
+     l'heure qui décide, jamais le minuteur (§ 2 nonies).
+
+     ⚠️ La source des devoirs est INJECTÉE (`lireDevoirs`), comme `devinerRayon` :
+     ce fichier n'a pas à connaître EcoleDirecte ni Pronote, et un espace
+     scolaire fâché ne doit pas empêcher les anniversaires de partir. */
+  async function devoirs(lireDevoirs) {
+    if (typeof lireDevoirs !== 'function') return [];
+    let liste = [];
+    try { liste = (await lireDevoirs()) || []; }
+    catch (e) { donnees.journaliser('alerte', 'rappels', 'Devoirs non lus : ' + e.message); return []; }
+
+    /* Groupés PAR ENFANT : c'est lui qu'on prévient, sur SON téléphone. Trois
+       notifications pour trois devoirs, c'est trois fois plus de chances d'être
+       ignoré — même raisonnement que pour les échéances de tâches. */
+    const par = new Map();
+    for (const d of liste) {
+      if (d.fait) continue;                    // déjà fait : rien à rappeler
+      if (!par.has(d.eleve)) par.set(d.eleve, []);
+      par.get(d.eleve).push(d);
+    }
+
+    const envoyes = [];
+    for (const [eleve, siens] of par) {
+      const matieres = [...new Set(siens.map((d) => d.matiere).filter((m) => m && m !== 'Matière non désignée'))];
+      const titre = siens.length === 1
+        ? '📚 ' + (matieres[0] ? matieres[0] + ' — ' : '') + 'un devoir pour demain'
+        : '📚 ' + siens.length + ' devoirs pour demain';
+      envoyes.push(prevenir({
+        titre,
+        message: siens.map((d) => (d.matiere && d.matiere !== 'Matière non désignée' ? d.matiere + ' : ' : '')
+          + String(d.contenu || '').replace(/s+/g, ' ').slice(0, 90)).join(' · '),
+        /* 🔒 Adressé à L'ENFANT, jamais au foyer : ses devoirs ne sont pas une
+           information de famille, et `pour = null` les afficherait chez tout le
+           monde — écran mural compris, devant les invités (§ 2 vicies). */
+        pour: eleve,
+        niveau: 'info',
+      }));
+    }
+    return envoyes;
+  }
+
   /* ---------------------------------------------------------------- rangement
      Les articles arrivés d'une recette n'ont pas de rayon, et une liste non
      rangée se parcourt mal en magasin. On ne touche QUE les rayons vides —
@@ -141,18 +188,45 @@ function creerRappels({ donnees, diffuser, config }) {
     return bilan;
   }
 
+  /* ------------------------------------------------------- passage des devoirs */
+  async function passerDevoirs({ force = false, lireDevoirs = null } = {}) {
+    if (typeof lireDevoirs !== 'function') return { saute: 'aucune source de devoirs' };
+    const jour = aujourdhui();
+    if (!force && donnees.reglage('dernier_rappel_devoirs', '') === jour) return { saute: 'déjà passé aujourd’hui' };
+    const heure = Number(config('ecole_rappel_heure'));
+    if (!force && Number.isFinite(heure) && new Date().getHours() < heure) return { saute: 'avant ' + heure + ' h' };
+
+    const bilan = { jour, devoirs: 0 };
+    try {
+      bilan.devoirs = (await devoirs(lireDevoirs)).length;
+      /* La trace est écrite MÊME si rien n'est parti : sinon on réinterrogerait
+         les espaces scolaires toutes les 15 min jusqu'à minuit. */
+      donnees.ecrireReglages({ dernier_rappel_devoirs: jour });
+      donnees.journaliser('info', 'rappels',
+        'Devoirs du soir : ' + (bilan.devoirs ? bilan.devoirs + ' enfant(s) prévenu(s)' : 'rien à rappeler'));
+    } catch (e) {
+      donnees.journaliser('erreur', 'rappels', 'Rappel des devoirs interrompu : ' + e.message, e.stack);
+      bilan.erreur = e.message;
+    }
+    return bilan;
+  }
+
   /* Vérifié au démarrage puis toutes les 15 min : c'est l'heure qui décide, pas
      le minuteur. Un intervalle plus court ne changerait rien, un plus long
      raterait la fenêtre sur un poste éteint tôt. */
   function planifier(options) {
-    const tenter = () => { try { passer(options); } catch (_) { /* déjà journalisé */ } };
+    const tenter = () => {
+      try { passer(options); } catch (_) { /* déjà journalisé */ }
+      /* Deux passes, deux heures, un seul minuteur. */
+      passerDevoirs(options).catch(() => { /* déjà journalisé */ });
+    };
     setTimeout(tenter, 20000).unref?.();
     const t = setInterval(tenter, 15 * 60 * 1000);
     t.unref?.();
     return t;
   }
 
-  return { passer, planifier, anniversaires, echeances };
+  return { passer, passerDevoirs, planifier, anniversaires, echeances, devoirs };
 }
 
 module.exports = { creerRappels };

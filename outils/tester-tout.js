@@ -5,7 +5,7 @@
      node outils/tester-tout.js --court      seulement le résumé par série
      node outils/tester-tout.js calculs      une série précise
 
-   Séries : calculs · pages · api · vocal · rappels · quinzaine
+   Séries : calculs · pages · api · vocal · rappels · quinzaine · presence · ecole
 
    ⚠️ Ces tests s'exécutent sur les VRAIES données de la famille, faute de base
    de test. Tout ce qu'ils créent porte le préfixe `ZZ-essai` et est retiré à la
@@ -25,6 +25,7 @@ const SERIES = [
   ['rappels', 'Anniversaires, rappels, rangement', true],
   ['quinzaine', 'Semaine A / B', true],
   ['presence', 'Garde alternée — qui est à la maison', true],
+  ['ecole', 'École — encodages, normalisation, comptes', false],
 ];
 
 async function main() {

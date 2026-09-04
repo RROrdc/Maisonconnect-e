@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Écran Maison — sauvegarde quotidienne (base + code) sur le Mac mini.
+  Remplace la tâche planifiée Windows de 12:30.
+
+  Daemon plutôt qu'Agent, pour la même raison que le serveur : la sauvegarde
+  doit avoir lieu même si personne n'a ouvert de session ce jour-là.
+
+  ⚠️ Heure choisie à 12:30 comme sous Windows. launchd rattrape un rendez-vous
+     manqué au réveil de la machine — contrairement à cron, qui l'oublie
+     purement et simplement. C'est ce qui fait qu'une sauvegarde quotidienne
+     existe vraiment sur une machine qui dort.
+
+  Installation :
+    sed -e "s|__CHEMIN__|$HOME/maison|" \
+        -e "s|__UTILISATEUR__|$(whoami)|" \
+        -e "s|__MAISON__|$HOME|" \
+        outils/mac/fr.maison.sauvegarde.plist > /tmp/fr.maison.sauvegarde.plist
+    sudo cp /tmp/fr.maison.sauvegarde.plist /Library/LaunchDaemons/
+    sudo chown root:wheel /Library/LaunchDaemons/fr.maison.sauvegarde.plist
+    sudo launchctl load -w /Library/LaunchDaemons/fr.maison.sauvegarde.plist
+
+  Déclencher tout de suite pour vérifier :
+    sudo launchctl start fr.maison.sauvegarde
+    ls -lh ~/maison-coffre/
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.maison.sauvegarde</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__CHEMIN__/outils/sauvegarder-tout.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__CHEMIN__</string>
+
+  <key>UserName</key>
+  <string>__UTILISATEUR__</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__CHEMIN__/sauvegarde.log</string>
+  <key>StandardErrorPath</key>
+  <string>__CHEMIN__/sauvegarde.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>__MAISON__</string>
+    <key>MAISON_COFFRE</key>
+    <string>__MAISON__/maison-coffre</string>
+  </dict>
+</dict>
+</plist>

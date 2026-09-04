@@ -34,6 +34,23 @@ sauvegardes/
 # « Trouver les photos manquantes »).
 public/plats/
 
+# --- SECRET D'APPAREIL ECOLEDIRECTE ----------------------------------------
+# ecole/etat*.json contient le couple cn/cv qui prouve au serveur que CETTE
+# machine est un appareil validé, plus les réponses au QCM de sécurité.
+# C'est l'équivalent d'un second facteur déjà franchi : ça ne se publie pas,
+# et ça ne se copie pas non plus d'une machine à l'autre.
+ecole/etat*.json
+# Identifiants permanents Pronote, issus de l'echange du QR code : ils valent
+# le compte lui-meme, et tournent a chaque connexion (reecrits sur place).
+ecole/pronote-identifiants.json
+
+# --- ARTEFACTS PYTHON ------------------------------------------------------
+# Le pont Pronote est du Python : son bytecode compilé est propre à CETTE
+# machine et à SA version de Python. Il n'a aucune valeur dans le dépôt et
+# provoquerait des conflits sur le Mac.
+__pycache__/
+*.pyc
+
 # --- DÉPENDANCES -----------------------------------------------------------
 # `npm ci` les reconstruit à l'identique depuis package-lock.json.
 node_modules/
@@ -42,7 +59,13 @@ node_modules/
 .claude/settings.local.json
 *.log
 *.zip
+*.tar.gz
 _ap-*.html
+
+# Réglages du kiosque, propres à CET écran (adresse du serveur, délai d'attente).
+# Le script kiosque.sh est versionné, sa configuration non : rien de spécifique
+# au foyer dans le code (§ 5 quater).
+outils/raspberry/kiosque.conf
 
 # --- SYSTÈME ---------------------------------------------------------------
 Thumbs.db
