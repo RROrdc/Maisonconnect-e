@@ -36,13 +36,36 @@ flou d’arrière-plan ni dégradé radial (vérifié au § 2 octies).
 
 ## 1. Système
 
-### 🔴 Ne télécharge PAS l'image à la main
+### 🔴 La SEULE chose à télécharger, c'est l'Imager
 
-Passe par **Raspberry Pi Imager** (gratuit, macOS/Windows/Linux). Il télécharge, il écrit, et surtout **il préconfigure** — c'est cette dernière partie qui compte : sans elle, il faut brancher un clavier et un écran sur le Pi pour le premier démarrage, et saisir un mot de passe Wi-Fi sur une dalle tactile n'est pas une partie de plaisir.
+**Raspberry Pi Imager** (gratuit, macOS/Windows/Linux) — une cinquantaine de méga-octets,
+sur [raspberrypi.com/software](https://www.raspberrypi.com/software/).
 
-**Image à choisir : `Raspberry Pi OS (64-bit)` — la version *with desktop*.**
+**Le système, lui, ne se télécharge pas séparément** : tu le choisis dans une liste À
+L'INTÉRIEUR d'Imager, qui va le chercher et l'écrit dans la foulée. Il faut donc être
+connecté pendant l'écriture, et compter une dizaine de minutes selon la ligne.
+
+C'est aussi ce qui fait tout l'intérêt de l'outil : il **préconfigure** la carte. Sans ça,
+il faut brancher un clavier et un écran sur le Pi pour le premier démarrage — et saisir un
+mot de passe Wi-Fi sur une dalle tactile n'est pas une partie de plaisir.
+
+Trois choix, dans cet ordre : **l'appareil** (Raspberry Pi 4), **le système**, **la carte**.
+
+**Système à prendre : `Raspberry Pi OS (64-bit)`** — l'entrée recommandée, en haut de liste,
+décrite comme *« with Raspberry Pi Desktop »*.
 - ❌ **Pas *Lite*** : il n'y a pas d'environnement graphique, donc pas de Chromium, donc pas de kiosque.
 - ❌ **Pas *Full*** : elle embarque LibreOffice et compagnie. Sur une machine qui n'affiche qu'une page web, c'est de la place et des mises à jour pour rien.
+
+<details>
+<summary>Si tu tiens à récupérer le fichier image toi-même</summary>
+
+C'est possible — `.img.xz` depuis
+[raspberrypi.com/software/operating-systems](https://www.raspberrypi.com/software/operating-systems/),
+puis dans Imager : **« Use custom »** en bas de la liste des systèmes.
+**La personnalisation fonctionne quand même** : c'est elle qui compte, pas la provenance du
+fichier. Utile seulement si la connexion est mauvaise, ou pour réinstaller plusieurs fois
+sans retélécharger.
+</details>
 
 ### La carte SD — le seul choix qui se paiera plus tard
 
