@@ -99,9 +99,14 @@ Imager propose « **Personnaliser les réglages de l'OS** » **avant** d'écrire
 | **Nom d'hôte** | `ecran-cuisine` — c'est ainsi qu'on le joindra : `ecran-cuisine.local` |
 | **Localisation** | choisis **Paris** : le fuseau, le clavier **AZERTY** et le domaine radio Wi-Fi en découlent |
 | **Utilisateur** | ton identifiant et ton mot de passe (l'utilisateur `pi` par défaut n'existe plus) |
-| **Wi-Fi** | SSID + mot de passe du réseau de la maison — le Pi se connectera seul au premier démarrage |
+| **Wi-Fi** | SSID + mot de passe **du réseau de la MAISON** — le Pi se connectera seul au premier démarrage |
 | **Accès distant** | **active SSH** — c'est par là que le Pi se pilote depuis le Mac, sans clavier ni écran |
 | **Raspberry Pi Connect** | facultatif, et inutile ici : le Pi et le Mac sont sur le même réseau |
+
+🔴 **Le piège quand on grave depuis une autre machine** : la carte est configurée AU MOMENT
+DE L'ÉCRITURE, pas au démarrage. Le Wi-Fi à saisir est donc celui de la **maison**, pas celui
+de l'ordinateur qui grave. Se tromper là, c'est un Pi qui ne rejoint jamais le réseau — et il
+faut alors ressortir le clavier et l'écran, c'est-à-dire exactement ce qu'on voulait éviter.
 
 Un récapitulatif confirme « SSH activé » avant d'écrire quoi que ce soit : c'est le moment de vérifier.
 
