@@ -385,6 +385,11 @@ Une ligne, réversible. C'est la bonne façon de vérifier que la chaîne micro 
 - [ ] L'écran survit à une **coupure de courant** (le vrai test : débranche)
 - [ ] Réservation DHCP pour le Pi sur la box
 
+**Les fichiers de configuration du Pi sont dans le dépôt**, pour qu'un remontage
+ne reparte pas de zéro : `outils/raspberry/labwc-rc.xml` (tactile pivoté +
+sortie de secours `Ctrl+Alt+Q`), `outils/raspberry/kanshi-config` (rotation de
+la dalle) et `outils/raspberry/relancer-kiosque.sh` (table rase et relance).
+
 ---
 
 ## 🔧 Dépannage
@@ -397,4 +402,6 @@ Une ligne, réversible. C'est la bonne façon de vérifier que la chaîne micro 
 | Les doigts cliquent à côté | Le tactile n'a pas suivi la rotation → § 2. |
 | Bandeau « ne s'est pas fermé correctement » | Le script l'efface au lancement ; s'il revient, c'est que le kiosque n'est pas lancé par le script. |
 | L'écran affiche une vieille version | Ne devrait plus arriver : les pages **et les scripts** sont en `no-cache` depuis le 19/08. Chaque page affiche son numéro de `VERSION` — compare-le avec le Mac. |
+| **La page s'affiche puis devient blanche** en moins d'une minute | La boucle de relance s'emballe. Un Chromium détenait déjà le profil : chaque relance lui **transmet un onglet de plus** au lieu de démarrer, et l'onglet affiché finit par être un onglet neuf. Contrôle : `grep -c "existing browser session" ~/kiosque.log` — doit rester à **0**. Corrigé dans `kiosque.sh` depuis le 05/09 ; si ça revient, `~/relancer-kiosque.sh` fait table rase. |
+| `pkill` depuis SSH ne tue rien | ⚠️ **`pkill -f chromium` se tue lui-même** : la ligne de commande du shell distant contient le mot cherché. Utilise `pkill -x chromium` (compare le NOM du programme) ou le motif à crochets `'[c]hromium'`. Sans ça on croit avoir rechargé la page alors qu'elle n'a pas bougé. |
 | Le bouton micro n'apparaît pas | Normal en HTTP distant → § 5. |

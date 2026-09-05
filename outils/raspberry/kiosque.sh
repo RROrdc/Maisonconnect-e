@@ -70,11 +70,25 @@ done
 # Après une coupure de courant, elle s'affiche par-dessus l'écran mural et il
 # faut aller cliquer dessus avec un doigt. Sur un mur, c'est rédhibitoire.
 PROFIL="$HOME/.config/chromium-kiosque/Default/Preferences"
+# La traduction se coupe AUSSI dans les préférences du profil : un drapeau de
+# ligne de commande peut être renommé d'une version de Chromium à l'autre, la
+# préférence beaucoup plus rarement. Sur un mur, une barre qui recouvre les
+# pastilles des enfants n'est pas un détail — et personne n'ira la fermer.
 if [ -f "$PROFIL" ]; then
+  grep -q '"translate":{"enabled":false}' "$PROFIL" 2>/dev/null \
+    || sed -i 's/^{/{"translate":{"enabled":false},/' "$PROFIL" 2>/dev/null || true
   sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' "$PROFIL" 2>/dev/null || true
 fi
 
 # --- Boucle : si Chromium meurt, il repart -----------------------------------
+# Table rase : une instance résiduelle ferait partir le tout premier
+# lancement en « existing browser session », c'est-à-dire dans le défaut
+# décrit plus bas. On attend qu'elle soit vraiment partie.
+pkill -x chromium 2>/dev/null
+for _ in 1 2 3 4 5 6; do pgrep -x chromium >/dev/null 2>&1 || break; sleep 1; done
+pkill -9 -x chromium 2>/dev/null
+sleep 1
+
 while true; do
   # 🐞 Sans --ozone-platform=wayland, Chromium tente X11 et meurt aussitôt :
   #    « Missing X server or $DISPLAY ». Raspberry Pi OS est passé à Wayland
@@ -106,13 +120,26 @@ while true; do
     --noerrdialogs \
     --disable-infobars \
     --disable-session-crashed-bubble \
-    --disable-features=Translate,TranslateUI \
+    --disable-features=Translate,TranslateUI,TranslateSubFrames \
+    --disable-translate-new-ux \
+    --lang=fr-FR \
     --no-first-run \
     --check-for-update-interval=31536000 \
     --disable-pinch \
     --overscroll-history-navigation=0 \
     --autoplay-policy=no-user-gesture-required \
     "$URL"
+  # Chromium a rendu la main. Deux cas très différents :
+  #  • il s'est réellement arrêté  ⇒ on relance ;
+  #  • il a seulement TRANSMIS son URL à une instance déjà en place
+  #    (« Opening in existing browser session ») et quitté dans la seconde
+  #    ⇒ relancer ne ferait qu'ouvrir un onglet de plus, jusqu'à ce que
+  #    l'onglet affiché soit un onglet vide. On attend donc que l'instance
+  #    en place disparaisse pour de bon avant de relancer quoi que ce soit.
+  if pgrep -x chromium >/dev/null 2>&1; then
+    echo "[i] Une instance de Chromium tient déjà le profil — on la laisse vivre."
+    while pgrep -x chromium >/dev/null 2>&1; do sleep 5; done
+  fi
   echo "[!] Chromium s'est arrêté — relance dans 5 s."
   sleep 5
 done

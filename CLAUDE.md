@@ -6993,6 +6993,64 @@ Au § 2 sexdecies, le contrôle avant push était fait **à la main**. Il a tenu
 Dépôt privé `RROrdc/Maisonconnect-e`. **31 fichiers** dans ce lot : le module `ecole/` complet (EcoleDirecte + pont Pronote), la reconnaissance du locuteur, les devoirs sur le mur et dans l'app, l'accueil personnalisé, les deux guides d'installation, et les outils.
 **Toujours hors du dépôt** : `.env`, `maison.db` et ses sauvegardes, `public/plats/`, les secrets d'appareil scolaires, `node_modules/`.
 
+## 2 octovicies. 📺 L'ÉCRAN MURAL EXISTE — montage du Raspberry (05/09/2026)
+Premier vrai montage : **Pi 4 Model B, Pi OS trixie, compositeur labwc**, dalle tactile 21,5" en portrait. Configuré **à distance en SSH depuis le PC**, Rémi étant devant l'écran.
+
+### ✅ Ce qui tourne
+Le bento s'affiche en plein écran, en portrait, alimenté par le serveur du PC (`192.168.10.117:8090`) en attendant le Mac. **Redémarrage complet vérifié : le kiosque repart seul et le bento se reconnecte au flux temps réel.**
+- 💡 **Le meilleur contrôle à distance ne demande pas de regarder l'écran** : le bento ouvre une connexion SSE au chargement, donc `curl /api/health` → `"abonnes":1` prouve que la page est affichée. Si c'est `0`, inutile d'aller voir.
+- 🔒 Le mot de passe n'a servi qu'à une chose : poser une **clé SSH**. Il a été écrit en clair dans la conversation (troisième fois après la clé Anthropic et EcoleDirecte) ⇒ à changer.
+
+### 🐞 Quatre défauts du script, tous invisibles avant le vrai matériel
+1. **`--ozone-platform=wayland` manquait.** Pi OS est passé à Wayland (labwc) : sans ce drapeau, Chromium tente X11 et meurt sur « Missing X server or $DISPLAY ». Le script bouclait dans le vide.
+2. **Profil `--user-data-dir` dédié.** Un Chromium ordinaire était ouvert ⇒ notre `--kiosk` lui a simplement été **transmis** (« Opening in existing browser session »), la commande a rendu la main aussitôt, et la boucle de relance tournait sans que rien ne s'affiche.
+3. 🔴 **`--password-store=basic`** — et celui-là, **seule la capture d'écran l'a révélé**. Une fenêtre **« Unlock Keyring »** s'ouvrait par-dessus le bento à chaque démarrage, clavier virtuel compris. Chromium réclame le trousseau GNOME, resté verrouillé parce que la session s'ouvre automatiquement. Il aurait fallu aller taper un mot de passe sur la dalle après **chaque coupure de courant**.
+   ⚠️ **Depuis SSH, tout paraissait parfait** : Chromium tournait, le serveur voyait la page, `abonnes` était à 1. Troisième fois que le projet apprend la même chose (§ corrections des 1re et 2e captures, 14/08) — **regarder l'écran tôt**. `grim` est maintenant installé sur le Pi pour ça.
+4. **Le script ne retrouvait pas la session graphique** lancé par SSH (`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`) — c'est-à-dire dans le seul cas où l'on met au point.
+
+### 🔴 Deux choses que le guide ignorait complètement
+- **Le tactile a son PROPRE câble USB.** Image parfaite, tactile mort, et `lsusb` ne montrait **aucun** périphérique tactile : le câble n'était pas sur le port **montant** de la dalle. Une fois branché : `ILI Technology Corp. Multi-Touch Screen`. Le contrôle qui tranche en une ligne : `lsusb | grep -i touch` — rien ⇒ c'est le câble, pas le logiciel.
+- **Un `swayidle` éteint l'écran au bout de 10 minutes**, posé par Pi OS dans `~/.config/labwc/autostart`. Ce n'est **pas** le « Screen Blanking » de `raspi-config`, donc le guide ne le couvrait pas. Sur un mur c'est rédhibitoire, et ça entrait en concurrence avec la veille du bento — deux mécanismes qui se disputent l'extinction.
+- 💡 Au passage : la rotation n'est **ni** dans `cmdline.txt` **ni** dans `rc.xml`, mais dans **`~/.config/kanshi/config`** (`transform 90`) — c'est là qu'écrit l'outil « Screen Configuration ». Persistant, donc la rotation par le noyau devient facultative.
+
+### 🐞 Le tactile ne tourne pas avec l'image
+« Je touche l'emploi du temps et j'ai le menu ou les courses. » Corrigé par `mapToOutput` **et** `calibrationMatrix` dans `~/.config/labwc/rc.xml` : c'est le compositeur qui applique la transformation aux coordonnées, encore faut-il lui dire sur quelle sortie le tactile est collé.
+
+### ⚠️ Un manque de conception : le kiosque n'avait pas de porte de sortie
+« Chromium en plein écran et je ne peux pas en sortir. » Exact, et `Alt+F4` ne suffit pas — le script relance au bout de 5 s. Il fallait passer par une console (`Ctrl+Alt+F2`). ⇒ Raccourci **`Ctrl+Alt+Q`** ajouté dans `rc.xml`, qui arrête le *script*. Un kiosque sans issue documentée est ingérable dès qu'on n'a pas SSH.
+
+### 🔴 Ma mauvaise piste : « le Wi-Fi est faible »
+Le Pi disparaissait du réseau : ping partiel, SSH systématiquement en échec. J'ai conclu **signal faible**. Rémi : « il est pas loin de la borne et le wifi est bon » — et il m'avait **déjà donné la bonne piste deux messages plus tôt** (« il faut peut-être toujours maintenir la connexion wifi », « vérifier qu'il n'y a pas de veille réseau »), que j'ai à peine relevée. Mesure : **−56 dBm, économie d'énergie déjà désactivée, lien stable** — il avait raison sur les deux points, et les coupures venaient du **PC qui se mettait en veille**, ce qu'il avait dit aussi.
+⚠️ **Leçon** : quand l'utilisateur propose une hypothèse précise sur SON matériel, la tester **avant** d'en construire une autre.
+
+### ⚠️ Tant que le serveur est sur le PC
+Quand le PC se met en veille, l'écran mural perd la page. Raison de plus pour passer au Mac — et `kiosque.conf` pointe volontairement une **IP provisoire**, à remplacer par `maison.local` dès que le Mac sert.
+
+## 2 nonvicies. 🖼️ LA MISE EN PAGE REFAITE DEVANT LA DALLE (05/09/2026)
+Première fois que la page est jugée **sur le mur, à deux mètres**, et non sur une capture. Rémi, en direct : « c'est coupé de partout », puis « adapte la page vraiment pour que tout soit lisible ».
+
+### 🔴 LE bug qui a coûté le plus de temps : `pkill -f chromium` SE TUE LUI-MÊME
+Symptôme : **la page s'affichait correctement, puis devenait blanche en moins d'une minute.** Rien dans le bento ne l'expliquait, et j'ai d'abord cherché du côté de la CSS.
+
+Deux causes enchaînées, aucune dans le produit :
+1. **Depuis SSH, `pkill -f chromium` s'auto-sélectionne** : la ligne de commande du shell distant contient le mot cherché. La session meurt avant la relance, et Chromium — lui — survit. **J'ai donc jugé pendant deux tours une page qui n'avait jamais été rechargée**, et conclu à tort que ma CSS ne s'appliquait pas. ⇒ `pkill -x chromium` (compare le NOM du programme) ou le motif à crochets `[c]hromium`, qui ne correspond pas à sa propre ligne de commande.
+2. **La boucle de relance s'emballait.** Quand une instance détient déjà le profil, la nouvelle ne démarre pas : elle **transmet son URL** à celle qui tourne (« Opening in existing browser session ») et rend la main aussitôt. Le script en concluait « Chromium s'est arrêté », relançait 5 s plus tard, et **chaque tour ouvrait un onglet de plus** — au bout d'une minute, l'onglet au premier plan était un onglet neuf. **Écran blanc.**
+   ⇒ `kiosque.sh` fait maintenant table rase au démarrage, et **n'interprète plus un retour immédiat comme un arrêt** : si un Chromium tourne encore, il l'attend au lieu de le doubler.
+- 💡 **Le journal a tranché en une lecture** là où trois captures n'avaient rien montré : `grep -c "existing browser session" ~/kiosque.log` distingue « le kiosque va bien » de « il se marche dessus ». Même leçon qu'avec le micro le 19/08 — sur une chaîne longue, instrumenter coûte moins cher que deviner.
+
+### La mise en page : deux tiers / un tiers, sur UNE rangée
+Le menu et l'agenda occupaient chacun une bande horizontale ; ils partagent désormais la même. Demande de Rémi, dans ses mots : « pas de double colonne sur le menu », « la colonne menu fait 3/4 de large, aussi long que l'agenda en hauteur », puis « le menu peut être un peu réduit et donc l'agenda a sa place, plus de 1/4 ».
+- **La grille portrait passe de 2 à 12 colonnes.** C'est le plus petit dénominateur qui donne à la fois **8/12 + 4/12** pour la rangée menu-agenda et une **moitié franche** pour les trois autres rangées. En quarts, l'agenda ne pouvait valoir que 25 % ou 50 % — rien entre les deux.
+- 🔑 **Les deux colonnes du menu (Lun→Jeu / Ven→Dim) sont supprimées.** Elles dataient du 14/08 et servaient à caser sept jours. Sur la dalle elles produisaient deux défauts : la colonne de droite **sortait du cadre** — les noms venus des idées IA sont longs (« Poulet mariné au citron et origan, pommes de terre grenaille au four extérieur ») — et le jeudi était coupé en bas. **On supprime la classe de bug au lieu de la corriger**, et la lecture y gagne.
+- Le nom du plat **passe à la ligne** au lieu d'être tronqué : un nom coupé n'apprend rien à qui passe devant le mur. Même choix que pour les pilules des tâches (14/08).
+- **L'horloge et la météo ont été réduites deux fois.** Leur rangée est en hauteur `auto` : chaque pixel qu'on leur reprend va directement au menu et à l'agenda, qui sont sur des rangées `fr`. C'est Rémi qui a vu le levier : « si tu réduis l'heure et la météo un peu, il a sa place ».
+- 🐞 Sur un tiers de largeur, l'en-tête de l'agenda **sortait du cadre** (titre + pastille + bouton d'agrandissement sur une seule ligne) et ses deux colonnes internes ne tenaient plus. Il passe à la ligne, et le mini-mois devient proportionnel au lieu de faire 33 px fixes.
+
+### ⚠️ Ce que cet épisode dit de la méthode
+Les 343 tests étaient au vert pendant tout le temps où l'écran était blanc — ils ne savent pas ce qu'un navigateur affiche, et encore moins ce qu'un lanceur bash fait à ses processus. **Rien ne remplace une capture de l'écran réel**, et sur le Pi elle coûte une commande (`grim`). C'est la quatrième fois que le projet le réapprend.
+
+✅ Validé par Rémi devant l'écran : « tout fonctionne parfait ».
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
