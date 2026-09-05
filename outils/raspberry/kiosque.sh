@@ -11,6 +11,18 @@
 set -uo pipefail
 
 ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Retrouver la session graphique -----------------------------------------
+# Lancé par ~/.config/autostart, ces variables sont déjà là. Lancé À LA MAIN ou
+# PAR SSH — ce qu'on fait forcément pour mettre au point — elles manquent, et
+# Chromium meurt sur « The platform failed to initialize ». On les rétablit.
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"; export XDG_RUNTIME_DIR
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  for s in "$XDG_RUNTIME_DIR"/wayland-*; do
+    case "$s" in *.lock) continue;; esac
+    [ -S "$s" ] && { WAYLAND_DISPLAY="$(basename "$s")"; export WAYLAND_DISPLAY; break; }
+  done
+fi
 CONF="$ICI/kiosque.conf"
 
 # --- Réglages locaux à CETTE machine, donc hors du dépôt ---------------------
@@ -57,14 +69,39 @@ done
 # --- Effacer la bulle « Chromium ne s'est pas fermé correctement » -----------
 # Après une coupure de courant, elle s'affiche par-dessus l'écran mural et il
 # faut aller cliquer dessus avec un doigt. Sur un mur, c'est rédhibitoire.
-PROFIL="$HOME/.config/chromium/Default/Preferences"
+PROFIL="$HOME/.config/chromium-kiosque/Default/Preferences"
 if [ -f "$PROFIL" ]; then
   sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' "$PROFIL" 2>/dev/null || true
 fi
 
 # --- Boucle : si Chromium meurt, il repart -----------------------------------
 while true; do
+  # 🐞 Sans --ozone-platform=wayland, Chromium tente X11 et meurt aussitôt :
+  #    « Missing X server or $DISPLAY ». Raspberry Pi OS est passé à Wayland
+  #    (labwc) — constaté sur le vrai Pi le 05/09/2026. On ne le force que si
+  #    une session Wayland est réellement là, pour rester bon sur une machine
+  #    restée en X11.
+  BACKEND=()
+  [ -n "${WAYLAND_DISPLAY:-}" ] && BACKEND=(--ozone-platform=wayland)
+
+  # ⚠️ Profil DÉDIÉ. Sans lui, si un Chromium ordinaire est déjà ouvert (session
+  #    de bureau, mise au point…), notre commande lui est simplement transmise :
+  #    il répond « Opening in existing browser session », rend la main, et le
+  #    script boucle sans que rien ne s'affiche en plein écran.
+  # 🐞 --password-store=basic : SANS LUI, une fenêtre « Unlock Keyring /
+  #    Authentication required » s'ouvre PAR-DESSUS le bento à chaque
+  #    démarrage, clavier virtuel compris. Constaté sur le vrai écran le
+  #    05/09/2026 — et invisible autrement qu'en le regardant.
+  #    Cause : Chromium réclame le trousseau GNOME, resté verrouillé parce que
+  #    la session s'ouvre automatiquement — personne ne tape de mot de passe au
+  #    démarrage d'un écran mural. Il faudrait donc aller cliquer sur la dalle
+  #    après chaque coupure de courant : rédhibitoire.
+  #    « basic » = Chromium chiffre lui-même et ne demande plus rien. Il n'a de
+  #    toute façon aucun mot de passe à garder : il n'affiche qu'une page.
   "$CHROME" \
+    --password-store=basic \
+    --user-data-dir="$HOME/.config/chromium-kiosque" \
+    "${BACKEND[@]}" \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \

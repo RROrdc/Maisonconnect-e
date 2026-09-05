@@ -16,6 +16,20 @@ l’oubli le plus courant, et il arrête le montage net. Branche sur le port
 **HDMI0**, celui le plus proche de l’alimentation : c’est lui qui sort l’image
 au démarrage.
 
+🔴 **Le tactile a besoin de SON PROPRE câble USB**, en plus du HDMI. Vécu le
+05/09 : image parfaite, tactile mort, et le Pi ne voyait *aucun* périphérique
+tactile — le câble n'était pas branché du bon côté.
+Sur la dalle, cherche le port USB **montant** — souvent un carré (USB-B),
+parfois marqué `USB UP`, `TOUCH`, ou une icône de souris. Les autres ports USB
+de l'écran sont des **sorties** de hub : y brancher le câble ne donne rien.
+Côté Pi, préfère un **port noir (USB 2.0)**.
+
+Le contrôle qui tranche en une ligne, avant de chercher plus loin :
+```bash
+lsusb | grep -i touch      # rien ? c’est le câble, pas le logiciel
+```
+Sur cette dalle il apparaît comme `ILI Technology Corp. Multi-Touch Screen`.
+
 🔴 **L’alimentation doit être une vraie 5 V / 3 A USB-C**, de préférence
 l’officielle. Sous-alimenté, le Pi ne s’éteint pas : il *bride* son processeur
 et redémarre au hasard. Sur un écran mural, ça se présente comme « l’écran
@@ -175,29 +189,68 @@ Puis `sudo reboot`.
 Menu → Préférences → **Screen Configuration**, clic droit sur l'écran → Orientation. Plus simple, mais le réglage vit dans la session : il se perd si tu changes de compositeur.
 </details>
 
-### 🔴 Le piège : le tactile ne tourne PAS avec l'image
+### 🔴 Le piège confirmé : le tactile ne tourne PAS avec l’image
 
-C'est le défaut classique de toute installation en portrait — on tourne l'écran, et les doigts atterrissent à 90° de l'endroit visé. Avec la rotation noyau ci-dessus, le tactile suit généralement. **Si ce n'est pas le cas**, ne cherche pas : c'est connu.
+Vérifié sur la vraie dalle le 05/09 : image pivotée à 90°, **doigts non**. On
+touche « emploi du temps » et le panneau « courses » s’ouvre. C’est le défaut
+classique de toute installation en portrait, et il ne se corrige pas tout seul.
 
-<details>
-<summary>Corriger le tactile (X11)</summary>
+**Sur Pi OS trixie, le compositeur est `labwc`** (ni X11, ni wayfire — Raspberry
+Pi OS en a changé trois fois, d’où la prudence du reste de ce guide).
 
 ```bash
-xinput list                                   # repérer le nom du périphérique tactile
-xinput set-prop "NOM_DU_TACTILE" "Coordinate Transformation Matrix" 0 1 0 -1 0 1 0 0 1
+cp ~/.config/labwc/rc.xml ~/.config/labwc/rc.xml.avant   # toujours
+cat > ~/.config/labwc/rc.xml <<'XML'
+<?xml version="1.0"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <libinput>
+    <device category="touch">
+      <mapToOutput>HDMI-A-1</mapToOutput>
+    </device>
+  </libinput>
+</openbox_config>
+XML
+pkill -HUP labwc          # recharge la configuration
 ```
-La matrice ci-dessus correspond à une rotation de 90°. Pour 270° : `0 -1 1  1 0 0  0 0 1`.
-Rendre permanent : ajouter la commande dans `~/.config/autostart/` (un second `.desktop`).
-</details>
 
-<details>
-<summary>Corriger le tactile (Wayland / labwc)</summary>
+💡 **Pourquoi ça suffit** : c’est le compositeur qui applique la transformation
+aux coordonnées tactiles — encore faut-il lui dire sur **quelle sortie** le
+tactile est collé. Sans `mapToOutput`, il ne peut pas le deviner.
 
-Dans `~/.config/labwc/rc.xml`, associer le périphérique à la sortie :
-```xml
-<libinput><device category="touch"><mapToOutput>HDMI-A-1</mapToOutput></device></libinput>
+⚠️ `HDMI-A-1` est le nom réel de la sortie sur ce Pi (`wlr-randr` le confirme).
+Si l’écran était branché sur l’autre port, ce serait `HDMI-A-2`.
+
+### 🔴 Et une extinction automatique que personne n’avait vue
+
+Pi OS trixie place dans `~/.config/labwc/autostart` :
+
 ```
-</details>
+swayidle -w timeout 600 'wlopm --off \*' resume 'wlopm --on \*' &
+```
+
+**L’écran s’éteint donc au bout de 10 minutes**, quoi qu’on règle ailleurs. Ce
+n’est PAS le « Screen Blanking » de `raspi-config` — celui-là ne le couvre pas.
+Sur un écran mural c’est rédhibitoire : la veille du bento (25 min, réglable
+dans `/admin/`) doit rester **la seule** à décider, sinon deux mécanismes se
+disputent l’extinction et personne ne comprend le comportement.
+
+```bash
+sed -i "s|^swayidle |# swayidle |" ~/.config/labwc/autostart
+pkill swayidle
+```
+
+### Où la rotation est réellement enregistrée
+
+L’outil « Screen Configuration » de Pi OS n’écrit **ni dans `cmdline.txt`, ni
+dans `rc.xml`** : il écrit dans **`~/.config/kanshi/config`** —
+
+```
+profile { output HDMI-A-1 enable scale 1.000000 mode 1920x1080@60.000 position 0,0 transform 90 }
+```
+
+✅ C’est persistant, donc la rotation par le noyau (§ ci-dessus) devient
+facultative. Utile à savoir pour vérifier — ou pour corriger sans passer par
+l’interface graphique.
 
 ---
 
@@ -229,6 +282,35 @@ sudo reboot
 
 **Ce que tu dois voir** : le Pi démarre, aucun bureau n'apparaît, l'écran mural s'affiche en plein écran, en portrait.
 
+✅ **Vérifié en vrai le 05/09/2026** : redémarrage complet, le kiosque repart
+seul et le bento se reconnecte au flux temps réel — contrôlable **depuis le
+serveur**, sans regarder l'écran :
+
+```bash
+curl -s http://maison.local:8090/api/health   # "abonnes" passe à 1 dès que la page est là
+```
+
+💡 C'est le meilleur contrôle à distance qu'on ait : le bento ouvre une
+connexion SSE au chargement. Si `abonnes` reste à 0, la page n'est pas
+affichée — inutile d'aller voir.
+
+### 📸 Regarder l'écran sans être devant
+
+```bash
+sudo apt install -y grim
+export XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0
+grim -t png /tmp/ecran.png        # puis scp
+```
+
+⚠️ **À faire, et tôt.** C'est une capture qui a révélé la fenêtre « Unlock
+Keyring » : elle était invisible depuis SSH, où tout paraissait parfait —
+Chromium tournait, le serveur voyait la page. Le projet a déjà payé cette
+leçon deux fois (§ corrections des 1re et 2e captures, 14/08).
+
+⚠️ `unclutter` ne sert **à rien ici** : c'est un outil X11. Sur Wayland le
+curseur ne s'affiche pas tant qu'aucune souris ne bouge — donc dès que le
+dongle clavier/souris est retiré, il n'y a plus de curseur.
+
 ### Ce que le script fait, et pourquoi
 
 | | Pourquoi c'est là |
@@ -237,6 +319,10 @@ sudo reboot
 | **Efface `exit_type: Crashed`** | Sinon la bulle « Chromium ne s'est pas fermé correctement » s'affiche par-dessus l'écran mural. Sur un mur, ça reste des jours. |
 | **Relance Chromium s'il meurt** | Un écran mural doit se réparer tout seul. |
 | **Une URL avec un NOM, pas une IP** | L'adresse a déjà changé trois fois dans ce projet. |
+| **`--ozone-platform=wayland`** | Pi OS est passé à Wayland (labwc). Sans ce drapeau, Chromium tente X11 et meurt sur « Missing X server or $DISPLAY » — il ne s'affiche jamais. Posé seulement si une session Wayland existe, pour rester bon sur une machine restée en X11. |
+| **`--password-store=basic`** | 🔴 Sans lui, une fenêtre **« Unlock Keyring »** s'ouvre par-dessus le bento à chaque démarrage, clavier virtuel compris. Le trousseau GNOME reste verrouillé parce que la session s'ouvre automatiquement : il faudrait aller taper un mot de passe sur la dalle après chaque coupure de courant. |
+| **Un profil `--user-data-dir` dédié** | Si un Chromium ordinaire est déjà ouvert, la commande lui est simplement transmise (« Opening in existing browser session »), elle rend la main aussitôt, et le script boucle sans que rien ne s'affiche. |
+| **Retrouve `WAYLAND_DISPLAY` tout seul** | Lancé par l'autostart ces variables existent ; lancé par SSH — ce qu'on fait forcément pour mettre au point — elles manquent. |
 
 ---
 
@@ -291,6 +377,11 @@ Une ligne, réversible. C'est la bonne façon de vérifier que la chaîne micro 
 - [ ] Écran pivoté en portrait, **et le tactile tombe juste**
 - [ ] Dépôt cloné, `kiosque.conf` relu
 - [ ] `.desktop` en place, **vérifié par un vrai `sudo reboot`**
+- [ ] Câble USB du tactile sur le port **montant** de la dalle (`lsusb | grep -i touch`)
+- [ ] Tactile mappé sur la sortie (`mapToOutput` dans `~/.config/labwc/rc.xml`)
+- [ ] `swayidle` désactivé dans `~/.config/labwc/autostart` (extinction à 10 min)
+- [ ] Wi-Fi **sans économie d'énergie** (`nmcli … 802-11-wireless.powersave 2`)
+- [ ] **Une capture `grim`** regardée au moins une fois — pas seulement SSH
 - [ ] L'écran survit à une **coupure de courant** (le vrai test : débranche)
 - [ ] Réservation DHCP pour le Pi sur la box
 
