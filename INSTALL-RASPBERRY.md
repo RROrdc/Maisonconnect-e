@@ -36,6 +36,22 @@ flou d’arrière-plan ni dégradé radial (vérifié au § 2 octies).
 
 ## 1. Système
 
+### 🔴 D'où graver la carte : PAS depuis le PC du travail
+
+Écrire une image sur une carte SD, c'est de l'**accès disque brut**, et sous Windows ça
+exige l'**élévation administrateur** — quel que soit l'outil. Imager, Rufus, Etcher,
+Win32 Disk Imager : tous butent sur la même barrière. Ce n'est pas une limite des
+logiciels, c'est une règle du système. Il n'existe donc pas de version « portable » qui
+contournerait ça : elle n'irait pas plus loin.
+
+👉 **Grave la carte depuis le Mac mini** — c'est ta machine, tu y as le mot de passe admin,
+et Imager existe pour macOS.
+
+💡 **L'ordre tombe juste tout seul** : le Pi ne sert à rien tant que le Mac ne sert pas la
+page — il n'affiche que `bento.html`, servi par le Mac. Monter le Mac d'abord
+(`INSTALL-MAC.md`), puis graver la carte depuis le Mac, c'est la séquence naturelle, pas un
+contournement.
+
 ### 🔴 La SEULE chose à télécharger, c'est l'Imager
 
 **Raspberry Pi Imager** (gratuit, macOS/Windows/Linux) — une cinquantaine de méga-octets,
