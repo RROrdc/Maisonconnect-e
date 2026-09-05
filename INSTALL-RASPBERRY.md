@@ -8,15 +8,39 @@
 
 ## 1. Système
 
-**Raspberry Pi OS (64-bit) with desktop**, Bookworm ou plus récent. La version *Lite* ne convient pas : il faut un environnement graphique pour Chromium.
+### 🔴 Ne télécharge PAS l'image à la main
 
-Dans **Raspberry Pi Imager**, avant d'écrire la carte, ouvre les réglages (⚙) :
-- nom d'hôte : `ecran-cuisine`
-- **activer SSH** — c'est par là que je piloterai le Pi depuis le Mac
-- Wi-Fi et pays
-- utilisateur et mot de passe
+Passe par **Raspberry Pi Imager** (gratuit, macOS/Windows/Linux). Il télécharge, il écrit, et surtout **il préconfigure** — c'est cette dernière partie qui compte : sans elle, il faut brancher un clavier et un écran sur le Pi pour le premier démarrage, et saisir un mot de passe Wi-Fi sur une dalle tactile n'est pas une partie de plaisir.
 
-Au premier démarrage :
+**Image à choisir : `Raspberry Pi OS (64-bit)` — la version *with desktop*.**
+- ❌ **Pas *Lite*** : il n'y a pas d'environnement graphique, donc pas de Chromium, donc pas de kiosque.
+- ❌ **Pas *Full*** : elle embarque LibreOffice et compagnie. Sur une machine qui n'affiche qu'une page web, c'est de la place et des mises à jour pour rien.
+
+### La carte SD — le seul choix qui se paiera plus tard
+
+⚠️ **Cet écran tourne 24 h/24.** Une carte SD écrit des journaux en continu, et c'est la pièce qui lâchera en premier — c'est le mode de panne classique d'un Pi en kiosque. Trois façons de s'en prémunir, par ordre d'effort :
+- **16 Go minimum, et une carte de marque en classe A2** (SanDisk Extreme, Samsung Pro Endurance). Une carte à trois euros tiendra quelques mois.
+- 💡 **Rien n'est stocké sur le Pi** : ni base, ni photos, ni réglages. Tout vit sur le Mac. Une carte morte ne fait donc perdre **aucune donnée** — juste une demi-heure de réinstallation. C'est ce qui rend le risque acceptable.
+- Si tu veux ne plus y penser : **démarrer depuis une clé ou un SSD USB** plutôt que la carte. Les Pi 4 et 5 le font nativement.
+
+### ⚙️ L'étape qui change tout : la personnalisation
+
+Imager propose « **Personnaliser les réglages de l'OS** » **avant** d'écrire (c'était un menu caché dans les anciennes versions ; c'est maintenant une étape du parcours, en six écrans). Ne la saute pas.
+
+| Écran | À mettre |
+|---|---|
+| **Nom d'hôte** | `ecran-cuisine` — c'est ainsi qu'on le joindra : `ecran-cuisine.local` |
+| **Localisation** | choisis **Paris** : le fuseau, le clavier **AZERTY** et le domaine radio Wi-Fi en découlent |
+| **Utilisateur** | ton identifiant et ton mot de passe (l'utilisateur `pi` par défaut n'existe plus) |
+| **Wi-Fi** | SSID + mot de passe du réseau de la maison — le Pi se connectera seul au premier démarrage |
+| **Accès distant** | **active SSH** — c'est par là que le Pi se pilote depuis le Mac, sans clavier ni écran |
+| **Raspberry Pi Connect** | facultatif, et inutile ici : le Pi et le Mac sont sur le même réseau |
+
+Un récapitulatif confirme « SSH activé » avant d'écrire quoi que ce soit : c'est le moment de vérifier.
+
+⚠️ **Le premier démarrage prend 2 à 3 minutes**, avec parfois un redémarrage automatique : le Pi applique la configuration et étend le système de fichiers. **Ce n'est pas un plantage** — laisse-le finir avant de t'inquiéter.
+
+### Une fois démarré
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
@@ -188,7 +212,8 @@ Une ligne, réversible. C'est la bonne façon de vérifier que la chaîne micro 
 
 ## ✅ Récapitulatif
 
-- [ ] Pi OS 64-bit **with desktop**, SSH activé
+- [ ] Carte SD de marque, **A2, 16 Go minimum** (elle écrit 24 h/24)
+- [ ] Pi OS 64-bit **with desktop**, SSH activé, personnalisation Imager remplie
 - [ ] `curl http://maison.local:8090/api/health` répond **depuis le Pi**
 - [ ] Autologin bureau, **Screen Blanking = No**
 - [ ] Écran pivoté en portrait, **et le tactile tombe juste**
