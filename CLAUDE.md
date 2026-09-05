@@ -6914,7 +6914,16 @@ Deux questions de Rémi : « le Raspberry n'aura pas un rendu top mais on passer
 Le schéma de `VOCAL.md` place « say / Piper » **côté Mac mini**, mais la flèche de retour dit `←texte──`. Les deux ne peuvent pas être vrais en même temps : si le Mac renvoie du **texte**, c'est le navigateur du **Pi** qui parle — donc **espeak**, la voix robotique qu'on voulait justement éviter. Le haut-parleur est en cuisine, pas dans le bureau.
 - ⇒ **Piper doit tourner SUR LE PI.** Vérifié : Piper « parle en temps réel sur un Raspberry Pi 5 sans GPU ». Le Mac garde whisper et la compréhension ; le Pi garde le mot d'éveil **et la voix**. Aucun transport audio de retour, donc pas de latence ajoutée, et l'écran continue de parler même si le Mac est occupé.
 - Repli si le Pi est un modèle plus ancien : le Mac synthétise et **renvoie du WAV** au lieu du texte. Ça marche, mais ça ajoute un aller-retour audio — à ne faire que si Piper rame réellement sur place.
-- ❔ **Modèle du Pi non vérifié** (« un Raspberry déjà commandé », § 2 octies). C'est ce qui tranche entre les deux montages.
+- ✅ **RÉPONDU le 05/09 : c'est un Pi 4 Model B — et ça INVERSE la conclusion ci-dessus.** Un Pi 4 est nettement plus lent sur les voix *medium* (plusieurs secondes de retard par phrase) ; il ne tient le temps réel qu'en *low*. Or les voix françaises masculines sont `tom` (medium), `gilles` (low) et `upmc` (medium) : Piper sur le Pi imposerait `gilles-low`, audible mais nettement moins naturelle — précisément la qualité que Rémi cherche.
+  ⇒ **Le Mac synthétise et RENVOIE L'AUDIO**, le Pi ne fait que le jouer. C'est le schéma d'origine de `VOCAL.md`, à une correction près qui était un vrai défaut : sa flèche de retour disait « texte », ce qui aurait fait parler le navigateur du Pi — donc espeak, donc la voix robotique qu'on veut éviter.
+  💡 Coût faible (quelques dizaines de Ko de WAV sur le réseau local, et le Mac synthétise bien plus vite qu'un Pi 4), **à mesurer au montage** plutôt qu'à supposer. Repli si le retard se sent : `gilles-low` sur le Pi, instantané.
+  ⚠️ Leçon : j'avais tranché « Piper sur le Pi » la veille **en supposant un Pi 5**. Une recommandation qui dépend du matériel ne vaut rien tant que le matériel n'est pas connu — il fallait poser la question avant de conclure, pas après.
+
+### 🔌 Trois pièges matériels du Pi 4, ajoutés au guide (05/09/2026)
+- 🔴 **Le câble n'est pas un HDMI ordinaire** : le Pi 4 a des ports **micro-HDMI**. C'est l'oubli le plus courant, et il arrête le montage net. Brancher sur **HDMI0**, le plus proche de l'alimentation.
+- 🔴 **Alimentation 5 V / 3 A USB-C**, de préférence l'officielle. Sous-alimenté, le Pi ne s'éteint pas : il *bride* son processeur et redémarre au hasard. Sur un mur, ça se présente comme « l'écran rame le soir » — le pire symptôme à diagnostiquer, parce qu'il ne ressemble pas à un problème électrique. `vcgencmd get_throttled` doit rendre `0x0`.
+- ⚠️ **Boîtier avec dissipateur, idéalement ventilé** : Chromium 24 h/24 chauffe un Pi 4, et au-delà de 80 °C il se bride aussi — même symptôme, autre cause.
+- 💡 2 Go de RAM suffisent : le bento n'a ni flou d'arrière-plan ni dégradé radial (§ 2 octies).
 
 ### ⚠️ Piper n'est plus MIT — correction d'une erreur de ce fichier
 `rhasspy/piper` (MIT) est **archivé en lecture seule depuis octobre 2025** ; le développement est passé à **`OHF-Voice/piper1-gpl`**, en **GPL-3.0** (v1.6.0, juillet 2026).

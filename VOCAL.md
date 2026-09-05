@@ -113,10 +113,17 @@ Trois issues, de la meilleure à la plus expédiente :
   │  Chromium en kiosque → bento   │        │  server.js + maison.db          │
   │  Micro + haut-parleur          │        │  whisper.cpp  (voix → texte)    │
   │  Porcupine : mot d'éveil       │──audio→│  /api/vocal   (compréhension)   │
-  │    (100 % local, rien ne sort  │←texte──│  say / Piper  (texte → voix)    │
+  │    (100 % local, rien ne sort  │←AUDIO──│  Piper        (texte → voix)    │
   │     tant qu'on n'a pas parlé)  │        │  Home Assistant → HomeKit       │
   └────────────────────────────────┘        └─────────────────────────────────┘
 ```
+
+🔴 **La flèche de retour porte de l'AUDIO, pas du texte.** Le schéma disait
+« texte » : avec du texte, c'est le navigateur du Pi qui parlerait, donc *espeak*,
+donc la voix robotique qu'on veut justement éviter. Le haut-parleur est en
+cuisine, la synthèse est sur le Mac : il faut bien que le son voyage.
+(Sur un Pi 5, on aurait pu mettre Piper sur le Pi et n'envoyer que du texte —
+voir l'encadré « Sur un Pi 4 » plus bas. Ce n'est pas notre matériel.)
 
 **Pourquoi couper là** : le Raspberry est excellent pour le mot d'éveil (Porcupine est fait
 pour ça, quelques % de CPU) mais poussif pour transcrire du français ; le Mac mini transcrit
@@ -258,6 +265,36 @@ est l'usage prévu.
 ⚠️ **Les VOIX sont un dépôt séparé** (`rhasspy/piper-voices` sur Hugging Face) et portent
 leurs propres licences, modèle par modèle : **à vérifier pour celle qu'on retiendra**, pas
 à supposer d'après le moteur.
+
+### ⚠️ Sur un Pi 4, la synthèse ne tourne PAS sur le Pi
+
+Le Raspberry de la maison est un **Pi 4 Model B** (confirmé le 05/09/2026), et
+ça renverse la conclusion tirée la veille — elle supposait un Pi 5.
+
+| | Pi 4 | Pi 5 |
+|---|---|---|
+| voix *low* (`fr_FR-gilles-low`) | ✅ temps réel | ✅ |
+| voix *medium* (`fr_FR-tom-medium`) | ⚠️ **plusieurs secondes de retard par phrase** | ✅ temps réel |
+
+Or les seules voix françaises **masculines** utilisables sont `tom` (medium),
+`gilles` (low) et `upmc` (medium). Sur un Pi 4, faire tourner Piper sur place
+imposerait donc `gilles-low` — audible, mais nettement moins naturelle, et
+c’est précisément la qualité que Rémi cherche.
+
+**⇒ Sur ce matériel, le Mac mini synthétise et RENVOIE L’AUDIO au Pi**, qui ne
+fait que le jouer. C’est le schéma d’origine de ce document — à une correction
+près, qui était un vrai défaut : **la flèche de retour porte de l’AUDIO, pas du
+texte.** Avec du texte, c’est le navigateur du Pi qui parlerait, donc *espeak*,
+donc exactement la voix robotique qu’on veut éviter.
+
+💡 Le coût est faible : quelques dizaines de kilo-octets de WAV sur le réseau
+local, et un Mac mini synthétise bien plus vite qu’un Pi 4. **À mesurer le jour
+du montage** plutôt qu’à supposer — si le retard se sent, `gilles-low` sur le
+Pi reste le repli, instantané.
+
+⚠️ Conséquence à ne pas perdre : la voix dépend alors du Mac. S’il est éteint,
+l’écran devient muet — mais il l’était déjà pour la compréhension, qui vit
+aussi là-bas. Aucune dépendance nouvelle, seulement une de plus sur le même lien.
 
 ### 🥇 Le libre existe, et il est bon : Piper
 

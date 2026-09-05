@@ -6,6 +6,34 @@
 
 ---
 
+## 0. Le matériel — trois pièges avant même d’allumer
+
+Le Pi de la maison est un **Raspberry Pi 4 Model B**.
+
+🔴 **Le câble n’est PAS un câble HDMI ordinaire.** Le Pi 4 a deux ports
+**micro-HDMI**. Il faut un cordon **micro-HDMI → HDMI**, ou un adaptateur. C’est
+l’oubli le plus courant, et il arrête le montage net. Branche sur le port
+**HDMI0**, celui le plus proche de l’alimentation : c’est lui qui sort l’image
+au démarrage.
+
+🔴 **L’alimentation doit être une vraie 5 V / 3 A USB-C**, de préférence
+l’officielle. Sous-alimenté, le Pi ne s’éteint pas : il *bride* son processeur
+et redémarre au hasard. Sur un écran mural, ça se présente comme « l’écran
+rame le soir » ou « il a redémarré tout seul cette nuit » — le pire symptôme à
+diagnostiquer, parce qu’il ne ressemble pas à un problème électrique. Un
+éclair 🗲 en haut de l’écran, ou `vcgencmd get_throttled` qui ne rend pas
+`0x0`, confirment le diagnostic.
+
+⚠️ **Prévoir un boîtier avec dissipateur, idéalement ventilé.** Chromium
+affichant une page 24 h/24 chauffe un Pi 4, et au-delà de 80 °C il se bride
+aussi — même symptôme que ci-dessus, autre cause. `vcgencmd measure_temp`
+pendant que le bento tourne dit tout de suite si c’est confortable.
+
+💡 **2 Go de RAM suffisent** largement : le bento est une page légère, sans
+flou d’arrière-plan ni dégradé radial (vérifié au § 2 octies).
+
+---
+
 ## 1. Système
 
 ### 🔴 Ne télécharge PAS l'image à la main
