@@ -39,14 +39,26 @@ dire() { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*" >> "$JOURNAL"; }
 
 cd "$PROJET" 2>/dev/null || { dire "✗ dossier introuvable : $PROJET"; exit 1; }
 
-# ── Y a-t-il quelque chose de nouveau ? ────────────────────────────────────
-git fetch --quiet origin "$BRANCHE" 2>>"$JOURNAL" || { dire "✗ git fetch a échoué (clé de déploiement ?)"; exit 1; }
-ICI="$(git rev-parse HEAD)"
-LA="$(git rev-parse "origin/$BRANCHE")"
-[ "$ICI" = "$LA" ] && exit 0          # rien à faire : le cas normal, silencieux
+# Deux façons d'arriver ici, et c'est délibéré :
+#   • sans argument  → le service toutes les 2 min : on TIRE depuis GitHub ;
+#   • --recu <sha>   → un `git push` direct vers le Mac vient d'atterrir, le code
+#                      est déjà en place, il ne reste qu'à vérifier et relancer.
+# Le second chemin existe parce que la clé de déploiement GitHub demande une
+# manipulation humaine : sans lui, « je pousse et ça s'installe » aurait attendu.
+RECU=0
+if [ "${1:-}" = "--recu" ]; then RECU=1; ICI="${2:-$(git rev-parse HEAD~1 2>/dev/null)}"; fi
 
-dire "── nouveau sur origin/$BRANCHE : ${ICI:0:7} → ${LA:0:7}"
-git log --oneline "$ICI..$LA" | sed 's/^/     /' >> "$JOURNAL"
+# ── Y a-t-il quelque chose de nouveau ? ────────────────────────────────────
+if [ "$RECU" -eq 0 ]; then
+  git fetch --quiet origin "$BRANCHE" 2>>"$JOURNAL" || { dire "✗ git fetch a échoué (clé de déploiement ?)"; exit 1; }
+  ICI="$(git rev-parse HEAD)"
+  LA="$(git rev-parse "origin/$BRANCHE")"
+  [ "$ICI" = "$LA" ] && exit 0        # rien à faire : le cas normal, silencieux
+  dire "── nouveau sur origin/$BRANCHE : ${ICI:0:7} → ${LA:0:7}"
+  git log --oneline "$ICI..$LA" | sed 's/^/     /' >> "$JOURNAL"
+else
+  dire "── reçu par push : ${ICI:0:7} → $(git rev-parse --short HEAD)"
+fi
 
 # ── 1. Sauvegarde de la base AVANT de bouger quoi que ce soit ──────────────
 # `VACUUM INTO` produit une copie cohérente même serveur allumé — c'est ce qui
@@ -61,7 +73,8 @@ new DatabaseSync('$PROJET/maison.db', {readOnly:true}).exec(\"VACUUM INTO '$INST
 # On garde les dix dernières : au-delà, c'est la sauvegarde quotidienne qui prend le relais.
 ls -1t "$COFFRE"/avant-deploiement-*.db 2>/dev/null | tail -n +11 | xargs -I{} rm -f {} 2>/dev/null
 
-# ── 2. Mise à jour du code ─────────────────────────────────────────────────
+# ── 2. Mise à jour du code (seulement si on TIRE) ──────────────────────────
+if [ "$RECU" -eq 0 ]; then
 # 🐞 Un fichier NON SUIVI qui porte le même nom qu'un fichier apporté par la mise
 # à jour fait échouer `git pull` (« untracked working tree files would be
 # overwritten »), et le déploiement reste bloqué pour toujours sans que personne
@@ -84,6 +97,7 @@ fi
 if ! git diff --quiet "$ICI" HEAD -- package-lock.json package.json; then
   dire "   package-lock.json a changé → npm ci"
   "$NPM" ci --silent >>"$JOURNAL" 2>&1 || { dire "✗ npm ci a échoué"; }
+fi
 fi
 
 # ── 3. Contrôles hors ligne : on ne déploie pas ce qui ne passe pas ────────
