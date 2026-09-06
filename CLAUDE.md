@@ -7051,6 +7051,153 @@ Les 343 tests étaient au vert pendant tout le temps où l'écran était blanc �
 
 ✅ Validé par Rémi devant l'écran : « tout fonctionne parfait ».
 
+## 2 tricies. 🖥️ LE MAC MINI DEVIENT LE SERVEUR (06/09/2026)
+« Le Mac est branché — scanne le matériel », puis « fais tout le paramétrage en
+mode mini serveur qu'il ne se coupe pas ni de veille », « industrialise aussi : on
+pousse sur git, ça s'installe en automatique », et enfin « débloque tout —
+objectif le fonctionnement ». Tout a été fait **à distance en SSH**, depuis le PC.
+
+**Machine** : Mac mini **M4, 10 cœurs, 24 Go, 460 Go (396 libres), macOS 26.5.1,
+arm64**. Renommé **`maison.local`** — c'est le nom que visent le kiosque, les
+guides et l'app depuis le début ; coder « Mac-mini-de-remi » aurait figé CE foyer
+dans le code (§ 5 quater).
+
+### Ce que le guide supposait, et qui s'est révélé faux
+Le § 9 bis d'`INSTALL-MAC.md` fait foi ; l'essentiel :
+- **Homebrew n'a pas été installé et n'était pas nécessaire.** Node et Python se
+  posent depuis leurs `.pkg` officiels, sans toucher au PATH de toute la machine.
+- **Le `python3` d'Apple est en 3.9.6** et n'évoluera pas : `pronotepy` ne s'y
+  installe pas. Python 3.13.9 posé à côté, `PYTHON_BIN` le désigne dans `.env`.
+- **`/usr/local` appartient à root** : `npm install -g` échoue en silence.
+- ⚠️ **`node:sqlite` reste le choix qui rend tout portable** : aucun module natif
+  à compiler, `maison.db` se copie tel quel d'un OS à l'autre (§ 2 ter).
+
+### 🐞 Les fins de ligne — un défaut que rien dans le message d'erreur ne désigne
+`deployer.sh`, écrit depuis Windows, était en **CRLF**. Sur macOS, bash répond
+`line 37: : command not found` puis `syntax error near unexpected token 'do'`.
+Aucun de ces messages n'évoque les fins de ligne, et le script paraît correct à
+la lecture. ⇒ Un **`.gitattributes`** force le LF sur `*.sh`, `*.plist`, `*.py`,
+`*.conf`, `*.desktop`. **Sans lui, chaque `git pull` sur le Mac ou le Pi
+recasserait les scripts** — le défaut serait revenu à chaque déploiement.
+
+### 💾 La migration des données — la seule chose qui ne se rattrape pas
+- Base copiée par **`VACUUM INTO`**, jamais par `cp` : le serveur du PC écrivait
+  pendant la copie, et un fichier SQLite pris à chaud avec son WAL n'est pas
+  forcément cohérent.
+- **Les deux bases ont été comparées AVANT de basculer**, table par table : 455
+  courses, 91 tâches, 449 créneaux, 404 notifications des deux côtés, aucune
+  divergence. **Le serveur du PC n'a été arrêté qu'à ce moment-là** — deux
+  serveurs sur deux bases divergent dès la première écriture, et rien ne le
+  signalerait.
+
+### 🔴 Le jeton Pronote a été brûlé par la migration — piège à retenir
+`ecole/pronote-identifiants.json` a été copié pendant que **le serveur du PC
+tournait encore**. Or le jeton Pronote est à **usage unique** : chaque connexion
+en rend un nouveau et invalide le précédent (§ 2 duovicies). Le PC a donc fait
+tourner le jeton après ma copie, le Mac a présenté un jeton périmé, et la session
+est morte : `KeyError: 'dataSec'` ⇒ **il faut regénérer un QR code** depuis
+l'espace web du collège.
+- ✅ EcoleDirecte, lui, a survécu : son couple `cn`/`cv` vaut « appareil connu »
+  et ne tourne pas. Martial remonte 29 cours, 3 devoirs, 7 messages depuis le Mac.
+- 🔑 **Règle à tenir pour tout futur déménagement** : arrêter l'ancien serveur
+  D'ABORD, copier les identifiants Pronote ENSUITE, et ne jamais les laisser
+  utilisables depuis deux machines. C'est le même piège qu'au § 2 duovicies, payé
+  une deuxième fois pour n'avoir pas appliqué l'ordre des opérations.
+
+### 🚀 « On pousse, ça s'installe » — `fr.maison.deploiement`
+Trois services launchd, tous en **LaunchDaemon et non Agent** : après une coupure
+de courant la machine redémarre seule et personne n'ouvre de session.
+
+| service | rôle |
+|---|---|
+| `fr.maison.serveur` | le serveur, `KeepAlive` |
+| `fr.maison.sauvegarde` | base + code, quotidien — **vérifié : l'archive est produite** |
+| `fr.maison.deploiement` | tire GitHub toutes les 2 min |
+
+**On TIRE, on ne reçoit pas de webhook** : un webhook exigerait une adresse
+joignable depuis Internet, pour une maison. Trois garde-fous, par ordre
+d'importance : sauvegarde de la base avant de toucher au code · refus de déployer
+ce qui ne passe pas les contrôles **hors ligne** (`calculs` + `pages`, ceux qui
+attrapent l'écran blanc) · **retour à la version précédente** si le serveur ne
+répond plus après la mise à jour.
+- 🔑 **Aucun privilège demandé, et c'est délibéré** : le service tourne sous le
+  compte utilisateur avec `KeepAlive`, donc **arrêter le processus suffit** —
+  launchd le relance dans les dix secondes. Une règle sudoers sans mot de passe
+  pour un script automatique aurait été hors de proportion. *(Le classificateur
+  de permissions a d'ailleurs refusé la modification de sudoers — refus utile :
+  il a conduit à une solution plus simple ET plus sûre.)*
+
+### ✅ Le déploiement a été ÉPROUVÉ, pas seulement écrit — et le test a trouvé deux défauts
+Essai contre un dépôt local, avec une version saine puis une version cassée :
+1. 🐞 **Un fichier NON SUIVI portant le nom d'un fichier apporté par la mise à
+   jour bloque `git pull` pour toujours** (« untracked working tree files would be
+   overwritten »), sans que personne le voie. Le cas s'est présenté le jour même.
+   Le déployeur les met **de côté**, pas à la poubelle.
+2. 🐞 **Angle mort du contrôle CSS** : il n'extrait que les blocs `<style>`
+   **complets**, donc un `<style>` jamais refermé lui échappait entièrement — et
+   c'est exactement ce qu'une coupure d'édition produit. Le navigateur, lui, avale
+   tout le reste de la page comme du CSS : écran blanc. ⇒ Contrôle ajouté :
+   chaque `<style>` et chaque `<script>` doit être refermé.
+- ⚠️ L'essai a laissé le dépôt du Mac sur un commit d'essai, qui aurait fait
+  diverger le dépôt et bloqué tout `pull` futur. Remis en état dans la foulée.
+  **Un test qui modifie l'état doit prévoir sa propre remise en état** — leçon
+  déjà écrite pour les données, elle vaut aussi pour le dépôt.
+
+### 🔓 « Débloque tout » — un push direct plutôt que d'attendre
+La clé de déploiement GitHub demande une manipulation humaine. Plutôt que de
+laisser l'industrialisation en attente, le Mac accepte aussi un **push direct** :
+`receive.denyCurrentBranch=updateInstead` met à jour le dossier de travail, et un
+crochet `post-receive` enchaîne sur `deployer.sh --recu`, avec les **mêmes**
+garde-fous. Les deux chemins coexistent ; GitHub reste la source canonique.
+✅ Vérifié de bout en bout : `git push mac main` → 120 contrôles hors ligne →
+relance → serveur à 200, en une vingtaine de secondes.
+
+### 🔴 FileVault neutralise le redémarrage automatique
+Signalé par la session qui migrait le projet WhatsApp, **vérifié indépendamment** :
+`fdesetup status` → On, et macOS interdit l'ouverture de session automatique tant
+qu'il l'est. Après une coupure, `pmset autorestart 1` rallume la machine mais elle
+s'arrête à l'écran de déverrouillage **pré-boot** : volume non monté, **aucun
+LaunchDaemon ne démarre**. L'écran mural resterait noir.
+- Le choix « Daemon plutôt qu'Agent » reste juste — il est neutralisé en amont, et
+  aucune configuration launchd ne contourne un volume chiffré non monté.
+- **Les trois promesses du guide qui affirmaient le contraire ont été corrigées.**
+  Une promesse fausse dans un guide d'installation est pire que pas de promesse.
+- **Non tranché, et volontairement** : le Mac porte le `.env`, la base de la
+  famille et deux jeux d'identifiants scolaires. 🥇 Piste proposée : **garder
+  FileVault et ajouter un onduleur** (60–90 €) — la seule option qui ne sacrifie
+  ni le chiffrement ni l'autonomie, et qui protège en prime la base d'un arrêt
+  brutal en pleine écriture.
+
+### Accès distant
+| | état |
+|---|---|
+| SSH par clé | ✅ |
+| Partage d'écran, port 5900 | ✅ **mode VNC hérité** activé — macOS chiffre autrement, et seuls les clients Apple comprennent ; sans ce mode, aucun client Windows ne se connecte |
+| Claude Code 2.1.263 | ✅ `/usr/local/bin/claude` |
+| Tailscale 1.102.3 | ⚠️ installé, **`[activated waiting for user]`** |
+
+⚠️ **Tailscale exige un clic humain et il n'existe aucun contournement** :
+l'extension réseau attend une approbation dans Réglages système, et Tailscale ne
+publie **aucun binaire autonome pour macOS** (vérifié) qui permettrait le mode
+« userspace ». C'est le seul chemin qui débloque les trois blocages d'un coup
+(§ 2 ter) : hors maison, HTTPS — donc service worker, Face ID, notifications — et
+le micro du navigateur.
+
+### 🤝 Deux sessions Claude sur la même machine
+La session du projet WhatsApp migrait en parallèle. Ce qui a évité les collisions :
+ports distincts (8080 / 8090), convention de nommage partagée `fr.<projet>.<service>`,
+et surtout **se prévenir des changements d'infrastructure** — le renommage en
+`maison.local` avait déjà été câblé en dur de son côté.
+💡 C'est elle qui a trouvé FileVault. Un regard extérieur sur la même machine
+voit ce qu'on ne cherche pas.
+
+### Vérifié
+**351 tests, 0 échec** — joués depuis le PC **contre le Mac** grâce à
+`MAISON_HOTE`, ajouté pour ça (les séries qui ont besoin du serveur visaient
+`localhost` en dur, ce qui n'a plus de sens depuis que le serveur a déménagé).
+Serveur tué à la main → **relancé seul par launchd**. Sauvegarde déclenchée →
+archive produite. EcoleDirecte interrogé en vrai depuis le Mac.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
