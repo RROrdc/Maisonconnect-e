@@ -87,6 +87,9 @@ const REGLAGES = {
      évite de stocker le moindre identifiant Netatmo. Vide = carte « à brancher ».
      Le nom est un réglage, jamais codé en dur : aucun foyer dans le code. */
   temperature_raccourci: { env: '', defaut: '' },
+  /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
+     Vide = on ne touche jamais à la sortie. */
+  musique_enceinte_defaut: { env: '', defaut: '' },
   /* Combien de jours d'ÉCOLE de devoirs on montre sur le mur. Un soir de
      semaine on prépare demain ; le week-end on prépare la semaine — demande
      de Rémi : « Augustin le week-end doit afficher lundi, mardi et mercredi ». */
@@ -706,7 +709,10 @@ app.get('/api/maison', async (req, res) => {
        une barre de son qui se réveille. Sans ce court-circuit, on attendrait le
        cache pour voir apparaître un appareil qu'on vient d'allumer. */
     if (req.query.rafraichir) Maison.viderCache();
-    res.json(await Maison.tout({ temperature_raccourci: config('temperature_raccourci') }));
+    res.json(await Maison.tout({
+      temperature_raccourci: config('temperature_raccourci'),
+      musique_enceinte_defaut: config('musique_enceinte_defaut'),
+    }));
   }
   catch (e) { res.status(500).json({ erreur: e.message }); }
 });

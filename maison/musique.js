@@ -236,7 +236,38 @@ async function commanderOuAgent(quoi, options = {}) {
    nouvel appareil n'est pas reconnu. */
 const viderCache = () => { cache = { le: 0, valeur: null }; };
 
+/* ── Enceinte par défaut ────────────────────────────────────────────────────
+   Rémi veut que le son sorte sur la barre proche de l'écran de cuisine sans
+   avoir à y penser. Mais basculer une sortie audio TOUT SEUL peut couper la
+   musique de quelqu'un qui écoute ailleurs — d'où deux garde-fous :
+     • on ne touche à rien PENDANT une lecture ;
+     • et on ne réapplique pas si c'est déjà la bonne sortie, sinon on écrirait
+       à chaque lecture d'état.
+   Le nom est un réglage, jamais codé en dur : aucun foyer dans le code. */
+let dernierEssai = 0;
+
+async function appliquerDefaut(nom) {
+  const voulu = String(nom || '').trim();
+  if (!MAC || !voulu) return { applique: false, raison: 'aucune enceinte par défaut' };
+  /* Une minute entre deux tentatives : si l'enceinte est absente (éteinte), on
+     ne relance pas un AppleScript à chaque rafraîchissement de l'écran. */
+  if (Date.now() - dernierEssai < 60_000) return { applique: false, raison: 'déjà tenté récemment' };
+
+  const e = await etat();
+  if (!e.ouvert || e.erreur) return { applique: false, raison: 'Music indisponible' };
+  if (e.lecture) return { applique: false, raison: 'lecture en cours — on ne coupe pas' };
+  if ((e.actives || []).includes(voulu)) return { applique: false, raison: 'déjà la sortie active' };
+  if (!(e.enceintes || []).includes(voulu)) {
+    dernierEssai = Date.now();
+    return { applique: false, raison: `« ${voulu} » n'est pas visible (éteinte ?)` };
+  }
+  dernierEssai = Date.now();
+  await commander('enceinte', { nom: voulu });
+  return { applique: true, enceinte: voulu };
+}
+
+
 const disponible = () => MAC;
 
-module.exports = { disponible, viderCache, etat: etatOuAgent, commander: commanderOuAgent,
+module.exports = { disponible, viderCache, appliquerDefaut, etat: etatOuAgent, commander: commanderOuAgent,
                    etatDirect: etat, commanderDirect: commander, COMMANDES };

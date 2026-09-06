@@ -67,6 +67,14 @@ async function tout(reglages = {}) {
   ]);
   out.musique = m;
   out.temperature = t;
+
+  /* On remet la sortie par défaut APRÈS avoir lu l'état, jamais avant : la
+     lecture doit refléter ce qui est, pas ce qu'on souhaite. L'effet se verra au
+     rafraîchissement suivant — c'est volontaire, ça évite d'afficher un
+     changement qui n'aurait pas encore eu lieu. */
+  if (reglages.musique_enceinte_defaut) {
+    musique.appliquerDefaut(reglages.musique_enceinte_defaut).catch(() => {});
+  }
   return out;
 }
 
