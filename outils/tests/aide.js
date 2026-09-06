@@ -17,7 +17,13 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const PORT = Number(process.env.PORT) || 8090;
-const BASE = `http://localhost:${PORT}`;
+/* Depuis le 06/09 le serveur ne tourne plus sur le poste de développement mais
+   sur le Mac mini. `MAISON_HOTE` permet de lancer les séries qui ont besoin du
+   serveur depuis n'importe où :
+     MAISON_HOTE=maison.local npm test
+   Par défaut on reste sur localhost — c'est le cas quand on teste SUR le Mac. */
+const HOTE = process.env.MAISON_HOTE || 'localhost';
+const BASE = `http://${HOTE}:${PORT}`;
 const MARQUE = 'ZZ-essai';
 
 function compteur() {

@@ -62,6 +62,18 @@ new DatabaseSync('$PROJET/maison.db', {readOnly:true}).exec(\"VACUUM INTO '$INST
 ls -1t "$COFFRE"/avant-deploiement-*.db 2>/dev/null | tail -n +11 | xargs -I{} rm -f {} 2>/dev/null
 
 # ── 2. Mise à jour du code ─────────────────────────────────────────────────
+# 🐞 Un fichier NON SUIVI qui porte le même nom qu'un fichier apporté par la mise
+# à jour fait échouer `git pull` (« untracked working tree files would be
+# overwritten »), et le déploiement reste bloqué pour toujours sans que personne
+# le voie. Le cas s'est présenté le jour même de l'installation : deux scripts
+# copiés à la main sur le Mac avant d'être publiés.
+# On les met DE CÔTÉ plutôt que de les supprimer — on ne détruit rien sans trace.
+git diff --name-only HEAD "origin/$BRANCHE" 2>/dev/null | while read -r f; do
+  [ -e "$f" ] || continue
+  git ls-files --error-unmatch "$f" >/dev/null 2>&1 && continue
+  mv "$f" "$f.avant-deploiement" && dire "   fichier local mis de côté : $f → $f.avant-deploiement"
+done
+
 if ! git pull --ff-only --quiet origin "$BRANCHE" 2>>"$JOURNAL"; then
   dire "✗ git pull refusé — le dépôt local a divergé. Intervention humaine requise."
   exit 1

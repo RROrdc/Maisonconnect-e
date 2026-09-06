@@ -48,6 +48,17 @@ module.exports = async function (muet) {
     const styles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
     const ouv = (styles.match(/\{/g) || []).length, fer = (styles.match(/\}/g) || []).length;
     t.dire(ouv === fer, `${rel} — accolades CSS équilibrées`, `${ouv}/${fer}`);
+
+    /* 🐞 Angle mort trouvé le 06/09 en éprouvant le déploiement automatique : le
+       contrôle ci-dessus n'extrait que les blocs COMPLETS. Un `<style>` jamais
+       refermé lui échappait donc entièrement — et c'est exactement ce qu'une
+       coupure d'édition produit. Le navigateur, lui, avale tout le reste de la
+       page comme du CSS : l'écran devient blanc. On compte donc les balises. */
+    for (const [nom, ouvr, ferm] of [['style', /<style[^>]*>/gi, /<\/style>/gi],
+                                     ['script', /<script[\s>]/gi, /<\/script>/gi]]) {
+      const a = (html.match(ouvr) || []).length, b = (html.match(ferm) || []).length;
+      t.dire(a === b, `${rel} — chaque <${nom}> est refermé`, `${a} ouverts / ${b} fermés`);
+    }
   }
 
   if (!(await A.serveurPret())) {

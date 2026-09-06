@@ -42,7 +42,8 @@ Un serveur qui dort, c'est un écran mural qui affiche « impossible de joindre 
 ```bash
 sudo pmset -a sleep 0            # jamais de veille système
 sudo pmset -a disksleep 0        # ni des disques
-sudo pmset -a autorestart 1      # redémarre tout seul après une coupure de courant
+sudo pmset -a autorestart 1      # rallume tout seul après une coupure de courant
+#                                  ⚠️ SANS EFFET si FileVault est actif — voir § 9 bis
 sudo pmset -a womp 1             # se réveille sur le réseau
 pmset -g                         # vérifier
 ```
@@ -170,6 +171,7 @@ Une fois l'écran vérifié sur le Mac, **arrête le serveur du PC**. Deux serve
 ## 5. Démarrage automatique au boot
 
 Le fichier est dans le dépôt : `outils/mac/fr.maison.serveur.plist`. C'est un **LaunchDaemon**, pas un LaunchAgent — un Agent ne démarre qu'à l'ouverture de session, et un Mac mini qui redémarre seul après une coupure n'ouvre jamais de session.
+⚠️ Ce raisonnement reste juste, mais **FileVault le neutralise en amont** : volume chiffré non monté = aucun daemon. Voir § 9 bis.
 
 ```bash
 cd ~/maison
@@ -414,6 +416,48 @@ Vérifié en vrai : le serveur tué à la main est revenu seul.
 Journal : `tail -f ~/maison/deploiement.log` — silencieux quand il n'y a rien à
 faire, ce qui est le cas normal.
 
+### 🔴 FileVault neutralise le redémarrage automatique — arbitrage à rendre
+
+Signalé par la session qui migrait le projet WhatsApp, **vérifié de mon côté** :
+
+```
+fdesetup status                     → FileVault is On.
+autoLoginUser (loginwindow)         → aucune  (macOS l'interdit tant que FileVault est actif)
+```
+
+Conséquence, et elle annule une promesse faite plus haut : `pmset autorestart 1`
+rallume bien le Mac après une coupure de courant, mais **il s'arrête à l'écran de
+déverrouillage pré-boot**. Le volume n'est pas monté, donc **aucun LaunchDaemon ne
+démarre** — ni le serveur, ni la sauvegarde, ni le déploiement. L'écran mural de
+la cuisine reste noir jusqu'à ce que quelqu'un tape le mot de passe **devant le
+Mac**.
+
+⚠️ Le choix « Daemon plutôt qu'Agent » reste le bon : il est simplement neutralisé
+en amont. Aucune configuration launchd ne peut contourner un volume chiffré non
+monté.
+
+**Ce que le Mac contient**, et qui explique pourquoi ce n'est pas une décision
+anodine : `.env` (clé Anthropic, mot de passe EcoleDirecte, token Notion),
+`maison.db` (emplois du temps des enfants, dates de naissance, présences),
+`ecole/etat-*.json` (un second facteur déjà franchi) et
+`ecole/pronote-identifiants.json` (qui vaut le compte).
+
+| | Redémarre seul | Données chiffrées au repos | Coût |
+|---|---|---|---|
+| **Garder FileVault** (état actuel) | ❌ déverrouillage à la main | ✅ | 0 € |
+| **Désactiver FileVault** | ✅ | ❌ un vol du Mac donne tout | 0 € |
+| 🥇 **Garder FileVault + petit onduleur** | ✅ en pratique | ✅ | 60–90 € |
+
+💡 **L'onduleur est la seule option qui ne sacrifie rien**, et il traite la cause
+plutôt que le symptôme : une micro-coupure ne redémarre plus la machine du tout.
+Un modèle d'entrée de gamme tient largement un Mac mini (moins de 40 W) le temps
+d'une coupure domestique. Il protège aussi la base SQLite d'un arrêt brutal en
+pleine écriture — ce qu'aucun réglage logiciel ne sait faire.
+
+**Non tranché : c'est un arbitrage de Rémi**, pas une décision technique. Tant
+qu'il n'est pas rendu, il faut savoir qu'une coupure de courant demande une
+intervention physique.
+
 ### Accès distant
 | | état | remarque |
 |---|---|---|
@@ -432,7 +476,8 @@ ne fonctionne que sur le Wi-Fi de la maison.
 ## ✅ Récapitulatif — coche au fur et à mesure
 
 - [ ] `maison.local` répond depuis un autre appareil
-- [ ] Le Mac ne dort plus, redémarre seul après coupure
+- [ ] Le Mac ne dort plus
+- [ ] **FileVault : arbitrage rendu** (§ 9 bis) — sinon une coupure de courant laisse l'écran noir jusqu'à déverrouillage à la main
 - [ ] `node -v` ≥ 22.5 et `node:sqlite` se charge
 - [ ] `.env` relu : `DB_FICHIER` **vide**, clé Anthropic **régénérée**
 - [ ] `npm ci` puis `npm start` — le bento s'affiche
