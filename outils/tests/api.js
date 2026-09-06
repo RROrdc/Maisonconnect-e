@@ -29,19 +29,31 @@ module.exports = async function (muet) {
     S.meteo ? `${S.meteo.temp}° · ${(S.meteo.heures || []).length} h · ${(S.meteo.jours || []).length} j` : 'absente');
   t.dire((S.rayons || []).length >= 3, 'rayons servis par le serveur (source unique)', (S.rayons || []).join(' | '));
 
+  /* 🐞 Ce contrôle exigeait qu'un soir de LA SEMAINE EN COURS porte un plat —
+     donc il tombait le lundi matin d'une semaine que personne n'a encore
+     remplie. C'est arrivé le 07/09. Une semaine vide est un état parfaitement
+     légitime : le test accusait le code pour une donnée manquante.
+     On vérifie donc ce que le CODE garantit — sept jours, datés, qui glissent —
+     et on se contente de signaler l'état du menu. */
   const jourAvecPlat = (S.menu || []).find((m) => m.soirId);
-  t.dire(!!jourAvecPlat, 'un jour de menu porte un plat',
-    jourAvecPlat && `${jourAvecPlat.jour} → ${jourAvecPlat.soir}`);
+  t.dire((S.menu || []).length === 7 && (S.menu || []).every((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.date || '')),
+    'la semaine servie fait sept jours datés',
+    jourAvecPlat ? `dont ${jourAvecPlat.jour} → ${jourAvecPlat.soir}` : 'aucun plat saisi cette semaine');
 
   t.titre('Menu glissant');
   const suivante = await A.api('/api/menu?semaine=' + A.ymd(new Date(Date.now() + 7 * 864e5)));
   t.dire(suivante.statut === 200 && suivante.j.menu.length === 7, 'GET /api/menu?semaine=',
     suivante.j.menu.map((m) => m.jour).join(' '));
 
-  if (jourAvecPlat) {
+  /* La fiche recette se testait UNIQUEMENT à partir d'un plat du menu : semaine
+     vide, et trois contrôles disparaissaient sans que rien ne le dise. On se
+     rabat sur la bibliothèque, qui elle est toujours garnie. */
+  const platEssai = (jourAvecPlat && jourAvecPlat.soirId)
+    || ((S.plats || []).find((p) => p.recette) || (S.plats || [])[0] || {}).id;
+  if (platEssai) {
     t.titre('Fiche recette et couverts');
-    const p4 = await A.api('/api/plat/' + jourAvecPlat.soirId);
-    const p6 = await A.api('/api/plat/' + jourAvecPlat.soirId + '?couverts=6');
+    const p4 = await A.api('/api/plat/' + platEssai);
+    const p6 = await A.api('/api/plat/' + platEssai + '?couverts=6');
     t.dire(p4.statut === 200 && !!p4.j.plat, 'GET /api/plat/:id', p4.j.plat && p4.j.plat.nom);
     t.dire(p6.j.plat.misAEchelle === true, 'mise à l’échelle signalée');
   }
