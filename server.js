@@ -82,6 +82,11 @@ const REGLAGES = {
      compte EcoleDirecte ET un lancement de Python de ~2 s pour Pronote. */
   ecole_jours:         { env: '', defaut: '7' },
   ecole_cache_minutes: { env: '', defaut: '15' },
+  /* Nom du Raccourci macOS qui renvoie la température. macOS n'offre aucune
+     commande pour lire HomeKit : un Raccourci est le seul pont officiel, et il
+     évite de stocker le moindre identifiant Netatmo. Vide = carte « à brancher ».
+     Le nom est un réglage, jamais codé en dur : aucun foyer dans le code. */
+  temperature_raccourci: { env: '', defaut: '' },
   /* Combien de jours d'ÉCOLE de devoirs on montre sur le mur. Un soir de
      semaine on prépare demain ; le week-end on prépare la semaine — demande
      de Rémi : « Augustin le week-end doit afficher lundi, mardi et mercredi ». */
@@ -696,7 +701,7 @@ app.get('/api/health', (_req, res) => res.json({
    AppleScript, et /api/data est redemandé à chaque écriture par le temps réel.
    Même raisonnement que pour les recettes (§ 2 quinquies) et l'école. */
 app.get('/api/maison', async (req, res) => {
-  try { res.json(await Maison.tout()); }
+  try { res.json(await Maison.tout({ temperature_raccourci: config('temperature_raccourci') })); }
   catch (e) { res.status(500).json({ erreur: e.message }); }
 });
 

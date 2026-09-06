@@ -35,25 +35,39 @@
    Rémi — la demande s'y affiche une fois, et elle est retenue. Non écrit tant
    que l'autorisation n'est pas accordée : ce serait deviner. */
 const musique = require('./musique');
+const temperature = require('./temperature');
 
 /* Ce qui est réellement disponible ICI ET MAINTENANT — la même idée que
    `recettes.sources()` : l'interface grise ce qui ne peut pas marcher, en
    disant pourquoi, plutôt que d'offrir un bouton inerte. */
-function sources() {
+function sources(reglages = {}) {
+  const raccourci = String(reglages.temperature_raccourci || '').trim();
   return {
     musique: musique.disponible()
       ? { pret: true }
       : { pret: false, raison: 'se pilote depuis le Mac' },
-    temperature: { pret: false, raison: 'Netatmo — à brancher' },
+    temperature: !musique.disponible()
+      ? { pret: false, raison: 'se lit depuis le Mac' }
+      : raccourci
+        ? { pret: true, raccourci }
+        : { pret: false, raison: 'raccourci HomeKit non configuré (/admin/ → Réglages)' },
   };
 }
 
 /* Un seul point d'entrée pour l'écran : une lecture, jamais deux. */
-async function tout() {
-  const out = { sources: sources() };
-  try { out.musique = await musique.etat(); }
-  catch (e) { out.musique = { disponible: false, erreur: e.message }; }
+async function tout(reglages = {}) {
+  const out = { sources: sources(reglages) };
+  /* En parallèle : la musique et la température n'ont rien à voir l'une avec
+     l'autre, et un thermostat lent ne doit pas retarder l'affichage du morceau
+     en cours. Chacune capture SON erreur — une source en panne n'emporte pas
+     l'autre, c'est la règle de la maison depuis `donnees/`. */
+  const [m, t] = await Promise.all([
+    musique.etat().catch((e) => ({ disponible: false, erreur: e.message })),
+    temperature.etat(reglages.temperature_raccourci).catch((e) => ({ disponible: false, erreur: e.message })),
+  ]);
+  out.musique = m;
+  out.temperature = t;
   return out;
 }
 
-module.exports = { sources, tout, musique };
+module.exports = { sources, tout, musique, temperature };

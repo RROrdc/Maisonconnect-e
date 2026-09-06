@@ -26,6 +26,7 @@ const http = require('http');
 /* ⚠️ L'agent appelle les versions DIRECTES : les enveloppes publiques se
    replient sur l'agent, donc il s'appellerait lui-même en boucle. */
 const musique = require('./musique');
+const temperature = require('./temperature');
 
 const PORT = Number(process.env.MUSIQUE_AGENT_PORT) || 8091;
 
@@ -57,6 +58,15 @@ const serveur = http.createServer((req, res) => {
         .catch((e) => repondre(res, 400, { erreur: e.message }));
     });
     return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/temperature')) {
+    /* Le nom du raccourci vient du serveur, pas de l'agent : c'est le serveur
+       qui connaît les réglages. L'agent n'est qu'un bras dans la session. */
+    const nom = new URL(req.url, 'http://x').searchParams.get('nom') || '';
+    return temperature.etatDirect(nom)
+      .then((e) => repondre(res, 200, e))
+      .catch((e) => repondre(res, 500, { erreur: e.message }));
   }
 
   repondre(res, 404, { erreur: 'inconnu' });
