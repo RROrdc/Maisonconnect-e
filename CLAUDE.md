@@ -7162,11 +7162,16 @@ LaunchDaemon ne démarre**. L'écran mural resterait noir.
   aucune configuration launchd ne contourne un volume chiffré non monté.
 - **Les trois promesses du guide qui affirmaient le contraire ont été corrigées.**
   Une promesse fausse dans un guide d'installation est pire que pas de promesse.
-- **Non tranché, et volontairement** : le Mac porte le `.env`, la base de la
-  famille et deux jeux d'identifiants scolaires. 🥇 Piste proposée : **garder
-  FileVault et ajouter un onduleur** (60–90 €) — la seule option qui ne sacrifie
-  ni le chiffrement ni l'autonomie, et qui protège en prime la base d'un arrêt
-  brutal en pleine écriture.
+- ✅ **Tranché par Rémi le jour même : on garde FileVault.** « C'est pas grave si
+  le poste s'éteint, c'est une maison, il peut y avoir des coupures
+  occasionnelles. » La reprise manuelle est assumée ; l'onduleur reste sous le
+  coude. Le refus de désactiver le chiffrement sans sa décision était le bon
+  appel — le Mac porte le `.env`, la base de la famille et deux jeux
+  d'identifiants scolaires.
+- ⚠️ **La décision couvre la coupure de courant, pas le plantage du serveur** —
+  deux pannes distinctes qu'il serait facile de classer ensemble. Le `KeepAlive`
+  couvre la seconde même sur volume chiffré, et c'est la seule qui se répare sans
+  personne. Vérifié : serveur tué à la main, revenu seul.
 
 ### Accès distant
 | | état |

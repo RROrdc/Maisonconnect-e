@@ -454,9 +454,20 @@ Un modèle d'entrée de gamme tient largement un Mac mini (moins de 40 W) le tem
 d'une coupure domestique. Il protège aussi la base SQLite d'un arrêt brutal en
 pleine écriture — ce qu'aucun réglage logiciel ne sait faire.
 
-**Non tranché : c'est un arbitrage de Rémi**, pas une décision technique. Tant
-qu'il n'est pas rendu, il faut savoir qu'une coupure de courant demande une
-intervention physique.
+### ✅ Arbitrage rendu par Rémi (06/09) : **on garde FileVault**
+
+Ses mots : « c'est pas grave si le poste s'éteint, c'est une maison, il peut y
+avoir des coupures occasionnelles ». La reprise manuelle après une coupure de
+courant est donc assumée. L'onduleur n'est pas retenu — à ressortir seulement si
+les coupures s'avèrent plus gênantes que prévu.
+
+⚠️ **Cette décision couvre la coupure de courant, PAS le plantage du serveur.**
+Ce sont deux pannes distinctes, et il serait facile de classer la seconde sans
+suite avec la première. Le `KeepAlive` du LaunchDaemon protège du plantage
+silencieux à trois heures du matin, même sur une machine chiffrée : la machine
+est allumée, le volume est monté, launchd relance le serveur dans les dix
+secondes. **Vérifié en vrai le 06/09** — serveur tué à la main, revenu seul.
+C'est la seule des deux pannes qui se répare sans personne, et elle est couverte.
 
 ### Accès distant
 | | état | remarque |
