@@ -33,19 +33,37 @@ const MAC = process.platform === 'darwin';
 /* Le thermostat ne bouge pas à la seconde : une minute de cache suffit, et ça
    évite de lancer un Raccourci à chaque rafraîchissement de l'écran mural. */
 const CACHE_MS = 60_000;
+/* Un échec par blocage coûte huit secondes. On le retient plus longtemps qu'un
+   succès : rejouer toutes les minutes un raccourci qui ne répond pas, c'est
+   ralentir l'écran mural pour rien. */
+const CACHE_ECHEC_MS = 5 * 60_000;
 let cache = { le: 0, valeur: null };
 
 /* On lit la sortie dans un FICHIER plutôt que sur stdout : `shortcuts run` écrit
    aussi ses propres messages sur la sortie standard, et on mélangerait la valeur
    avec eux. Le fichier ne contient que le résultat. */
-function lancerRaccourci(nom, delai = 20000) {
+/* 🐞 Un raccourci peut ne JAMAIS rendre la main — constaté le 07/09 : l'action
+   « Obtenir l'état » attend indéfiniment quand l'accessoire n'est plus joignable
+   dans l'app Maison. Sans borne, `/api/maison` traînerait autant, et l'écran
+   mural attendrait un thermostat pour afficher la musique.
+   ⚠️ SIGKILL et non le SIGTERM par défaut : `shortcuts` bloqué sur une attente
+   ne se termine pas proprement. */
+function lancerRaccourci(nom, delai = 8000) {
   return new Promise((resolve, reject) => {
     const sortie = path.join(os.tmpdir(), `maison-temp-${process.pid}-${Date.now()}.txt`);
-    execFile('/usr/bin/shortcuts', ['run', nom, '-o', sortie], { timeout: delai }, (err, _o, stderr) => {
+    execFile('/usr/bin/shortcuts', ['run', nom, '-o', sortie],
+      { timeout: delai, killSignal: 'SIGKILL' }, (err, _o, stderr) => {
       let contenu = '';
       try { contenu = fs.readFileSync(sortie, 'utf8'); } catch { /* le raccourci n'a rien renvoyé */ }
       fs.unlink(sortie, () => {});
-      if (err) return reject(new Error(String(stderr || err.message).trim().slice(0, 200)));
+      if (err) {
+        const bloque = err.killed || /ETIMEDOUT|SIGKILL/.test(String(err.signal || err.code));
+        return reject(Object.assign(
+          new Error(bloque
+            ? 'le raccourci n’a pas répondu — l’accessoire est-il toujours dans l’app Maison ?'
+            : String(stderr || err.message).trim().slice(0, 200)),
+          { bloque }));
+      }
       resolve(contenu.trim());
     });
   });
@@ -64,7 +82,9 @@ async function etat(nomRaccourci) {
   const nom = String(nomRaccourci || '').trim();
   if (!MAC) return { disponible: false, raison: 'se lit depuis le Mac' };
   if (!nom) return { disponible: false, raison: 'raccourci non configuré (/admin/ → Réglages)' };
-  if (Date.now() - cache.le < CACHE_MS && cache.valeur && cache.valeur.nom === nom) return cache.valeur;
+  const age = Date.now() - cache.le;
+  const seuil = cache.valeur && cache.valeur.bloque ? CACHE_ECHEC_MS : CACHE_MS;
+  if (age < seuil && cache.valeur && cache.valeur.nom === nom) return cache.valeur;
 
   let v;
   try {
@@ -76,9 +96,10 @@ async function etat(nomRaccourci) {
       ? { disponible: true, valeur: null, nom, raison: 'le raccourci n’a rien renvoyé de chiffré', brut: brut.slice(0, 80) }
       : { disponible: true, valeur: n, brut: brut.slice(0, 80), nom };
   } catch (e) {
-    v = { disponible: false, nom, raison: /not found|introuvable/i.test(e.message)
-      ? `raccourci « ${nom} » introuvable sur le Mac`
-      : e.message };
+    v = { disponible: false, nom, bloque: !!e.bloque,
+      raison: /not found|introuvable/i.test(e.message)
+        ? `raccourci « ${nom} » introuvable sur le Mac`
+        : e.message };
   }
   cache = { le: Date.now(), valeur: v };
   return v;
