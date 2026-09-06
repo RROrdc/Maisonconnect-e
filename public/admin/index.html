@@ -1372,6 +1372,14 @@ const REGLAGES_CONNUS = [
    ['Non — la semaine A est impaire', 'Oui — la semaine A est paire']],
   ['couverts_defaut', 'Nombre de couverts par défaut', 'nombre',
    "Utilisé quand aucun nombre n'est fixé sur un repas. Les quantités des recettes et des courses sont recalculées à partir de là."],
+  ['temperature_raccourci', 'Raccourci « température » (HomeKit)', 'texte',
+   "Nom EXACT d'un Raccourci macOS qui renvoie la température, à créer une fois sur le Mac : "
+   + "app Raccourcis → nouveau raccourci → action « Obtenir l'état de » (choisir le thermostat, "
+   + "propriété Température), puis « Arrêter et générer le résultat ». Nomme-le, par exemple, "
+   + "« Température maison », et recopie ce nom ici. "
+   + "Pourquoi ce détour : macOS n'offre aucune commande pour lire HomeKit, et un Raccourci est le "
+   + "seul pont officiel. Il évite surtout de stocker le moindre identifiant Netatmo — rien ne sort "
+   + "de la maison. Laisse vide pour que la carte affiche « à brancher »."],
   ['equipements', 'Appareils de cuisine du foyer', 'texte',
    "Séparés par des virgules. Transmis à l'IA pour qu'elle écrive les étapes avec ce que vous avez vraiment (Ninja Woodfire, Magimix…) plutôt qu'une recette générique."],
   ['ville', 'Ville (météo)', 'texte',

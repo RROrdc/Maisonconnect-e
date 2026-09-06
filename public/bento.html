@@ -807,9 +807,9 @@
       <div class="wh"><span class="ic"><svg class="i"><use href="#ic-home"/></svg></span>
         <span class="ti">Maison</span></div>
       <div class="wb">
-        <div class="bloc att"><span class="ic"><svg class="i"><use href="#ic-temp"/></svg></span>
-          <div class="tx"><div class="k">Température</div><div class="v">Netatmo · à brancher sur le Mac</div></div>
-          <div class="big">—</div></div>
+        <div class="bloc att" id="blocTemp"><span class="ic"><svg class="i"><use href="#ic-temp"/></svg></span>
+          <div class="tx"><div class="k">Température</div><div class="v" id="tempSous">à brancher sur le Mac</div></div>
+          <div class="big" id="tempVal">—</div></div>
         <div class="bloc mus" id="blocMus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
           <div class="tx"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">AirPlay · à brancher</div></div>
           <div class="lecteur">
@@ -1191,6 +1191,23 @@ async function chargerMaison(){
 function rendreMaison(){
   const t = document.getElementById('musSous'), p = document.getElementById('musPlay');
   if(!t || !MAISON) return;
+
+  /* Température. On n'affiche un nombre QUE si on en a un : une valeur inventée
+     sur un mur est pire qu'un tiret, et la raison dit quoi faire. */
+  const bt = document.getElementById('blocTemp'), vt = document.getElementById('tempVal'), st = document.getElementById('tempSous');
+  const T = MAISON.temperature || {};
+  if(vt && st){
+    if(typeof T.valeur === 'number'){
+      vt.textContent = Math.round(T.valeur * 10) / 10 + '°';
+      st.textContent = 'HomeKit · à l’instant';
+      if(bt) bt.classList.remove('att');
+    } else {
+      vt.textContent = '—';
+      st.textContent = T.raison || 'à brancher sur le Mac';
+      if(bt) bt.classList.add('att');
+    }
+  }
+
   const q = MAISON.musique || {};
   if(!q.disponible){ t.textContent = q.raison || 'à brancher sur le Mac'; return; }
   if(!q.ouvert){ t.textContent = 'AirPlay · Musique fermée'; }
