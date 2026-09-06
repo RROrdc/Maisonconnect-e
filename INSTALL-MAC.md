@@ -343,6 +343,92 @@ cette source sache parler HTTP. C'est ce qui permet d'attendre sans rien bloquer
 
 ---
 
+## 9 bis. ✅ Ce qui a RÉELLEMENT été installé le 06/09/2026
+
+Machine : **Mac mini M4, 10 cœurs, 24 Go, 460 Go (396 libres), macOS 26.5.1, arm64**.
+Nom Bonjour : **`maison.local`** · utilisateur `remi` · Wi-Fi `192.168.10.119`.
+
+Tout a été fait **à distance en SSH**, depuis le PC. Les écarts avec les sections
+précédentes du guide sont notés ici — ce sont eux qui font foi.
+
+### Ce que le guide supposait et qui s'est révélé faux
+- **Homebrew n'a pas été installé, et ce n'était pas nécessaire.** Node et Python
+  se posent très bien depuis leurs `.pkg` officiels, sans rien ajouter au PATH de
+  toute la machine. Un gestionnaire de paquets sur un serveur familial, c'est une
+  dépendance de plus à tenir à jour pour rien.
+- **Le `python3` d'Apple est en 3.9.6** et n'évoluera pas : il sert au système.
+  `pronotepy` ne s'y installe pas. Un Python 3.13.9 a été posé à côté, dans
+  `/Library/Frameworks/…/3.13/bin/python3`, et `PYTHON_BIN` le désigne dans `.env`.
+- **`/usr/local` appartient à root** : `npm install -g` échoue en silence. Le
+  dossier a été donné à l'utilisateur, pour que les mises à jour ne demandent
+  plus rien.
+- **Le nom de la machine a été changé en `maison`** (`scutil --set LocalHostName`).
+  Le kiosque, les guides et l'app visent `maison.local` depuis le début ; coder
+  « Mac-mini-de-remi » dans les scripts aurait figé CE foyer dans le code.
+
+### 🐞 Le défaut qui a coûté le plus : les fins de ligne
+`deployer.sh`, écrit depuis Windows, était en **CRLF**. Sur macOS, bash répond :
+```
+line 37: : command not found
+line 95: syntax error near unexpected token `do'
+```
+Aucun de ces messages n'évoque les fins de ligne, et le script paraît correct à
+la lecture. ⇒ Un **`.gitattributes`** force désormais le LF sur `*.sh`, `*.plist`,
+`*.py`, `*.conf`, `*.desktop`. Sans lui, **chaque `git pull` sur le Mac ou le Pi
+recasserait les scripts**.
+
+### Migration des données — la seule chose irremplaçable
+La base a été copiée par **`VACUUM INTO`**, pas par un `cp` : le serveur du PC
+écrivait pendant la copie, et un fichier SQLite pris à chaud avec son WAL n'est
+pas forcément cohérent.
+Puis les deux bases ont été **comparées avant de basculer** — nombre de lignes et
+dernière modification, table par table : 455 courses, 91 tâches, 449 créneaux,
+404 notifications des deux côtés. Aucune divergence. **Le serveur du PC a été
+arrêté à ce moment-là, et pas avant** : deux serveurs sur deux bases divergent
+dès la première écriture.
+
+### 🚀 Déploiement automatique — `fr.maison.deploiement`
+On pousse depuis n'importe quel poste, le Mac se met à jour seul en moins de deux
+minutes. **Il TIRE, il ne reçoit pas de webhook** : un webhook exigerait une
+adresse joignable depuis Internet, pour une maison.
+
+Trois garde-fous, par ordre d'importance :
+1. **Sauvegarde de la base avant de toucher au code** (`~/maison-coffre/avant-deploiement-*.db`,
+   dix conservées). Le déploiement ne touche pas aux données — une version fautive, si.
+2. **Refus de déployer ce qui ne passe pas les contrôles hors ligne** (`calculs`
+   et `pages`) : syntaxe des scripts, identifiants visés mais absents, accolades
+   CSS, en-têtes de cache. C'est exactement la classe de défaut qui blanchit
+   l'écran mural — et l'écran, personne ne le recharge à la main.
+   Les séries qui ont besoin du serveur (`api`, `vocal`, `ecole`…) sont
+   volontairement écartées : elles écrivent dans les vraies données.
+3. **Retour à la version précédente** si le serveur ne répond plus après la mise
+   à jour. Mieux vaut une version d'hier qui marche qu'une version du jour qui
+   laisse le mur vide.
+
+🔑 **Le script ne demande aucun privilège**, et c'est délibéré : le service tourne
+sous le compte utilisateur avec `KeepAlive`, donc **arrêter le processus suffit**
+— launchd le relance dans les dix secondes. Une règle sudoers sans mot de passe
+pour un script automatique aurait été hors de proportion avec ce qu'il a à faire.
+Vérifié en vrai : le serveur tué à la main est revenu seul.
+
+Journal : `tail -f ~/maison/deploiement.log` — silencieux quand il n'y a rien à
+faire, ce qui est le cas normal.
+
+### Accès distant
+| | état | remarque |
+|---|---|---|
+| SSH | ✅ actif | clé posée, plus de mot de passe |
+| Partage d'écran | ✅ actif, port 5900 | mode **VNC hérité** activé pour qu'un client Windows puisse s'y connecter — macOS chiffre autrement, et seuls les clients Apple comprennent |
+| Claude Code | ✅ 2.1.263 | `/usr/local/bin/claude` |
+| Tailscale | ⚠️ installé, **pas connecté** | son extension réseau exige une approbation **à l'écran** : impossible en SSH |
+
+⚠️ **Tailscale est le seul chemin qui débloque les trois blocages d'un coup**
+(§ 7) : accès hors maison, HTTPS — donc service worker, Face ID et notifications
+push — et le micro du navigateur. Tant qu'il n'est pas connecté, l'app famille
+ne fonctionne que sur le Wi-Fi de la maison.
+
+---
+
 ## ✅ Récapitulatif — coche au fur et à mesure
 
 - [ ] `maison.local` répond depuis un autre appareil
