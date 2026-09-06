@@ -71,3 +71,8 @@ outils/raspberry/kiosque.conf
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Marqueur du déployeur (une ligne de journal par heure au lieu de 720 par jour)
+.deploiement-fetch-ko
+deploiement.log
+deploiement-sortie.log

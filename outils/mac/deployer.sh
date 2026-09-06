@@ -50,7 +50,22 @@ if [ "${1:-}" = "--recu" ]; then RECU=1; ICI="${2:-$(git rev-parse HEAD~1 2>/dev
 
 # ── Y a-t-il quelque chose de nouveau ? ────────────────────────────────────
 if [ "$RECU" -eq 0 ]; then
-  git fetch --quiet origin "$BRANCHE" 2>>"$JOURNAL" || { dire "✗ git fetch a échoué (clé de déploiement ?)"; exit 1; }
+  if ! git fetch --quiet origin "$BRANCHE" 2>/dev/null; then
+    # Tant que la clé de déploiement n'est pas déposée sur GitHub, cet échec se
+    # répète toutes les deux minutes. On ne le consigne qu'UNE FOIS PAR HEURE :
+    # un journal qui répète 720 fois la même ligne par jour noie les vrais
+    # messages, et c'est alors le journal entier qu'on cesse de lire.
+    MARQUE="$PROJET/.deploiement-fetch-ko"
+    MAINTENANT=$(date +%s)
+    DERNIER=$(cat "$MARQUE" 2>/dev/null || echo 0)
+    if [ $((MAINTENANT - DERNIER)) -ge 3600 ]; then
+      echo "$MAINTENANT" > "$MARQUE"
+      dire "✗ git fetch impossible — la clé de déploiement n'est pas (encore) acceptée par GitHub."
+      dire "   Le push direct vers le Mac continue de fonctionner en attendant."
+    fi
+    exit 1
+  fi
+  rm -f "$PROJET/.deploiement-fetch-ko" 2>/dev/null
   ICI="$(git rev-parse HEAD)"
   LA="$(git rev-parse "origin/$BRANCHE")"
   [ "$ICI" = "$LA" ] && exit 0        # rien à faire : le cas normal, silencieux
