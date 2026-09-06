@@ -7203,6 +7203,111 @@ voit ce qu'on ne cherche pas.
 Serveur tué à la main → **relancé seul par launchd**. Sauvegarde déclenchée →
 archive produite. EcoleDirecte interrogé en vrai depuis le Mac.
 
+## 2 untricies. 🔊 LA CARTE MAISON N'EST PLUS UNE MAQUETTE (06-07/09/2026)
+Les items 4 et 5 de la feuille de route attendaient macOS depuis le 13/08. Le Mac
+est là, la règle du projet est levée — *« un adaptateur qu'on ne peut pas
+exécuter, ce sont des bugs qu'on découvre au pire moment »* — et `maison/` est
+bâti comme `donnees/` et `recettes/` : plusieurs sources derrière une interface,
+une source en panne n'emporte pas les autres, et un module absent renvoie sa
+**raison**, que l'écran affiche.
+
+### 🔑 Le blocage n'était pas AppleScript, c'était une autorisation
+Music.app est pilotable, mais `osascript` **sortait vide, sans la moindre
+erreur** — on cherche un bug de script là où il faut un clic. La base TCC a
+tranché en une lecture :
+```
+sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db \
+  'select client,service,auth_value from access where service like "%AppleEvents%"'
+→ /usr/libexec/sshd-keygen-wrapper | kTCCServiceAppleEvents | 0     (0 = refusé)
+```
+Et deux conséquences que seule l'exécution révèle :
+- 🐞 Vérifier « Music est-il lancé ? » via **System Events** ne marche pas en SSH :
+  c'est aussi de l'automatisation. `pgrep` répond à la même question **sans
+  aucune permission**, et plus vite.
+- 🔴 **Un LaunchDaemon n'aura JAMAIS cette autorisation** : macOS ne peut pas la
+  demander à quelqu'un qui n'est pas devant l'écran. Le serveur voyait donc Music
+  « ouvert » et échouait sur chaque lecture.
+
+⇒ `maison/agent.js`, un **LaunchAgent** — le seul du projet. On ne déplace pas le
+serveur en Agent (il doit démarrer sans session) : seule la poignée de lignes qui
+a besoin de la session y passe, **sur 127.0.0.1 uniquement**. Sans
+authentification, l'exposer au réseau donnerait le contrôle de la musique à
+quiconque passe sur le Wi-Fi.
+Le module essaie **d'abord en direct, puis l'agent** : lancé depuis un terminal
+il répond en 100 ms sans en dépendre. Et une commande **inconnue** n'est pas
+rejouée contre l'agent — c'est un refus légitime, pas une panne d'autorisation.
+
+### Ce qui marche
+`GET /api/maison` · `POST /api/maison/musique` (**liste FERMÉE** de commandes,
+§ 2 septies : le serveur n'exécute que ce qu'il connaît — vérifié, `rm -rf` est
+refusé). Panneau dédié sur le mur : enceintes en grandes cibles, volume par
+paliers, rescan. **Pas de liste déroulante** — sur un mur on appuie, on ne
+déroule pas ; même raison que les boutons de couverts du mode cuisine.
+- **Enceinte par défaut** (`musique_enceinte_defaut` = *Ultra Slim Soundbar*, la
+  barre proche de l'écran de cuisine). Deux garde-fous, parce que basculer une
+  sortie audio tout seul peut couper la musique de quelqu'un : **jamais pendant
+  une lecture**, et pas de réécriture si c'est déjà la bonne sortie. Une minute
+  entre deux tentatives si l'enceinte est éteinte. ✅ Vérifié : sortie forcée sur
+  le Mac, revenue seule sur la barre.
+- `?rafraichir=1` court-circuite le cache : un Sonos qu'on vient de rallumer doit
+  apparaître **maintenant**, pas dans trois secondes — sinon on le croit
+  incompatible.
+- ⚠️ **Rien n'est codé en dur** : la liste vient de Music. Le Sonos n'apparaît
+  pas — ni en `_raop._tcp`, ni en `_sonos._tcp`. Distinction qui compte :
+  `_airplay._tcp` est l'AirPlay **vidéo**, seul `_raop._tcp` transporte du son.
+  Un Sonos antérieur à AirPlay 2 (Play:1/3/5 gen 1) ne pourra jamais recevoir de
+  Music directement.
+
+### 🌡️ Température : HomeKit plutôt que l'API Netatmo — et pourquoi ça a échoué
+Choix : passer par un **Raccourci macOS** qui lit HomeKit. Aucun identifiant
+stocké, rien ne sort de la maison, et un changement de marque ne casse rien.
+Prix à payer, dit franchement : **macOS n'offre aucune commande pour lire
+HomeKit**, un Raccourci est le seul pont officiel.
+
+🔴 **Ça n'a pas marché, et la cause est ailleurs que dans le code.** Le raccourci
+ne rendait **jamais** la main. Diagnostic :
+- deux accessoires s'annoncent bien en `_hap._tcp` (`MTS960-a5f0`, `thermostat`) ;
+- mais **l'Apple TV n'est pas sur le réseau du tout** — même en veille elle
+  s'annoncerait en `_companion-link._tcp`. Elle est éteinte, pas endormie.
+- Or c'était **elle le hub HomeKit**. Sans hub, les accessoires ne sont pas
+  joignables et l'action « Obtenir l'état » attend indéfiniment.
+
+⚠️ **Et le Mac mini ne peut pas la remplacer** — vérifié chez Apple plutôt que
+supposé : seuls HomePod, HomePod mini et Apple TV peuvent être hub. Ce n'est pas
+un réglage à trouver.
+
+🐞 Le vrai danger était pour l'écran : sans borne, `/api/maison` aurait traîné
+autant que le raccourci, et **le mur aurait attendu un thermostat pour afficher
+le morceau en cours**. Corrigé : 8 s de délai, **SIGKILL** et non le SIGTERM par
+défaut (`shortcuts` bloqué ne se termine pas proprement), et l'échec retenu
+**cinq** minutes au lieu d'une — rejouer un raccourci qui ne répond pas, c'est
+ralentir l'écran pour rien. Le message dit quoi vérifier.
+
+**Non tranché, à reprendre :** rallumer l'Apple TV (gratuit, une veille suffit) ·
+un HomePod mini (~99 €, hub permanent **et** enceinte AirPlay) · ou basculer sur
+l'**API Netatmo**, qui supprime toute dépendance à un hub au prix d'un
+`client_secret` dans le `.env`. La structure `maison/` accueille déjà une seconde
+source.
+
+### 🐞 Deux tests adossés aux données réelles, corrigés le même jour
+Même famille, et la leçon vaut d'être retenue : **un test adossé aux vraies
+données du foyer doit distinguer ce que le CODE promet de ce que la FAMILLE a
+saisi.**
+1. *Événement sur plusieurs jours* : le marqueur « Les enfants » couvre samedi et
+   dimanche ; joué un **dimanche**, il n'a que sa fin dans la fenêtre et le test
+   accusait le code. Le nombre attendu se calcule sur la portion **visible**.
+2. *« Un jour de menu porte un plat »* : tombé le **lundi 07/09 au matin**, sur
+   une semaine que personne n'avait remplie. On vérifie désormais ce que le code
+   garantit — sept jours datés qui glissent.
+   ⚠️ Défaut plus grave trouvé au passage : la fiche recette ne se testait qu'à
+   partir d'un plat **du menu**. Semaine vide, et trois contrôles disparaissaient
+   **en silence**. Un test qui se saute tout seul est pire qu'un test qui échoue.
+
+### Vérifié
+**351 tests, 0 échec**, joués contre le Mac. Musique pilotée de bout en bout
+depuis le serveur, bascule d'enceinte et retour au défaut vérifiés sur le vrai
+matériel.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
