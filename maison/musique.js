@@ -184,6 +184,54 @@ async function commander(quoi, options = {}) {
   return { ok: true, commande: quoi };
 }
 
+/* ── Repli par l'agent ──────────────────────────────────────────────────────
+   Quand ce module est chargé PAR LE SERVEUR (un LaunchDaemon), osascript échoue :
+   macOS ne peut demander l'autorisation d'automatisation à personne, puisque
+   aucune session graphique n'est ouverte pour ce processus. On passe alors la
+   main à l'agent, qui lui vit dans la session de Rémi et a l'autorisation.
+   Si l'agent n'est pas là non plus, on rend l'erreur d'origine : mieux vaut dire
+   ce qui manque que masquer la panne. */
+const AGENT = `http://127.0.0.1:${Number(process.env.MUSIQUE_AGENT_PORT) || 8091}`;
+
+async function viaAgent(chemin, corps) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const r = await fetch(AGENT + chemin, {
+      method: corps ? 'POST' : 'GET',
+      headers: corps ? { 'Content-Type': 'application/json' } : undefined,
+      body: corps ? JSON.stringify(corps) : undefined,
+      signal: ctrl.signal,
+    });
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+/* Enveloppes publiques : elles essaient en direct, puis l'agent. L'ordre compte
+   — lancé depuis un terminal (donc avec l'autorisation), le direct répond en
+   100 ms sans dépendre de l'agent. */
+async function etatOuAgent() {
+  const e = await etat();
+  if (!e.erreur) return e;
+  try { const a = await viaAgent('/etat'); return a && !a.erreur ? a : e; } catch { return e; }
+}
+
+async function commanderOuAgent(quoi, options = {}) {
+  try { return await commander(quoi, options); }
+  catch (direct) {
+    /* Une commande INCONNUE est un refus légitime : on ne la rejoue pas contre
+       l'agent, qui la refuserait pareil. Seule une panne d'autorisation vaut un
+       second essai. */
+    if (/commande inconnue|enceinte inconnue|volume invalide/.test(direct.message)) throw direct;
+    try {
+      const r = await viaAgent('/commande', { commande: quoi, ...options });
+      if (r && r.erreur) throw new Error(r.erreur);
+      return r;
+    } catch { throw direct; }
+  }
+}
+
 const disponible = () => MAC;
 
-module.exports = { disponible, etat, commander, COMMANDES };
+module.exports = { disponible, etat: etatOuAgent, commander: commanderOuAgent,
+                   etatDirect: etat, commanderDirect: commander, COMMANDES };

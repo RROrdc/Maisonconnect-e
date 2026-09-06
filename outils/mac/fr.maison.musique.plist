@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Écran Maison — agent musique.
+
+  ⚠️ C'est un LaunchAGENT, et c'est le seul du projet. Tous les autres services
+  sont des Daemons, délibérément, pour démarrer sans session ouverte. Celui-ci
+  fait l'inverse pour une raison précise :
+
+  piloter Music.app relève de l'« Automatisation » au sens de macOS, et cette
+  autorisation se demande par une FENÊTRE. Un Daemon tourne hors de toute session
+  graphique : macOS ne peut donc la demander à personne et refuse — sans erreur
+  lisible, `osascript` sort simplement vide. Constaté le 06/09 : le serveur
+  voyait Music « ouvert » et échouait sur chaque lecture.
+
+  Un Agent vit dans la session de Rémi. La fenêtre s'y affiche UNE fois, il
+  répond, et l'autorisation est retenue.
+
+  ⇒ Le serveur reste un Daemon ; seule la poignée de lignes qui a besoin de la
+  session passe en Agent, sur 127.0.0.1 uniquement.
+
+  Installation (dans la session de Rémi, pas en root) :
+    sed -e "s|__NODE__|/usr/local/bin/node|g" -e "s|__CHEMIN__|$HOME/maison|g" \
+        outils/mac/fr.maison.musique.plist > ~/Library/LaunchAgents/fr.maison.musique.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/fr.maison.musique.plist
+
+  ⚠️ Au tout premier pilotage, macOS affiche « … souhaite contrôler Musique ».
+  Il FAUT répondre Autoriser, sinon le refus est mémorisé et il faudra le défaire
+  dans Réglages → Confidentialité et sécurité → Automatisation.
+
+  Journal :  tail -f __CHEMIN__/musique.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.maison.musique</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__CHEMIN__/maison/agent.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__CHEMIN__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- Si l'agent meurt en boucle, on ne veut pas qu'il consomme la machine :
+       dix secondes entre deux tentatives, comme le serveur. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__CHEMIN__/musique.log</string>
+  <key>StandardErrorPath</key>
+  <string>__CHEMIN__/musique.log</string>
+</dict>
+</plist>
