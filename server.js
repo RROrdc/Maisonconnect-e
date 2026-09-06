@@ -27,6 +27,7 @@ const { creerMenu } = require('./menu');
 const { creerPresence } = require('./presence');
 const feries = require('./feries');
 const { Ecole } = require('./ecole');
+const Maison = require('./maison');   // musique AirPlay, température — voir maison/index.js
 const pertinence = require('./ecole/pertinence');
 const ecole = new Ecole();
 
@@ -690,6 +691,25 @@ app.get('/api/health', (_req, res) => res.json({
    `?rafraichir=1` force la relecture — pour le bouton du back-office, parce
    qu'attendre un quart d'heure pour vérifier une correction rend fou (leçon du
    cache d'une heure sur le HTML, § 2 septies). */
+/* ── La maison : musique AirPlay, et demain la température ──────────────────
+   Route SÉPARÉE de /api/data, exprès : lire l'état de Music.app coûte un appel
+   AppleScript, et /api/data est redemandé à chaque écriture par le temps réel.
+   Même raisonnement que pour les recettes (§ 2 quinquies) et l'école. */
+app.get('/api/maison', async (req, res) => {
+  try { res.json(await Maison.tout()); }
+  catch (e) { res.status(500).json({ erreur: e.message }); }
+});
+
+/* Liste FERMÉE de commandes (§ 2 septies) : le serveur n'exécute que ce qu'il
+   connaît, jamais une chaîne venue du navigateur. Et rien de destructeur ici —
+   au pire on met la musique en pause, ce qui se défait d'un doigt. */
+app.post('/api/maison/musique', async (req, res) => {
+  try {
+    const { commande, ...options } = req.body || {};
+    res.json(await Maison.musique.commander(String(commande || ''), options));
+  } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+
 app.get('/api/ecole', async (req, res) => {
   try {
     if (req.query.rafraichir) Ecole.viderCache();

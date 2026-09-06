@@ -713,6 +713,7 @@
   <symbol id="ic-prev" viewBox="0 0 24 24"><path class="f" d="M18 5.5v13L8.8 12z"/><path d="M6.4 5.5v13"/></symbol>
   <symbol id="ic-next" viewBox="0 0 24 24"><path class="f" d="M6 5.5v13L15.2 12z"/><path d="M17.6 5.5v13"/></symbol>
   <symbol id="ic-play" viewBox="0 0 24 24"><path class="f" d="M7.5 4.8 19 12 7.5 19.2z"/></symbol>
+  <symbol id="ic-pause" viewBox="0 0 24 24"><path class="f" d="M7.5 5h3.2v14H7.5zM13.3 5h3.2v14h-3.2z"/></symbol>
   <symbol id="ic-left" viewBox="0 0 24 24"><path d="M14.5 5 8 12l6.5 7"/></symbol>
   <symbol id="ic-right" viewBox="0 0 24 24"><path d="M9.5 5 16 12l-6.5 7"/></symbol>
   <symbol id="ic-ecran" viewBox="0 0 24 24"><rect x="2.8" y="4.4" width="18.4" height="12.8" rx="2.6"/><path d="M8.4 20.6h7.2M12 17.2v3.4"/></symbol>
@@ -809,12 +810,12 @@
         <div class="bloc att"><span class="ic"><svg class="i"><use href="#ic-temp"/></svg></span>
           <div class="tx"><div class="k">Température</div><div class="v">Netatmo · à brancher sur le Mac</div></div>
           <div class="big">—</div></div>
-        <div class="bloc mus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
-          <div class="tx"><div class="k">Musique</div><div class="v">AirPlay · Salon</div></div>
+        <div class="bloc mus" id="blocMus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
+          <div class="tx"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">AirPlay · à brancher</div></div>
           <div class="lecteur">
-            <button><svg class="i"><use href="#ic-prev"/></svg></button>
-            <button class="p"><svg class="i"><use href="#ic-play"/></svg></button>
-            <button><svg class="i"><use href="#ic-next"/></svg></button></div></div>
+            <button onclick="cmdMus('precedent')"><svg class="i"><use href="#ic-prev"/></svg></button>
+            <button class="p" id="musPlay" onclick="cmdMus('bascule')"><svg class="i"><use href="#ic-play"/></svg></button>
+            <button onclick="cmdMus('suivant')"><svg class="i"><use href="#ic-next"/></svg></button></div></div>
       </div>
     </section>
 
@@ -1175,6 +1176,43 @@ async function refresh(){await load();if(openK)drawSheet(openK);}
    Un échec est SILENCIEUX à l'écran : un mur de cuisine n'a pas à afficher
    « EcoleDirecte a refusé le jeton ». La panne part au journal côté serveur,
    qui est fait pour ça. */
+/* ── La maison : musique AirPlay ────────────────────────────────────────────
+   Route à part et variable à part, pour la même raison que l'école : `MAISON`
+   n'est pas rangé dans `S`, parce que `load()` remplace `S` par un objet NEUF —
+   et une affectation `S.x = await …` résout sa base AVANT l'await, donc écrirait
+   dans l'objet abandonné. Le défaut avait coûté une journée le 03/09. */
+let MAISON = null;
+
+async function chargerMaison(){
+  try{ const m = await api('/api/maison'); MAISON = m; rendreMaison(); }
+  catch(e){ console.warn('[maison]', e.message); }
+}
+
+function rendreMaison(){
+  const t = document.getElementById('musSous'), p = document.getElementById('musPlay');
+  if(!t || !MAISON) return;
+  const q = MAISON.musique || {};
+  if(!q.disponible){ t.textContent = q.raison || 'à brancher sur le Mac'; return; }
+  if(!q.ouvert){ t.textContent = 'AirPlay · Musique fermée'; }
+  else if(q.titre){
+    document.getElementById('musTitre').textContent = q.titre;
+    t.textContent = [q.artiste, (q.actives || [])[0]].filter(Boolean).join(' · ') || 'AirPlay';
+  } else {
+    document.getElementById('musTitre').textContent = 'Musique';
+    t.textContent = 'AirPlay · ' + ((q.actives || [])[0] || 'aucune enceinte');
+  }
+  /* L'icône dit ce que le bouton VA faire, pas l'état courant : sur un mur on
+     appuie sans lire. */
+  if(p) p.querySelector('use').setAttribute('href', q.lecture ? '#ic-pause' : '#ic-play');
+}
+
+async function cmdMus(commande){
+  try{
+    await api('/api/maison/musique', 'POST', { commande });
+    setTimeout(chargerMaison, 400);   // Music met un instant à changer d'état
+  }catch(e){ console.warn('[musique]', e.message); }
+}
+
 async function chargerEcole(){
   /* 🐞 `S.ecole = await api(...)` était FAUX, et le défaut était intermittent.
      En JS la cible d'une affectation résout sa base AVANT l'await : `S` était
@@ -2052,11 +2090,15 @@ function basculeVoix(){
    voix féminine ». On attend, et on ré-applique à chaque rechargement. */
 load().then(()=>{ initVoix(); appliquerReglagesVoix(); });
 chargerEcole();                // sans await : l'écran s'affiche d'abord
+chargerMaison();               // idem : un appel AppleScript ne doit pas retarder l'écran
 brancherFlux();
 setInterval(load,5*60*1000);   // filet de sécurité + météo / actus / agenda
 /* Toutes les 15 min : c'est la durée du cache serveur. Plus souvent ne
    rapporterait rien, moins souvent ferait rater un devoir ajouté le soir. */
 setInterval(chargerEcole,15*60*1000);
+/* La musique change bien plus souvent qu'un devoir : 30 s. Le module garde un
+   cache de 3 s côté serveur, donc on n'interroge pas Music en rafale. */
+setInterval(chargerMaison,30*1000);
 </script>
 </body>
 </html>
