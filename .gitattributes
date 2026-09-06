@@ -1,0 +1,24 @@
+# Fins de ligne — leçon du 06/09, en installant le Mac mini.
+#
+# `deployer.sh` avait été écrit depuis Windows, donc en CRLF. Sur macOS bash le
+# refuse : « line 37: : command not found », puis « syntax error near unexpected
+# token `do' ». Le message n'évoque à aucun moment les fins de ligne, et le
+# script paraît pourtant correct à la lecture.
+#
+# On force donc le LF pour tout ce qui est EXÉCUTÉ ou LU par un autre système
+# que Windows. Sans cette règle, chaque `git pull` sur le Mac ou le Raspberry
+# recasserait les scripts.
+* text=auto
+
+*.sh      text eol=lf
+*.plist   text eol=lf
+*.py      text eol=lf
+*.service text eol=lf
+*.conf    text eol=lf
+*.desktop text eol=lf
+
+# Binaire : jamais de conversion.
+*.png binary
+*.jpg binary
+*.db  binary
+*.zip binary

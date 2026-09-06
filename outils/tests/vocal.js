@@ -170,16 +170,31 @@ module.exports = async function (muet) {
     return fin > debut && fin >= aujourdhui && debut <= dansHuitJours;
   });
 
-  if (longs.length) {
-    const e = longs[0];
+  /* 🐞 3e piège, trouvé le 06/09 en installant le Mac : un événement COMMENCÉ
+     AVANT aujourd'hui n'a que sa fin dans la fenêtre. Le marqueur « Les enfants »
+     couvre samedi et dimanche ; testé un DIMANCHE, il n'apparaît légitimement que
+     sur une seule journée — et le test accusait le code à tort. Le nombre attendu
+     se calcule donc sur la portion VISIBLE. */
+  const visibles = longs
+    .map((e) => {
+      const debut = e.jour || A.ymd(new Date(e.start));
+      const du = debut > aujourdhui ? debut : aujourdhui;
+      const fin = dernierJour(e);
+      const au = fin < dansHuitJours ? fin : dansHuitJours;
+      const jours = Math.round((new Date(au + 'T12:00:00') - new Date(du + 'T12:00:00')) / 864e5) + 1;
+      return { e, jours };
+    })
+    .filter((x) => x.jours >= 2);
+
+  if (visibles.length) {
+    const { e, jours } = visibles[0];
     const lignes = ctx.split('\n').filter((l) => /^\s{2}\S/.test(l) && l.includes(e.summary));
-    const attendu = Math.min(8, Math.round(
-      (new Date(dernierJour(e)) - new Date(e.jour || A.ymd(new Date(e.start)))) / 864e5) + 1);
-    t.dire(lignes.length >= Math.min(2, attendu),
+    const attendu = Math.min(8, jours);
+    t.dire(lignes.length >= attendu,
       '🔑 un événement sur plusieurs jours apparaît sur CHAQUE journée',
       `${e.summary} sur ${lignes.length} jour(s), ${attendu} attendu(s)`);
   } else {
-    t.dire(true, 'aucun événement sur plusieurs jours dans la fenêtre (rien à vérifier)');
+    t.dire(true, 'aucun multi-jours visible sur au moins deux jours (rien à vérifier)');
   }
 
   /* Les heures sont LUES à voix haute : « trois de l'après-midi » ou « 15h » ne

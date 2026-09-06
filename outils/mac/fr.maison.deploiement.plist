@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Écran Maison — déploiement automatique depuis GitHub, toutes les deux minutes.
+
+  Daemon et non Agent, pour la même raison que le serveur : après une coupure de
+  courant, le Mac redémarre seul et personne n'ouvre de session. Un Agent ne
+  partirait jamais, et le Mac resterait sur une vieille version sans que rien ne
+  le signale.
+
+  Deux minutes : assez court pour qu'un correctif poussé depuis le canapé arrive
+  avant qu'on ait fini de ranger le portable, assez long pour ne pas marteler
+  GitHub — un `git fetch` sans nouveauté ne coûte quasiment rien et n'écrit même
+  pas dans le journal.
+
+  🔑 Le script ne demande AUCUN privilège. Le serveur tourne sous le compte de
+  Rémi avec `KeepAlive` : pour le relancer, il suffit d'arrêter son processus,
+  launchd s'occupe du reste. Une règle sudoers sans mot de passe pour un script
+  automatique aurait été hors de proportion avec ce qu'il a à faire.
+
+  Installation :
+    sed -e "s|__CHEMIN__|$HOME/maison|g" -e "s|__UTILISATEUR__|$(whoami)|g" \
+        outils/mac/fr.maison.deploiement.plist > /tmp/fr.maison.deploiement.plist
+    sudo cp /tmp/fr.maison.deploiement.plist /Library/LaunchDaemons/
+    sudo chown root:wheel /Library/LaunchDaemons/fr.maison.deploiement.plist
+    sudo launchctl bootstrap system /Library/LaunchDaemons/fr.maison.deploiement.plist
+
+  Journal :  tail -f __CHEMIN__/deploiement.log
+  Forcer :   sudo launchctl start fr.maison.deploiement
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.maison.deploiement</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__CHEMIN__/outils/mac/deployer.sh</string>
+  </array>
+
+  <key>UserName</key>
+  <string>__UTILISATEUR__</string>
+
+  <key>WorkingDirectory</key>
+  <string>__CHEMIN__</string>
+
+  <!-- Toutes les 2 minutes. RunAtLoad pour ne pas attendre le premier
+       intervalle après un redémarrage : c'est justement au retour d'une
+       coupure qu'on veut être sûr d'être à jour. -->
+  <key>StartInterval</key>
+  <integer>120</integer>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/__UTILISATEUR__</string>
+  </dict>
+
+  <!-- Le script écrit lui-même son journal, horodaté. Ces deux flux ne
+       recueillent que ce qui lui échapperait — une panne de bash, par exemple. -->
+  <key>StandardOutPath</key>
+  <string>__CHEMIN__/deploiement-sortie.log</string>
+  <key>StandardErrorPath</key>
+  <string>__CHEMIN__/deploiement-sortie.log</string>
+</dict>
+</plist>
