@@ -100,4 +100,6 @@ async function etatOuAgent(nom) {
   } catch { return e; }
 }
 
-module.exports = { etat: etatOuAgent, etatDirect: etat, nombreDe };
+const viderCache = () => { cache = { le: 0, valeur: null }; };
+
+module.exports = { etat: etatOuAgent, etatDirect: etat, viderCache, nombreDe };

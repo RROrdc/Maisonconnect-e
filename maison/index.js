@@ -70,4 +70,8 @@ async function tout(reglages = {}) {
   return out;
 }
 
-module.exports = { sources, tout, musique, temperature };
+/* Un seul geste pour tout rafraîchir : l'écran ne doit pas avoir à savoir
+   quelles sources ont un cache. */
+const viderCache = () => { musique.viderCache(); temperature.viderCache(); };
+
+module.exports = { sources, tout, viderCache, musique, temperature };

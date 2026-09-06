@@ -701,7 +701,13 @@ app.get('/api/health', (_req, res) => res.json({
    AppleScript, et /api/data est redemandé à chaque écriture par le temps réel.
    Même raisonnement que pour les recettes (§ 2 quinquies) et l'école. */
 app.get('/api/maison', async (req, res) => {
-  try { res.json(await Maison.tout({ temperature_raccourci: config('temperature_raccourci') })); }
+  try {
+    /* ?rafraichir=1 : la liste des enceintes AirPlay bouge — un Sonos redémarré,
+       une barre de son qui se réveille. Sans ce court-circuit, on attendrait le
+       cache pour voir apparaître un appareil qu'on vient d'allumer. */
+    if (req.query.rafraichir) Maison.viderCache();
+    res.json(await Maison.tout({ temperature_raccourci: config('temperature_raccourci') }));
+  }
   catch (e) { res.status(500).json({ erreur: e.message }); }
 });
 

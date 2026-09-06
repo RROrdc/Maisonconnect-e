@@ -251,6 +251,17 @@
   .note b{display:block;margin-top:5px;font-size:12px;color:var(--post)}
 
   /* ---------- maison (Netatmo + musique) : les emplacements du différenciateur ---------- */
+  /* Panneau Maison : cibles tactiles franches, on choisit sans viser. */
+  .ens{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+  .enc{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 16px;border:0;
+    border-radius:var(--r2);background:var(--card2);color:var(--txt);font:inherit;font-size:17px;cursor:pointer}
+  .enc.on{background:color-mix(in srgb,var(--maison,#e07a5f) 18%,var(--card2));font-weight:650}
+  .enc .n{flex:1}
+  .vols{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .vol{min-width:58px;padding:12px 0;border:0;border-radius:var(--r2);background:var(--card2);
+    color:var(--txt);font:inherit;font-size:17px;cursor:pointer}
+  .vol.on{background:color-mix(in srgb,var(--maison,#e07a5f) 25%,var(--card2));font-weight:700}
+  .aide{font-size:14px;color:var(--muted);margin:2px 0 10px}
   .maison .wb{display:flex;flex-direction:column;gap:10px}
   .bloc{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:var(--r2);background:var(--card2)}
   .bloc .ic{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:17px;flex:0 0 auto;
@@ -811,7 +822,7 @@
           <div class="tx"><div class="k">Température</div><div class="v" id="tempSous">à brancher sur le Mac</div></div>
           <div class="big" id="tempVal">—</div></div>
         <div class="bloc mus" id="blocMus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
-          <div class="tx"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">AirPlay · à brancher</div></div>
+          <div class="tx" onclick="event.stopPropagation();openTile('maison')" style="cursor:pointer"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">AirPlay · à brancher</div></div>
           <div class="lecteur">
             <button onclick="cmdMus('precedent')"><svg class="i"><use href="#ic-prev"/></svg></button>
             <button class="p" id="musPlay" onclick="cmdMus('bascule')"><svg class="i"><use href="#ic-play"/></svg></button>
@@ -1223,6 +1234,24 @@ function rendreMaison(){
   if(p) p.querySelector('use').setAttribute('href', q.lecture ? '#ic-pause' : '#ic-play');
 }
 
+async function choisirEnceinte(nom){
+  try{ await api('/api/maison/musique','POST',{commande:'enceinte',nom});
+       await chargerMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ console.warn('[enceinte]',e.message); }
+}
+async function volume(v){
+  try{ await api('/api/maison/musique','POST',{commande:'volume',valeur:v});
+       await chargerMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ console.warn('[volume]',e.message); }
+}
+async function rescanEnceintes(){
+  /* On court-circuite le cache : sinon un appareil qu'on vient d'allumer
+     mettrait plusieurs secondes à apparaître, et on croirait qu'il n'est pas
+     reconnu. */
+  try{ MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ console.warn('[rescan]',e.message); }
+}
+
 async function cmdMus(commande){
   try{
     await api('/api/maison/musique', 'POST', { commande });
@@ -1361,7 +1390,10 @@ const IC={menu:['menu','Menu de la semaine','var(--menu)'],course:['cart','Liste
   agenda:['cal','Agenda (perso)','var(--agenda)'],
   /* Panneau à part, comme les plannings : les devoirs ne sont pas des tâches
      du foyer, et les mêler ferait une liste que personne ne sait plus lire. */
-  devoirs:['bag','Devoirs des enfants','var(--agenda)']};
+  devoirs:['bag','Devoirs des enfants','var(--agenda)'],
+  /* La carte Maison est petite ; le choix de l'enceinte demande de vraies
+     cibles tactiles. Il passe donc en panneau, comme les plannings. */
+  maison:['home','Musique et température','var(--maison,#e07a5f)']};
 let openK=null;
 function drawSheet(k){
   let icone,titre,ac;
@@ -1512,6 +1544,38 @@ async function setCouverts(id,champ,valeur){
 }
 
 function body(k){
+  /* Maison — choisir la sortie du son et le volume, du bout du doigt.
+     Pas de liste déroulante : sur un mur on appuie, on ne déroule pas (même
+     raison que les boutons de couverts du mode cuisine, § 2 quinquies). */
+  if(k==='maison'){
+    const M=MAISON||{}, q=M.musique||{}, T=M.temperature||{};
+    if(!q.disponible) return '<div class="vide">'+esc(q.raison||'La musique se pilote depuis le Mac.')+'</div>';
+    const ens=q.enceintes||[], act=q.actives||[];
+    let h='<div class="stitre">Sortie du son</div>';
+    h += ens.length
+      ? '<div class="ens">'+ens.map((n)=>{
+          const on=act.includes(n);
+          return '<button class="enc'+(on?' on':'')+'" onclick="choisirEnceinte('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'
+            +'<span class="n">'+esc(n)+'</span>'+(on?'<span class="tag ac">en cours</span>':'')+'</button>';
+        }).join('')+'</div>'
+      : '<div class="vide">Aucune enceinte AirPlay visible.</div>';
+    /* Un appareil éteint n'annonce rien : le bouton dit quoi faire plutôt que
+       de laisser croire que l'enceinte n'est pas compatible. */
+    h += '<div class="aide">Une enceinte éteinte ou en veille ne s’annonce pas. Allume-la, puis relance la recherche.</div>'
+      + '<button class="hab" onclick="rescanEnceintes()">↻ Rechercher les enceintes</button>';
+
+    h += '<div class="stitre">Volume</div><div class="vols">'
+      + [0,20,40,60,80,100].map((v)=>'<button class="vol'+(q.volume===v?' on':'')+'" onclick="volume('+v+')">'+v+'</button>').join('')
+      + '</div>';
+
+    h += '<div class="stitre">Température</div><div class="pill">'
+      + (typeof T.valeur==='number'
+          ? '<b>'+(Math.round(T.valeur*10)/10)+'°</b> <span class="lt"></span><span class="s">HomeKit</span>'
+          : '<span class="s">'+esc(T.raison||'à brancher')+'</span>')
+      + '</div>';
+    return h;
+  }
+
   /* Devoirs — tout, groupé par enfant puis par échéance. Ici la hauteur est
      abondante (le panneau fait 88 % de l'écran et défile) : aucune raison de
      tronquer, et le texte complet a de la valeur (« voir le corpus en pièce

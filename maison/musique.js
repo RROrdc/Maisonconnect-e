@@ -231,7 +231,12 @@ async function commanderOuAgent(quoi, options = {}) {
   }
 }
 
+/* Vidé à la demande : la liste des enceintes AirPlay change quand un appareil
+   s'allume ou redémarre, et attendre le cache donnerait l'impression que le
+   nouvel appareil n'est pas reconnu. */
+const viderCache = () => { cache = { le: 0, valeur: null }; };
+
 const disponible = () => MAC;
 
-module.exports = { disponible, etat: etatOuAgent, commander: commanderOuAgent,
+module.exports = { disponible, viderCache, etat: etatOuAgent, commander: commanderOuAgent,
                    etatDirect: etat, commanderDirect: commander, COMMANDES };
