@@ -738,7 +738,14 @@ RENDU.menu = ()=>{
         : (m.soirEmoji?`<span class="mini emo">${e(m.soirEmoji)}</span>`:'')}
       <div class="t">${e(m.soir||'— à définir —')}
         <div class="d">midi · ${e(m.midi||'—')}${f&&f.duree?' · '+e(f.duree):''}${
-          m.soirCouvertsChoisi?' · <b>'+e(m.soirCouverts)+' couverts</b>':''}</div></div>
+          m.soirCouvertsChoisi?' · <b>'+e(m.soirCouverts)+' couverts</b>':''}</div>${
+          /* Entrée et dessert du SOIR seulement : cette ligne porte le repas du
+             soir, et répéter ceux du midi la rendrait illisible. Rien ne
+             s'affiche quand il n'y en a pas — l'app suit le mur, elle n'a pas sa
+             propre règle (§ 2 septdecies). */
+          [m.soirEntree, m.soirDessert].filter(Boolean).length
+            ? `<div class="d">${[m.soirEntree&&('entrée : '+m.soirEntree), m.soirDessert&&('dessert : '+m.soirDessert)]
+                .filter(Boolean).map(e).join(' · ')}</div>` : ''}</div>
       ${ouvrable?`<div class="fin"><span class="tag" data-recette="${e(m.soirId)}" data-couverts="${e(m.soirCouverts||4)}">Recette</span></div>`:''}
     </div>`;}).join('')}</div>`;
 };

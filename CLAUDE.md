@@ -7308,6 +7308,126 @@ saisi.**
 depuis le serveur, bascule d'enceinte et retour au défaut vérifiés sur le vrai
 matériel.
 
+## 2 duotricies. 🎒 LES TROIS ENFANTS + 🌡️ NETATMO PILOTABLE + 🍽️ CUISINER SANS LE MENU (10/09/2026)
+
+### 🐞 « ENORA » ≠ « Enora » — le défaut le plus silencieux du projet
+Le compte d'Amandine (Enora, EcoleDirecte) se connectait, ses **huit devoirs
+étaient récupérés**… et n'arrivaient **nulle part**. EcoleDirecte rend le prénom
+en CAPITALES là où la famille a saisi « Enora ». Or tout le projet compare des
+prénoms : qui est à la maison, le filtrage par identité dans l'app, le
+destinataire d'un rappel. Ces comparaisons échouaient sans un mot, et son
+`horizon` n'était même pas calculé.
+⇒ **Canonisé à la SOURCE**, une seule fois, plutôt que normalisé dans chaque
+comparaison — c'est la leçon des rayons de courses, codés en dur des deux côtés
+avec des valeurs différentes (§ 2 octies). La carte des `modules` est remappée
+aussi : indexée par prénom, elle aurait fait conclure que l'établissement
+n'alimente rien.
+
+### 🔴 LE bug que j'ai créé le jour même : le vol unique
+Le jeton Pronote est **à usage unique** — chaque connexion en rend un nouveau et
+invalide le précédent (§ 2 duovicies). Tant qu'il n'y avait qu'un appelant
+(l'écran mural), le défaut ne pouvait pas se voir. En ajoutant la passe de vie
+scolaire, **deux lectures peuvent tomber ensemble** : la seconde grille la
+première, la session meurt, et il faut regénérer un QR à la main.
+⇒ `Ecole.tout()` fait désormais partager la **MÊME promesse** aux appelants
+concurrents. Un cache ne suffisait pas : deux appels arrivés avant le premier
+retour le manquent tous les deux.
+- ⚠️ `outils/pronote.js` ne chargeait pas le `.env` : il échouait sur « Python
+  introuvable » alors que `PYTHON_BIN` y était renseigné, et invitait à
+  renseigner une clé déjà renseignée. Avec un QR valable **dix minutes**, ce
+  genre d'aller-retour coûte cher. Chemin pris depuis le **dossier du projet**,
+  jamais le répertoire courant — piège déjà payé le 18/08.
+
+### 🏫 Vie scolaire — sur le mur ET sur les téléphones (« les 2 », Rémi)
+Les absences, retards et dispenses rejoignent le **tableau des post-it** : c'est
+le tableau des messages de la maison, et une absence est un message. En **tête**
+des mots, parce qu'on lit ce qui est en haut et qu'une absence non justifiée
+compte plus qu'un mot laissé la semaine dernière.
+- **Pas lié à une heure**, contrairement aux devoirs : on regarde à chaque
+  passage et on ne signale que ce qui est **nouveau** — sinon la même absence
+  repartirait toutes les quinze minutes, le meilleur moyen de faire ignorer les
+  notifications (§ 2 nonies).
+- **Au tout premier passage on mémorise sans alerter** : tout est « nouveau », et
+  l'historique entier de l'année partirait d'un coup.
+- Comme les devoirs, **rien n'est écrit dans `postits`** : une entrée corrigée
+  côté établissement laisserait un doublon, et l'état existerait des deux côtés.
+- ❔ **Non éprouvé sur du réel** : `absencesRetards` et `dispenses` sont vides
+  pour les deux élèves. `vieNormalisee()` est donc délibérément tolérante sur les
+  noms de champs — on ne peut pas modeler sur du concret, et c'est dit.
+- 🔴 **L'observation d'Augustin est inatteignable** : elle est dans le **carnet de
+  correspondance**, un onglet que `pronotepy` n'expose pas. Vérifié aussi :
+  punitions et absences à 0 sur les dix périodes, `information_and_surveys()`
+  lève `KeyError`, `discussions()` répond « Action not permitted ».
+
+### 🌡️ Netatmo remplace le Raccourci HomeKit — et devient PILOTABLE
+Demande de Rémi : « je veux pouvoir afficher les températures, voire agir sur la
+température ». Deux raisons de changer de voie :
+- le Raccourci ne lit **rien sans hub HomeKit allumé**, et seuls un HomePod ou une
+  Apple TV peuvent l'être — jamais le Mac mini (vérifié chez Apple, § 2 untricies).
+  Une Apple TV éteinte un soir, et le mur n'a plus de température ;
+- surtout, **`shortcuts run` ne sait pas passer un paramètre** : il faudrait un
+  raccourci par température. L'API prend le nombre.
+
+Le Raccourci **reste en second** : il ne demande aucun identifiant, donc il garde
+une voie ouverte si le compte développeur n'est pas fait.
+- 🔑 **Le jeton de rafraîchissement TOURNE à chaque usage**, exactement comme
+  Pronote. Il est donc persisté **avant** d'être utilisé, dans un fichier hors
+  dépôt ; le `.env` n'est qu'une valeur d'amorçage (§ 2 septies). Si l'écriture
+  échoue, on échoue **maintenant** plutôt que de découvrir la perte au
+  redémarrage.
+- **Une seule écriture exposée** : la consigne d'une pièce, bornée à 5–30 °C et
+  vérifiée contre les pièces réelles. Pas de mode absence, pas de « tout couper » :
+  ce projet n'expose aucune opération de masse, et une dalle tactile dans une
+  cuisine se touche par accident.
+- Un réglage tient **3 h** puis le programme reprend la main — l'écran le dit.
+- La carte du mur affiche la **pièce**, pas la technologie : « Netatmo » n'apprend
+  rien à qui passe devant, « Salon » situe la mesure.
+- ⏭ À faire par Rémi : trois valeurs sur `dev.netatmo.com/apps` (le
+  `.env.example` donne la marche à suivre, scopes `read_thermostat` **et**
+  `write_thermostat`).
+
+### 🍽️ Cuisiner sans passer par le menu
+« Pouvoir afficher les recettes pour cuisiner, choisir une recette dans la base
+sans menu. » Jusqu'ici la bibliothèque n'était atteignable **que** par un jour du
+menu — donc invisible pour tout ce qui n'y figure pas. Panneau dédié dans le
+rail, filtre **sans accent ni casse** (personne ne tape « bœuf » sur un clavier
+tactile). Un plat sans recette reste **proposé, estompé** : c'est souvent là
+qu'on s'aperçoit qu'il faut la renseigner.
+
+### 🥗 Entrée et dessert, en option
+Colonnes **à part**, jamais mêlées à `*_plat`, pour une raison précise : `menu.js`
+et la rotation ne regardent que `*_plat`, donc un dessert ne sera **jamais
+proposé comme plat du soir**. Même duplicité que le plat — relation vers la
+bibliothèque si le nom y existe, texte libre sinon.
+- La ligne n'apparaît **que si le repas est décidé** ou si quelque chose est déjà
+  saisi : sept jours × deux repas × deux champs feraient vingt-huit cases vides
+  dans un panneau qu'on parcourt debout.
+- Un **`datalist`** plutôt qu'un menu déroulant : il propose la bibliothèque ET
+  accepte un nom libre dans un seul champ. « Compote » n'a pas vocation à devenir
+  une fiche.
+- ✅ Vérifié sur les vraies données : écrit, relu, remis à vide, **zéro plat
+  parasite** dans la bibliothèque (le piège de `special:true`, déjà payé deux fois).
+
+### 🎵 Choisir sa musique
+On ne pouvait que lancer ou mettre en pause **ce qui était déjà chargé** — la
+moitié du service sur un écran de cuisine. Ajouté : les **playlists** de
+l'utilisateur (pas les intelligentes, qui noieraient les siennes) et une
+**recherche titre ou artiste**.
+- Une piste se désigne par son **identifiant persistant**, jamais par son nom :
+  deux morceaux peuvent porter le même titre.
+- Liste toujours **fermée** : une playlist est vérifiée contre celles que Music a
+  rendues, un identifiant contre un motif hexadécimal.
+- La recherche passe par **l'agent** comme le reste : `search library playlist 1`
+  est de l'automatisation, donc refusée au démon (§ 2 untricies).
+
+### Vérifié
+**351 tests, 0 échec**, joués contre le Mac. Déploiement par `git push mac`,
+santé et charge `/api/maison` relues après redémarrage.
+- 🔧 `~/.ssh/config` : une clé par hôte (`IdentitiesOnly`). Sans ça ssh propose
+  les deux et le serveur coupe sur « Too many authentication failures » avant
+  d'arriver à la bonne.
+- ❔ Non vérifié : le rendu réel sur la dalle (le Pi est débranché) et sur iPhone.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
