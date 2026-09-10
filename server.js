@@ -87,6 +87,9 @@ const REGLAGES = {
      évite de stocker le moindre identifiant Netatmo. Vide = carte « à brancher ».
      Le nom est un réglage, jamais codé en dur : aucun foyer dans le code. */
   temperature_raccourci: { env: '', defaut: '' },
+  /* Quelle pièce l'écran mural met en avant. Vide = la première qui a une
+     mesure. Aucun foyer codé en dur (§ 5 quater). */
+  temperature_piece: { env: '', defaut: '' },
   /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
      Vide = on ne touche jamais à la sortie. */
   musique_enceinte_defaut: { env: '', defaut: '' },
@@ -711,6 +714,7 @@ app.get('/api/maison', async (req, res) => {
     if (req.query.rafraichir) Maison.viderCache();
     res.json(await Maison.tout({
       temperature_raccourci: config('temperature_raccourci'),
+      temperature_piece: config('temperature_piece'),
       musique_enceinte_defaut: config('musique_enceinte_defaut'),
     }));
   }

@@ -73,7 +73,7 @@ async function tout(reglages = {}) {
   const parNetatmo = out.sources.temperature.via === 'netatmo';
   const [m, t] = await Promise.all([
     musique.etat().catch((e) => ({ disponible: false, erreur: e.message })),
-    (parNetatmo ? netatmo.etat() : temperature.etat(reglages.temperature_raccourci))
+    (parNetatmo ? netatmo.etat(reglages.temperature_piece) : temperature.etat(reglages.temperature_raccourci))
       .catch((e) => ({ disponible: false, erreur: e.message })),
   ]);
   out.musique = m;

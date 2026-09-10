@@ -163,10 +163,17 @@ async function exterieur() {
   return null;
 }
 
-async function etat() {
+/* La pièce mise en avant sur le mur est un RÉGLAGE, pas la première venue :
+   « Bureau » et « Salle à manger » ne disent pas la même chose à qui traverse la
+   cuisine. Vide = la première qui a une mesure. Comparaison sans accent ni
+   casse — on ne retape pas « Salle à manger » à l'identique dans un formulaire. */
+const clef = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+async function etat(pieceVoulue = '') {
   const c = configure();
   if (!c.ok) return { disponible: false, raison: c.raison };
-  if (etatCache.valeur && Date.now() - etatCache.le < CACHE_ETAT_MS) return etatCache.valeur;
+  if (etatCache.valeur && Date.now() - etatCache.le < CACHE_ETAT_MS
+      && etatCache.piece === clef(pieceVoulue)) return etatCache.valeur;
   let v;
   try {
     const maison = await topologie();
@@ -175,14 +182,16 @@ async function etat() {
     v = {
       disponible: true, maisonId: maison.id, maison: maison.name || 'Maison',
       pieces: liste, exterieur: await exterieur(),
-      /* La pièce mise en avant sur le mur : la première qui a une mesure.
-         Aucun foyer codé en dur (§ 5 quater). */
-      principale: liste.find((p) => p.mesuree !== null) || liste[0] || null,
+      /* Si la pièce demandée n'a pas de mesure (une vanne seule n'en donne pas
+         toujours), on ne montre pas un tiret : on retombe sur la première qui en
+         a une. Mieux vaut une autre pièce nommée qu'un vide inexpliqué. */
+      principale: liste.find((p) => clef(p.nom) === clef(pieceVoulue) && p.mesuree !== null)
+        || liste.find((p) => p.mesuree !== null) || liste[0] || null,
     };
   } catch (e) {
     v = { disponible: false, raison: e.message };
   }
-  etatCache = { le: Date.now(), valeur: v };
+  etatCache = { le: Date.now(), valeur: v, piece: clef(pieceVoulue) };
   return v;
 }
 
