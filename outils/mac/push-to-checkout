@@ -1,0 +1,27 @@
+#!/bin/bash
+# Deux cas font echouer la mise a jour du dossier de travail, et il a fallu les
+# rencontrer tous les deux pour les traiter :
+#   1. un fichier NON SUIVI portant le nom d'un fichier apporte par la mise a
+#      jour (« untracked working tree files would be overwritten ») ;
+#   2. un fichier SUIVI mais MODIFIE localement (« not uptodate. Cannot merge »).
+# Les deux viennent de la meme habitude : copier un fichier a la main dans le
+# depot au lieu de le publier. On met de cote plutot que de supprimer : rien ne
+# disparait sans trace, et le fichier ecarte reste lisible a cote.
+set -e
+nouveau="$1"
+export GIT_WORK_TREE="${GIT_WORK_TREE:-$HOME/maison}"
+cd "$GIT_WORK_TREE"
+git diff --name-only HEAD "$nouveau" 2>/dev/null | while read -r f; do
+  [ -e "$f" ] || continue
+  if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+    git diff --quiet -- "$f" && continue          # suivi et intact : rien a faire
+    cp "$f" "$f.avant-deploiement"
+    git checkout -- "$f"                          # on repart de la version publiee
+    echo "  modification locale mise de cote : $f" >&2
+  else
+    mv "$f" "$f.avant-deploiement"
+    echo "  fichier local mis de cote : $f" >&2
+  fi
+done
+git update-index -q --refresh
+git read-tree -u -m HEAD "$nouveau"
