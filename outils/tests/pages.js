@@ -45,6 +45,18 @@ module.exports = async function (muet) {
     t.dire(!manquants.length, `${rel} — identifiants visés existants`,
       manquants.length ? 'ORPHELINS : ' + manquants.join(', ') : `${new Set(vises).size} vérifiés`);
 
+    /* 🐞 Trouvé le 10/09 : le catalogue de recettes s'affichait, et aucun bouton
+       ne s'ouvrait. `JSON.stringify` rend des guillemets DOUBLES ; posés dans un
+       `onclick="…"`, ils referment l'attribut et le gestionnaire devient inerte
+       — sans erreur de syntaxe, sans rien dans la console, donc invisible pour
+       les deux contrôles ci-dessus. On cherche la CONSTRUCTION fautive dans le
+       source ; `arg()` est le seul chemin correct. */
+    const nus = [...html.matchAll(/on\w+="[^"]*'\s*\+\s*JSON\.stringify\(/g)]
+      .filter((m) => !html.slice(m.index, m.index + 220).includes('&quot;'));
+    t.dire(!nus.length, `${rel} — arguments d'attribut échappés`,
+      nus.length ? `${nus.length} JSON.stringify non échappé(s) dans un attribut — passe par arg()`
+                 : 'aucun JSON.stringify nu dans un attribut');
+
     const styles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
     const ouv = (styles.match(/\{/g) || []).length, fer = (styles.match(/\}/g) || []).length;
     t.dire(ouv === fer, `${rel} — accolades CSS équilibrées`, `${ouv}/${fer}`);

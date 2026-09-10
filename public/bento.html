@@ -916,6 +916,12 @@ let FERIES={};
 const majFeries=()=>{FERIES={};for(const f of S.feries||[])FERIES[f.date]=f.nom;};
 const ferieDe=d=>FERIES[typeof d==='string'?d:ymd(d)]||'';
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+/* 🐞 Un argument posé dans un `onclick="…"` doit être échappé : `JSON.stringify`
+   rend des guillemets DOUBLES, qui referment l'attribut — le bouton devient
+   inerte, sans la moindre erreur visible. Trouvé le 10/09 sur le catalogue de
+   recettes. Un seul nom, une seule règle : on ne l'oubliera pas au septième
+   bouton. */
+const arg=v=>JSON.stringify(String(v)).replace(/"/g,'&quot;');
 const ico=(n,cls)=>`<svg class="i ${cls||''}"><use href="#ic-${n}"/></svg>`;
 
 /* Pictogramme du plat — déduit du NOM, faute de champ dédié dans Notion.
@@ -1319,7 +1325,7 @@ async function chercherMusique(q){
       z.innerHTML='<div class="vide">'+esc(r.raison||'Rien trouvé.')+'</div>'; return;
     }
     z.innerHTML='<div class="ens">'+r.resultats.map(t=>
-      '<button class="enc" onclick="lancerPiste('+JSON.stringify(t.id)+')">'
+      '<button class="enc" onclick="lancerPiste('+arg(t.id)+')">'
       +'<span class="n">'+esc(t.titre)+(t.artiste?'<span class="tag">'+esc(t.artiste)+'</span>':'')+'</span></button>'
     ).join('')+'</div>';
   }catch(e){ z.innerHTML='<div class="vide">'+esc(e.message)+'</div>'; }
@@ -1678,7 +1684,7 @@ function body(k){
     for(const p of tous){
       const vign=p.photo?'<img src="'+esc(p.photo)+'" alt="">':'<span class="emo">'+esc(p.emoji||'🍽️')+'</span>';
       h+='<button class="plat'+(p.recette?'':' sans')+'" data-nom="'+esc(String(p.nom).toLowerCase())+'"'
-        +' onclick="ouvrirRecette('+JSON.stringify(String(p.id))+')">'
+        +' onclick="ouvrirRecette('+arg(p.id)+')">'
         +vign+'<span class="t">'+esc(p.nom)+'</span>'
         +(p.duree?'<span class="d">'+esc(p.duree)+'</span>':(p.recette?'':'<span class="d">sans recette</span>'))
         +'</button>';
@@ -1694,7 +1700,7 @@ function body(k){
     h += ens.length
       ? '<div class="ens">'+ens.map((n)=>{
           const on=act.includes(n);
-          return '<button class="enc'+(on?' on':'')+'" onclick="choisirEnceinte('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'
+          return '<button class="enc'+(on?' on':'')+'" onclick="choisirEnceinte('+arg(n)+')">'
             +'<span class="n">'+esc(n)+'</span>'+(on?'<span class="tag ac">en cours</span>':'')+'</button>';
         }).join('')+'</div>'
       : '<div class="vide">Aucune enceinte AirPlay visible.</div>';
@@ -1709,7 +1715,7 @@ function body(k){
     const pls = q.playlists || [];
     if(pls.length){
       h += '<div class="stitre">Playlists</div><div class="ens">'
-        + pls.map((n)=>'<button class="enc" onclick="lancerPlaylist('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'
+        + pls.map((n)=>'<button class="enc" onclick="lancerPlaylist('+arg(n)+')">'
             +'<span class="n">'+esc(n)+'</span></button>').join('')
         + '</div>';
     }
@@ -1743,9 +1749,9 @@ function body(k){
         if(pc.reglable && (M.sources&&M.sources.temperature&&M.sources.temperature.reglable)){
           const c = typeof pc.consigne==='number' ? pc.consigne : 19;
           h += '<div class="cons"><span class="s">consigne</span>'
-            + '<button class="vol" onclick="consigne('+JSON.stringify(pc.id)+','+(c-0.5)+')">−</button>'
+            + '<button class="vol" onclick="consigne('+arg(pc.id)+','+(c-0.5)+')">−</button>'
             + '<b>'+(Math.round(c*10)/10)+'°</b>'
-            + '<button class="vol" onclick="consigne('+JSON.stringify(pc.id)+','+(c+0.5)+')">+</button>'
+            + '<button class="vol" onclick="consigne('+arg(pc.id)+','+(c+0.5)+')">+</button>'
             + '</div>';
         }
         h += '</div>';
