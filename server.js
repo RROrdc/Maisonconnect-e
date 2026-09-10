@@ -733,6 +733,9 @@ app.get('/api/ecole', async (req, res) => {
     const charge = await ecole.tout({
       jours: Number(config('ecole_jours')) || 7,
       maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+      /* Les prénoms du foyer font autorité sur l'orthographe : c'est eux que
+         comparent la présence, l'app et les rappels. */
+      prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
     });
     /* Les soucis remontent DANS la réponse plutôt qu'en erreur HTTP : un compte
        fâché ne doit pas faire disparaître les enfants des autres comptes. Ils

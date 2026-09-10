@@ -18,6 +18,29 @@ const path = require('path');
 const crypto = require('crypto');
 const { ClientED, ErreurED, QcmRequis } = require('./ecoledirecte');
 const pronote = require('./pronote');
+
+/* Même normalisation que `donnees.clef` : sans casse ni accent. Recopiée plutôt
+   qu'importée pour que `ecole/` ne dépende pas de la couche de données — il doit
+   rester utilisable seul, comme l'outil en ligne de commande. */
+const clef = (s) => String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+
+function canoniser(charge, prenomsFoyer) {
+  if (!prenomsFoyer || !prenomsFoyer.length) return;
+  const table = new Map(prenomsFoyer.map((p) => [clef(p), p]));
+  const bon = (v) => table.get(clef(v)) || v;
+  for (const e of charge.eleves || []) e.prenom = bon(e.prenom);
+  for (const liste of ['cours', 'devoirs', 'notes', 'messages']) {
+    for (const x of charge[liste] || []) if (x && x.eleve) x.eleve = bon(x.eleve);
+  }
+  /* `modules` est indexé PAR PRÉNOM : si on le laissait tel quel, l'écran
+     chercherait « Enora » dans une carte qui dit « ENORA », et conclurait que
+     l'établissement n'alimente rien. */
+  if (charge.modules) {
+    const m = {};
+    for (const [k, v] of Object.entries(charge.modules)) m[bon(k)] = v;
+    charge.modules = m;
+  }
+}
 const { texteDeHtml, deBase64, texteEventuellementBase64, jour, dansNJours, anneeScolaire } = require('./commun');
 
 /* ── Les comptes, lus dans le .env ────────────────────────────────────────
@@ -212,8 +235,8 @@ class Ecole {
      La signature du cache inclut la configuration : sans elle, ajouter le
      compte d'Enora resterait sans effet visible pendant un quart d'heure et
      on croirait le `.env` cassé (§ 2 septies). */
-  async tout({ jours = 7, maxAgeMs = 15 * 60 * 1000 } = {}) {
-    const signature = JSON.stringify([jours, this.clients.map((c) => c.etiquette), pronote.configure()]);
+  async tout({ jours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
+    const signature = JSON.stringify([jours, this.clients.map((c) => c.etiquette), pronote.configure(), prenomsFoyer]);
     const maintenant = Date.now();
     if (Ecole._cache && Ecole._cache.signature === signature && maintenant - Ecole._cache.le < maxAgeMs) {
       return { ...Ecole._cache.charge, cache: true, age: Math.round((maintenant - Ecole._cache.le) / 1000) };
@@ -281,6 +304,17 @@ class Ecole {
 
     charge.cours.sort((a, b) => (a.jour + a.debut).localeCompare(b.jour + b.debut));
     charge.devoirs.sort((a, b) => (a.pour + a.eleve).localeCompare(b.pour + b.eleve));
+
+    /* 🔑 Les établissements n'écrivent pas les prénoms comme la maison :
+       EcoleDirecte rend « ENORA » là où la famille a saisi « Enora ». Tout le
+       reste du projet compare des prénoms — présence à la maison, filtrage par
+       identité dans l'app, destinataire d'un rappel — et ces comparaisons
+       échouaient en silence : les devoirs d'Enora n'arrivaient nulle part.
+       On ramène donc chaque prénom scolaire à l'orthographe du foyer ICI, une
+       seule fois, plutôt que de normaliser dans chaque comparaison — c'est la
+       leçon des rayons de courses, codés en dur des deux côtés avec des valeurs
+       différentes (§ 2 octies). */
+    canoniser(charge, prenomsFoyer);
 
     Ecole._cache = { signature, le: maintenant, charge };
     return { ...charge, cache: false, age: 0 };
