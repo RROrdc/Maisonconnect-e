@@ -40,6 +40,17 @@ const COLONNES = {
   },
   menu: {
     midi_couverts: 'INTEGER', soir_couverts: 'INTEGER',   // NULL = réglage `couverts_defaut`
+    /* Entrée et dessert : facultatifs, et rangés à PART du plat plutôt que dans
+       une table « éléments du repas ». Deux raisons concrètes :
+       • `menu.js` (proposition des soirs vides) et la rotation ne regardent que
+         `*_plat` — un dessert ne doit jamais être proposé comme plat du soir ;
+       • les colonnes existantes ne bougent pas, donc aucune donnée à déplacer.
+       Même duplicité que le plat : relation vers la bibliothèque quand le nom y
+       existe, texte libre sinon. */
+    midi_entree_plat: 'INTEGER', midi_entree_libre: 'TEXT',
+    midi_dessert_plat: 'INTEGER', midi_dessert_libre: 'TEXT',
+    soir_entree_plat: 'INTEGER', soir_entree_libre: 'TEXT',
+    soir_dessert_plat: 'INTEGER', soir_dessert_libre: 'TEXT',
   },
   notifications: {
     /* Trouvé par le test, pas par la relecture : la corbeille commune écrit `maj_le`

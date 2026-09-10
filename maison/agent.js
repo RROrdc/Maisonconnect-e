@@ -43,6 +43,15 @@ const serveur = http.createServer((req, res) => {
       .catch((e) => repondre(res, 500, { erreur: e.message }));
   }
 
+  /* La recherche passe aussi par l'agent : `search library playlist 1` est de
+     l'automatisation comme le reste, donc refusée au démon. */
+  if (req.method === 'GET' && req.url.startsWith('/chercher')) {
+    const q = new URL(req.url, 'http://x').searchParams.get('q') || '';
+    return musique.chercherDirect(q)
+      .then((r) => repondre(res, 200, r))
+      .catch((e) => repondre(res, 500, { resultats: [], raison: e.message }));
+  }
+
   if (req.method === 'POST' && req.url === '/commande') {
     let brut = '';
     /* Une borne sur le corps : sans elle, une requête interminable retiendrait

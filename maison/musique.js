@@ -129,6 +129,7 @@ async function etat() {
         volume: Number(volume),
         enceintes,
         actives,
+        playlists: await playlists(),
       };
     } catch (e) {
       v = { disponible: true, ouvert: true, erreur: e.message };
@@ -148,6 +149,11 @@ const COMMANDES = {
   suivant: 'next track',
   precedent: 'previous track',
 };
+
+/* Combien de résultats on renvoie. Vingt-cinq tiennent sur un panneau qu'on
+   parcourt du doigt ; au-delà on ne cherche plus, on fait défiler — et une
+   bibliothèque de vingt mille titres saturerait le Raspberry pour rien. */
+const MAX_RESULTATS = 25;
 
 async function commander(quoi, options = {}) {
   if (!MAC) throw new Error('la musique se pilote depuis le Mac');
@@ -173,6 +179,30 @@ async function commander(quoi, options = {}) {
     return { ok: true, enceinte: nom };
   }
 
+  /* Lancer une playlist. Comme pour l'enceinte, le nom vient de la liste que
+     Music a donnée : on vérifie qu'il existe avant de l'employer, sinon
+     AppleScript rend une erreur illisible — et surtout on n'exécute jamais une
+     chaîne libre venue du réseau. */
+  if (quoi === 'playlist') {
+    const nom = String(options.nom || '');
+    const dispo = await playlists();
+    if (!dispo.includes(nom)) throw new Error(`playlist inconnue : ${nom}`);
+    await osascript(`tell application "Music" to play playlist "${echapper(nom)}"`, 15000);
+    return { ok: true, playlist: nom };
+  }
+
+  /* Un titre précis. On le désigne par son identifiant PERSISTANT, jamais par
+     son nom : deux morceaux peuvent porter le même titre, et l'identifiant est
+     ce que Music nous a rendu à la recherche. Contrôlé au passage — seuls des
+     caractères hexadécimaux, donc rien à injecter. */
+  if (quoi === 'piste') {
+    const id = String(options.id || '').toUpperCase();
+    if (!/^[0-9A-F]{8,32}$/.test(id)) throw new Error('identifiant de piste invalide');
+    await osascript(
+      `tell application "Music" to play (first track of library playlist 1 whose persistent ID is "${id}")`, 15000);
+    return { ok: true, piste: id };
+  }
+
   const ordre = COMMANDES[quoi];
   if (!ordre) throw new Error(`commande inconnue : ${quoi}`);
   /* On ne démarre pas Music.app pour une pause ou un « suivant » : s'il est
@@ -182,6 +212,64 @@ async function commander(quoi, options = {}) {
   }
   await osascript(`tell application "Music" to ${ordre}`);
   return { ok: true, commande: quoi };
+}
+
+/* ── Choisir quoi écouter ───────────────────────────────────────────────────
+   Jusqu'ici on ne pouvait que lancer/mettre en pause ce qui était déjà chargé.
+   Sur un écran de cuisine, c'est la moitié du service. */
+
+/* Les playlists changent rarement : un quart d'heure de cache évite de relancer
+   un AppleScript à chaque ouverture du panneau. */
+let cachePl = { le: 0, valeur: null };
+
+async function playlists() {
+  if (cachePl.valeur && Date.now() - cachePl.le < 15 * 60_000) return cachePl.valeur;
+  if (!MAC || !(await enMarche())) return [];
+  let liste = [];
+  try {
+    /* `user playlist` seulement : les playlists intelligentes et les dossiers
+       d'Apple Music noieraient les siennes. */
+    const brut = await osascript(
+      'tell application "Music" to get name of every user playlist', 10000);
+    liste = brut.split(', ').map((x) => x.trim()).filter(Boolean);
+  } catch { /* pas d'autorisation ici : l'agent réessaiera */ }
+  cachePl = { le: Date.now(), valeur: liste };
+  return liste;
+}
+
+/* Recherche par titre OU artiste — `search` de Music couvre les deux, et c'est
+   ce qu'on veut : on tape « Brassens » comme on tape « Les copains d'abord ».
+   Aucune écriture : c'est une LECTURE, elle ne change rien à ce qui joue. */
+async function chercher(texte) {
+  const q = String(texte || '').trim();
+  if (q.length < 2) return { resultats: [], raison: 'deux lettres au minimum' };
+  if (!MAC) return { resultats: [], raison: 'se pilote depuis le Mac' };
+  if (!(await enMarche())) return { resultats: [], raison: 'Music n’est pas ouvert' };
+  /* Séparateur en tabulation ET fin de ligne : un titre peut contenir une
+     virgule, la sortie « liste AppleScript » serait alors impossible à
+     redécouper. */
+  const script = `tell application "Music"
+  set res to (search library playlist 1 for "${echapper(q)}")
+  set out to ""
+  repeat with i from 1 to (count of res)
+    if i > ${MAX_RESULTATS} then exit repeat
+    set t to item i of res
+    set out to out & (persistent ID of t) & tab & (name of t) & tab & (artist of t) & linefeed
+  end repeat
+  return out
+end tell`;
+  try {
+    const brut = await osascript(script, 20000);
+    /* Les antislashs ne survivent pas à un heredoc de shell (piège déjà payé
+       le 04/09) : on nomme les caractères plutôt que de les écrire. */
+    const LF = String.fromCharCode(10), TAB = String.fromCharCode(9);
+    const resultats = brut.split(LF).map((l) => l.split(TAB))
+      .filter((c) => c.length >= 2 && c[0])
+      .map((c) => ({ id: c[0].trim(), titre: (c[1] || '').trim(), artiste: (c[2] || '').trim() }));
+    return { resultats };
+  } catch (e) {
+    return { resultats: [], raison: e.message };
+  }
 }
 
 /* ── Repli par l'agent ──────────────────────────────────────────────────────
@@ -214,6 +302,15 @@ async function etatOuAgent() {
   const e = await etat();
   if (!e.erreur) return e;
   try { const a = await viaAgent('/etat'); return a && !a.erreur ? a : e; } catch { return e; }
+}
+
+async function chercherOuAgent(texte) {
+  const r = await chercher(texte);
+  if (r.resultats.length || !MAC) return r;
+  try {
+    const a = await viaAgent('/chercher?q=' + encodeURIComponent(String(texte || '')));
+    return a && Array.isArray(a.resultats) ? a : r;
+  } catch { return r; }
 }
 
 async function commanderOuAgent(quoi, options = {}) {
@@ -270,4 +367,5 @@ async function appliquerDefaut(nom) {
 const disponible = () => MAC;
 
 module.exports = { disponible, viderCache, appliquerDefaut, etat: etatOuAgent, commander: commanderOuAgent,
-                   etatDirect: etat, commanderDirect: commander, COMMANDES };
+                   etatDirect: etat, commanderDirect: commander, COMMANDES,
+                   chercher: chercherOuAgent, chercherDirect: chercher, playlists };

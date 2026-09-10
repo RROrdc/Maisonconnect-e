@@ -293,11 +293,20 @@ function lireMenu(ref) {
   if (reglage('menu_glissant', '1') === '1') assurerSemaine(lundi);
 
   const defaut = couvertsDefaut();
+  /* Quatre jointures de plus pour entrée et dessert. On les résout ici plutôt
+     que dans quatre requêtes : l'écran mural lit le menu à chaque
+     rafraîchissement, et sur un Raspberry ça compte. */
   return q(`SELECT m.*, pm.nom AS n_midi, pm.photo AS ph_midi, pm.emoji AS em_midi,
-                   ps.nom AS n_soir, ps.photo AS ph_soir, ps.emoji AS em_soir
+                   ps.nom AS n_soir, ps.photo AS ph_soir, ps.emoji AS em_soir,
+                   me.nom AS n_midi_entree, md.nom AS n_midi_dessert,
+                   se.nom AS n_soir_entree, sd.nom AS n_soir_dessert
             FROM menu m
             LEFT JOIN plats pm ON pm.id = m.midi_plat AND pm.supprime_le IS NULL
             LEFT JOIN plats ps ON ps.id = m.soir_plat AND ps.supprime_le IS NULL
+            LEFT JOIN plats me ON me.id = m.midi_entree_plat AND me.supprime_le IS NULL
+            LEFT JOIN plats md ON md.id = m.midi_dessert_plat AND md.supprime_le IS NULL
+            LEFT JOIN plats se ON se.id = m.soir_entree_plat AND se.supprime_le IS NULL
+            LEFT JOIN plats sd ON sd.id = m.soir_dessert_plat AND sd.supprime_le IS NULL
             WHERE m.date BETWEEN ? AND ? ORDER BY m.date`, ymd(lundi), ymd(dim))
     .map((m) => {
       const midi = m.n_midi || m.midi_libre || '';
@@ -324,6 +333,17 @@ function lireMenu(ref) {
       soirCouverts: m.soir_couverts || defaut,
       midiCouvertsChoisi: m.midi_couverts != null,
       soirCouvertsChoisi: m.soir_couverts != null,
+      /* Chaîne VIDE quand il n'y en a pas, jamais null : le front teste la
+         présence pour décider d'afficher la ligne, et une case vide sur un mur
+         est un trou dans la mise en page, pas « pas de dessert ». */
+      midiEntree: m.n_midi_entree || m.midi_entree_libre || '',
+      midiDessert: m.n_midi_dessert || m.midi_dessert_libre || '',
+      soirEntree: m.n_soir_entree || m.soir_entree_libre || '',
+      soirDessert: m.n_soir_dessert || m.soir_dessert_libre || '',
+      midiEntreeId: m.n_midi_entree ? sid(m.midi_entree_plat) : '',
+      midiDessertId: m.n_midi_dessert ? sid(m.midi_dessert_plat) : '',
+      soirEntreeId: m.n_soir_entree ? sid(m.soir_entree_plat) : '',
+      soirDessertId: m.n_soir_dessert ? sid(m.soir_dessert_plat) : '',
       };
     });
 }
@@ -353,6 +373,20 @@ function definirMenu(id, corps) {
     if (cvt !== undefined) {
       ecrire(`UPDATE menu SET ${champ}_couverts = ?, maj_le = datetime('now') WHERE id = ?`,
         nb(cvt), id);
+    }
+    /* Entrée et dessert, même mécanique que le plat : nom connu → relation vers
+       la bibliothèque, nom inconnu → texte libre. `special:true` n'y crée jamais
+       de fiche — restaurer un champ libre sans lui polluerait la bibliothèque,
+       piège déjà payé deux fois (§ 2 quater). */
+    for (const part of ['Entree', 'Dessert']) {
+      const v2 = corps[champ + part];
+      if (typeof v2 !== 'string') continue;
+      const t = v2.trim();
+      const col = `${champ}_${part.toLowerCase()}`;
+      let pl = null, li = null;
+      if (t) { if (special) li = t; else pl = platId(t); }
+      ecrire(`UPDATE menu SET ${col}_plat = ?, ${col}_libre = ?, maj_le = datetime('now') WHERE id = ?`,
+        pl, li, id);
     }
   }
   const ligne = un(`SELECT date FROM menu WHERE id = ?`, id);

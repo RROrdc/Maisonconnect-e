@@ -36,21 +36,30 @@
    que l'autorisation n'est pas accordée : ce serait deviner. */
 const musique = require('./musique');
 const temperature = require('./temperature');
+const netatmo = require('./netatmo');
 
 /* Ce qui est réellement disponible ICI ET MAINTENANT — la même idée que
    `recettes.sources()` : l'interface grise ce qui ne peut pas marcher, en
    disant pourquoi, plutôt que d'offrir un bouton inerte. */
 function sources(reglages = {}) {
   const raccourci = String(reglages.temperature_raccourci || '').trim();
+  const net = netatmo.configure();
   return {
     musique: musique.disponible()
       ? { pret: true }
       : { pret: false, raison: 'se pilote depuis le Mac' },
-    temperature: !musique.disponible()
-      ? { pret: false, raison: 'se lit depuis le Mac' }
-      : raccourci
-        ? { pret: true, raccourci }
-        : { pret: false, raison: 'raccourci HomeKit non configuré (/admin/ → Réglages)' },
+    /* Netatmo D'ABORD quand il est configuré : il lit sans dépendre d'un hub
+       HomeKit allumé, et lui seul permet de RÉGLER la consigne. Le Raccourci
+       reste en second — il n'a besoin d'aucun identifiant, ce qui garde une
+       voie ouverte si le compte développeur n'est pas fait. */
+    temperature: net.ok
+      ? { pret: true, via: 'netatmo', reglable: true }
+      : !musique.disponible()
+        ? { pret: false, raison: 'se lit depuis le Mac', astuce: net.raison }
+        : raccourci
+          ? { pret: true, via: 'raccourci', reglable: false, raccourci }
+          : { pret: false, reglable: false,
+              raison: net.raison + ' — ou un raccourci HomeKit dans /admin/ → Réglages' },
   };
 }
 
@@ -61,12 +70,20 @@ async function tout(reglages = {}) {
      l'autre, et un thermostat lent ne doit pas retarder l'affichage du morceau
      en cours. Chacune capture SON erreur — une source en panne n'emporte pas
      l'autre, c'est la règle de la maison depuis `donnees/`. */
+  const parNetatmo = out.sources.temperature.via === 'netatmo';
   const [m, t] = await Promise.all([
     musique.etat().catch((e) => ({ disponible: false, erreur: e.message })),
-    temperature.etat(reglages.temperature_raccourci).catch((e) => ({ disponible: false, erreur: e.message })),
+    (parNetatmo ? netatmo.etat() : temperature.etat(reglages.temperature_raccourci))
+      .catch((e) => ({ disponible: false, erreur: e.message })),
   ]);
   out.musique = m;
-  out.temperature = t;
+  /* Une seule forme pour l'écran, quelle que soit la source : `valeur` est ce
+     qu'on affiche en grand. Sans ça, le bento devrait connaître les deux
+     chemins — et c'est exactement la duplication qui a déjà coûté les rayons de
+     courses et la table des pictogrammes. */
+  out.temperature = parNetatmo && t.disponible
+    ? { ...t, via: 'netatmo', valeur: t.principale ? t.principale.mesuree : null }
+    : { ...t, via: parNetatmo ? 'netatmo' : 'raccourci' };
 
   /* On remet la sortie par défaut APRÈS avoir lu l'état, jamais avant : la
      lecture doit refléter ce qui est, pas ce qu'on souhaite. L'effet se verra au
@@ -80,6 +97,6 @@ async function tout(reglages = {}) {
 
 /* Un seul geste pour tout rafraîchir : l'écran ne doit pas avoir à savoir
    quelles sources ont un cache. */
-const viderCache = () => { musique.viderCache(); temperature.viderCache(); };
+const viderCache = () => { musique.viderCache(); temperature.viderCache(); netatmo.viderCache(); };
 
-module.exports = { sources, tout, viderCache, musique, temperature };
+module.exports = { sources, tout, viderCache, musique, temperature, netatmo };

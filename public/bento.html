@@ -250,6 +250,39 @@
   .note:last-child{margin-bottom:0}
   .note b{display:block;margin-top:5px;font-size:12px;color:var(--post)}
 
+  /* Entrée / dessert : visuellement SECONDAIRES par rapport au plat. Une ligne
+     plus discrète, décalée sous le repas auquel elle appartient. */
+  .mrow.xrow{margin-top:-4px;opacity:.9}
+  .inline.xtra{min-width:120px;flex:1;font-size:15px}
+
+  /* Bibliothèque de plats : une grille de vignettes, cibles larges — on la
+     parcourt debout, souvent les mains occupées. */
+  .rech{width:100%;box-sizing:border-box;padding:14px 16px;border-radius:14px;border:0;
+        background:var(--card2);color:var(--txt);font:inherit;font-size:17px;margin-bottom:12px}
+  .plats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .plat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 10px;
+        border:0;border-radius:16px;background:var(--card2);color:var(--txt);font:inherit;
+        cursor:pointer;text-align:center}
+  .plat img{width:64px;height:64px;object-fit:cover;border-radius:12px}
+  .plat .emo{font-size:44px;line-height:64px}
+  .plat .t{font-weight:600;line-height:1.25}
+  .plat .d{font-size:12px;opacity:.65}
+  /* Un plat sans recette reste PROPOSÉ : c'est souvent là qu'on s'aperçoit
+     qu'il faut la renseigner. Estompé, pas masqué. */
+  .plat.sans{opacity:.55}
+
+  /* Chauffage : une ligne par pièce, la mesure à droite parce que c'est elle
+     qu'on cherche du regard, la consigne en dessous parce qu'on la règle moins
+     souvent qu'on ne la lit. */
+  .piece{padding:10px 12px;border-radius:14px;background:var(--card2);margin-bottom:8px}
+  .piece .ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .piece .ph .n{font-weight:600}
+  .piece .ph .mes{font-size:24px;font-weight:700}
+  .piece .feu{font-size:12px;font-weight:600;color:var(--maison);opacity:.9}
+  .piece .cons{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .piece .cons b{font-size:18px;min-width:56px;text-align:center}
+  .piece .cons .s{margin-right:auto;opacity:.7}
+
   /* Vie scolaire posée sur le tableau des post-it : teintée pour se distinguer
      d'un mot de la famille, et soulignée de rouge quand elle demande une action. */
   .note.ecole{background:color-mix(in srgb,var(--agenda) 12%,var(--card2))}
@@ -730,6 +763,7 @@
   <symbol id="ic-prev" viewBox="0 0 24 24"><path class="f" d="M18 5.5v13L8.8 12z"/><path d="M6.4 5.5v13"/></symbol>
   <symbol id="ic-next" viewBox="0 0 24 24"><path class="f" d="M6 5.5v13L15.2 12z"/><path d="M17.6 5.5v13"/></symbol>
   <symbol id="ic-play" viewBox="0 0 24 24"><path class="f" d="M7.5 4.8 19 12 7.5 19.2z"/></symbol>
+  <symbol id="ic-pan" viewBox="0 0 24 24"><circle cx="9.5" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 12h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="ic-pause" viewBox="0 0 24 24"><path class="f" d="M7.5 5h3.2v14H7.5zM13.3 5h3.2v14h-3.2z"/></symbol>
   <symbol id="ic-left" viewBox="0 0 24 24"><path d="M14.5 5 8 12l6.5 7"/></symbol>
   <symbol id="ic-right" viewBox="0 0 24 24"><path d="M9.5 5 16 12l-6.5 7"/></symbol>
@@ -745,6 +779,7 @@
   <nav class="rail">
     <div class="lg"><svg class="i"><use href="#ic-home"/></svg></div>
     <button data-k="menu"   style="--ac:var(--menu)"   onclick="openTile('menu')"   title="Menu"><svg class="i"><use href="#ic-menu"/></svg></button>
+    <button data-k="recettes" style="--ac:var(--menu)" onclick="openTile('recettes')" title="Recettes"><svg class="i"><use href="#ic-pan"/></svg></button>
     <button data-k="course" style="--ac:var(--course)" onclick="openTile('course')" title="Courses"><svg class="i"><use href="#ic-cart"/></svg></button>
     <button data-k="todo"   style="--ac:var(--todo)"   onclick="openTile('todo')"   title="À faire"><svg class="i"><use href="#ic-check"/></svg></button>
     <button data-k="agenda" style="--ac:var(--agenda)" onclick="openTile('agenda')" title="Agenda"><svg class="i"><use href="#ic-cal"/></svg></button>
@@ -1229,7 +1264,11 @@ function rendreMaison(){
   if(vt && st){
     if(typeof T.valeur === 'number'){
       vt.textContent = Math.round(T.valeur * 10) / 10 + '°';
-      st.textContent = 'HomeKit · à l’instant';
+      /* Dire la PIÈCE, pas la technologie : « Netatmo » n'apprend rien à qui
+         passe devant le mur, « Salon » situe la mesure. */
+      const p0 = T.principale, ext = T.exterieur;
+      st.textContent = [p0 && p0.nom, ext && ('dehors ' + Math.round(ext.valeur) + '°')]
+        .filter(Boolean).join(' · ') || 'à l’instant';
       if(bt) bt.classList.remove('att');
     } else {
       vt.textContent = '—';
@@ -1263,6 +1302,47 @@ async function volume(v){
        await chargerMaison(); if(openK==='maison')drawSheet('maison'); }
   catch(e){ console.warn('[volume]',e.message); }
 }
+async function lancerPlaylist(nom){
+  try{ await api('/api/maison/musique','POST',{commande:'playlist',nom});
+       MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ showErr(e.message); }
+}
+
+/* La recherche peut prendre plusieurs secondes sur une grosse bibliothèque : on
+   le DIT, sinon on reclique — le réflexe qui n'arrange jamais rien (§ 2 septies). */
+async function chercherMusique(q){
+  const z=document.getElementById('resMus'); if(!z)return;
+  z.innerHTML='<div class="aide">Recherche…</div>';
+  try{
+    const r=await api('/api/maison/musique/recherche?q='+encodeURIComponent(q||''));
+    if(!r.resultats||!r.resultats.length){
+      z.innerHTML='<div class="vide">'+esc(r.raison||'Rien trouvé.')+'</div>'; return;
+    }
+    z.innerHTML='<div class="ens">'+r.resultats.map(t=>
+      '<button class="enc" onclick="lancerPiste('+JSON.stringify(t.id)+')">'
+      +'<span class="n">'+esc(t.titre)+(t.artiste?'<span class="tag">'+esc(t.artiste)+'</span>':'')+'</span></button>'
+    ).join('')+'</div>';
+  }catch(e){ z.innerHTML='<div class="vide">'+esc(e.message)+'</div>'; }
+}
+
+async function lancerPiste(id){
+  try{ await api('/api/maison/musique','POST',{commande:'piste',id});
+       MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ showErr(e.message); }
+}
+
+/* Régler le chauffage. Le serveur borne (5–30 °C) et refuse une pièce inconnue :
+   ici on se contente d'envoyer et de RELIRE — jamais de deviner le nouvel état,
+   c'est la mesure qui fait foi. */
+async function consigne(piece, temp){
+  try{
+    const r = await api('/api/maison/temperature','POST',{piece, temperature: temp});
+    if(r && r.ok===false) return;
+    MAISON = await api('/api/maison?rafraichir=1');
+    rendreMaison(); if(openK==='maison') drawSheet('maison');
+  }catch(e){ /* le panneau garde l'état précédent : mieux qu'un nombre faux */ }
+}
+
 async function rescanEnceintes(){
   /* On court-circuite le cache : sinon un appareil qu'on vient d'allumer
      mettrait plusieurs secondes à apparaître, et on croirait qu'il n'est pas
@@ -1412,7 +1492,11 @@ const IC={menu:['menu','Menu de la semaine','var(--menu)'],course:['cart','Liste
   devoirs:['bag','Devoirs des enfants','var(--agenda)'],
   /* La carte Maison est petite ; le choix de l'enceinte demande de vraies
      cibles tactiles. Il passe donc en panneau, comme les plannings. */
-  maison:['home','Musique et température','var(--maison,#e07a5f)']};
+  maison:['home','Musique et température','var(--maison,#e07a5f)'],
+  /* Cuisiner ne passe pas forcément par le menu : on ouvre le frigo, on décide,
+     on cherche la recette. Jusqu'ici la bibliothèque n'était atteignable QUE par
+     un jour du menu — donc invisible pour tout ce qui n'y figure pas. */
+  recettes:['pan','Toutes les recettes','var(--menu)']};
 let openK=null;
 function drawSheet(k){
   let icone,titre,ac;
@@ -1500,7 +1584,23 @@ function menuRow(m,champ){
     </select>
     <input class="inline" style="min-width:150px" placeholder="ou écrire un nouveau plat…"
       value="${(!connu&&!spe)?esc(cur):''}" onchange="setMenu('${m.id}','${champ}','P:'+this.value)">
-    ${couvertsRow(m,champ)}</div>`;
+    ${couvertsRow(m,champ)}</div>${menuExtras(m,champ)}`;
+}
+
+/* Entrée et dessert : FACULTATIFS, et traités comme tels.
+   La ligne n'apparaît que si le repas est décidé ou si quelque chose est déjà
+   saisi — sinon sept jours × deux repas × deux champs feraient vingt-huit
+   cases vides dans un panneau qu'on parcourt debout.
+   Un `datalist` plutôt qu'un menu déroulant : il propose la bibliothèque ET
+   accepte un nom libre, dans un seul champ. Un déroulant obligerait à choisir
+   entre les deux, et « compote » n'a pas vocation à devenir une fiche. */
+function menuExtras(m,champ){
+  const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'';
+  if(!m[champ] && !e && !d) return '';
+  const ch=(part,val,ph)=>`<input class="inline xtra" list="platsDispo" placeholder="${ph}"
+      value="${esc(val)}" onchange="setMenu('${m.id}','${champ}${part}',this.value)">`;
+  return `<div class="mrow xrow"><span class="ml"></span>
+    ${ch('Entree',e,'entrée…')}${ch('Dessert',d,'dessert…')}</div>`;
 }
 
 /* ---------- Proposer la semaine ----------
@@ -1566,6 +1666,26 @@ function body(k){
   /* Maison — choisir la sortie du son et le volume, du bout du doigt.
      Pas de liste déroulante : sur un mur on appuie, on ne déroule pas (même
      raison que les boutons de couverts du mode cuisine, § 2 quinquies). */
+  /* Bibliothèque de plats. Filtre par TOUCHES sur un clavier tactile : quarante
+     plats tiennent à l'écran, mais pas quatre-vingts. Ce qui a une recette
+     d'abord — c'est ce qu'on peut réellement cuisiner. */
+  if(k==='recettes'){
+    const tous=(S.plats||[]).slice().sort((a,b)=>
+      (b.recette?1:0)-(a.recette?1:0) || String(a.nom).localeCompare(String(b.nom),'fr'));
+    if(!tous.length)return '<div class="vide">Aucun plat dans la bibliothèque.</div>';
+    let h='<input class="rech" id="rechPlat" placeholder="Chercher un plat…" oninput="filtrerPlats(this.value)" autocomplete="off">'
+      +'<div class="plats" id="listePlats">';
+    for(const p of tous){
+      const vign=p.photo?'<img src="'+esc(p.photo)+'" alt="">':'<span class="emo">'+esc(p.emoji||'🍽️')+'</span>';
+      h+='<button class="plat'+(p.recette?'':' sans')+'" data-nom="'+esc(String(p.nom).toLowerCase())+'"'
+        +' onclick="ouvrirRecette('+JSON.stringify(String(p.id))+')">'
+        +vign+'<span class="t">'+esc(p.nom)+'</span>'
+        +(p.duree?'<span class="d">'+esc(p.duree)+'</span>':(p.recette?'':'<span class="d">sans recette</span>'))
+        +'</button>';
+    }
+    return h+'</div>';
+  }
+
   if(k==='maison'){
     const M=MAISON||{}, q=M.musique||{}, T=M.temperature||{};
     if(!q.disponible) return '<div class="vide">'+esc(q.raison||'La musique se pilote depuis le Mac.')+'</div>';
@@ -1583,15 +1703,55 @@ function body(k){
     h += '<div class="aide">Une enceinte éteinte ou en veille ne s’annonce pas. Allume-la, puis relance la recherche.</div>'
       + '<button class="hab" onclick="rescanEnceintes()">↻ Rechercher les enceintes</button>';
 
+    /* Choisir quoi écouter. Deux entrées, parce que ce sont deux gestes
+       différents : « mets la playlist du dimanche » se choisit dans une liste,
+       « mets du Brassens » se tape. */
+    const pls = q.playlists || [];
+    if(pls.length){
+      h += '<div class="stitre">Playlists</div><div class="ens">'
+        + pls.map((n)=>'<button class="enc" onclick="lancerPlaylist('+JSON.stringify(n).replace(/"/g,'&quot;')+')">'
+            +'<span class="n">'+esc(n)+'</span></button>').join('')
+        + '</div>';
+    }
+    h += '<div class="stitre">Chercher un titre ou un artiste</div>'
+      + '<input class="rech" id="rechMus" placeholder="Brassens, Les copains d’abord…" autocomplete="off"'
+      + ' onkeydown="if(event.key===\'Enter\')chercherMusique(this.value)">'
+      + '<button class="hab" onclick="chercherMusique(document.getElementById(\'rechMus\').value)">Chercher</button>'
+      + '<div id="resMus"></div>';
+
     h += '<div class="stitre">Volume</div><div class="vols">'
       + [0,20,40,60,80,100].map((v)=>'<button class="vol'+(q.volume===v?' on':'')+'" onclick="volume('+v+')">'+v+'</button>').join('')
       + '</div>';
 
-    h += '<div class="stitre">Température</div><div class="pill">'
-      + (typeof T.valeur==='number'
-          ? '<b>'+(Math.round(T.valeur*10)/10)+'°</b> <span class="lt"></span><span class="s">HomeKit</span>'
-          : '<span class="s">'+esc(T.raison||'à brancher')+'</span>')
-      + '</div>';
+    h += '<div class="stitre">Température</div>';
+    const pcs = T.pieces || [];
+    if(!pcs.length){
+      h += '<div class="pill">'
+        + (typeof T.valeur==='number'
+            ? '<b>'+(Math.round(T.valeur*10)/10)+'°</b>'
+            : '<span class="s">'+esc(T.raison||'à brancher')+'</span>')
+        + '</div>';
+    } else {
+      if(T.exterieur) h += '<div class="aide">Dehors : '+(Math.round(T.exterieur.valeur*10)/10)+'°</div>';
+      for(const pc of pcs){
+        h += '<div class="piece"><div class="ph">'
+          + '<span class="n">'+esc(pc.nom)+(pc.chauffe?' <span class="feu">chauffe</span>':'')+'</span>'
+          + '<span class="mes">'+(pc.mesuree===null?'—':(Math.round(pc.mesuree*10)/10)+'°')+'</span></div>';
+        /* Réglable seulement si la source sait écrire : un bouton mort sur un
+           mur est pire que pas de bouton (§ 2 nonies). Paliers de 0,5° et non
+           un curseur — on appuie, on ne vise pas. */
+        if(pc.reglable && (M.sources&&M.sources.temperature&&M.sources.temperature.reglable)){
+          const c = typeof pc.consigne==='number' ? pc.consigne : 19;
+          h += '<div class="cons"><span class="s">consigne</span>'
+            + '<button class="vol" onclick="consigne('+JSON.stringify(pc.id)+','+(c-0.5)+')">−</button>'
+            + '<b>'+(Math.round(c*10)/10)+'°</b>'
+            + '<button class="vol" onclick="consigne('+JSON.stringify(pc.id)+','+(c+0.5)+')">+</button>'
+            + '</div>';
+        }
+        h += '</div>';
+      }
+      h += '<div class="aide">Un réglage tient 3 h, puis le programme reprend la main.</div>';
+    }
     return h;
   }
 
@@ -1684,7 +1844,11 @@ function body(k){
       <button onclick="${PROPO?'fermerPropo':'proposerMenu'}()">✨ ${PROPO?'Fermer':'Proposer les soirs vides'}</button>
       <span style="color:var(--faint);font-size:13px">${l0?'du '+esc(dateCourte(l0)):''}</span>
     </div>`;
-    return entete + (PROPO?blocPropo():'') + lignes.map(m=>{
+    /* Une seule liste pour toutes les cases du panneau : la répéter vingt-huit
+       fois pèserait pour rien sur le Raspberry. */
+    const dispo = '<datalist id="platsDispo">'
+      + (S.dishes||[]).map(d=>`<option value="${esc(d)}">`).join('') + '</datalist>';
+    return entete + dispo + (PROPO?blocPropo():'') + lignes.map(m=>{
       /* Le raccourci vers la recette n'apparaît que s'il y a quelque chose à
          montrer : un bouton qui ouvre une page vide use la confiance. */
       const f=(S.plats||[]).find(p=>p.id===m.soirId);
@@ -1724,6 +1888,17 @@ let RECETTE=null,RECETTE_ID=null;
 /* `couverts` : pour combien de personnes on veut la fiche. Quand on l'ouvre depuis
    le menu, on part du nombre prévu pour CE repas — c'est le cas courant, et ça
    évite de reparamétrer à chaque fois. */
+/* Filtre sans accent ni casse : personne ne tape « bœuf » correctement sur un
+   clavier tactile, et « pates » doit trouver « pâtes » (même règle que la
+   recherche de photos, § 2 septdecies). */
+const sansAccent=(x)=>String(x||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/œ/g,'oe').toLowerCase();
+function filtrerPlats(q){
+  const cle=sansAccent(q).trim();
+  document.querySelectorAll('#listePlats .plat').forEach(b=>{
+    b.style.display = !cle || sansAccent(b.dataset.nom).includes(cle) ? '' : 'none';
+  });
+}
+
 async function ouvrirRecette(id,couverts){
   if(!id)return;
   try{

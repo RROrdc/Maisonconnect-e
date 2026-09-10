@@ -727,6 +727,27 @@ app.post('/api/maison/musique', async (req, res) => {
   } catch (e) { res.status(400).json({ erreur: e.message }); }
 });
 
+/* Chercher un titre ou un artiste. GET : c'est une LECTURE, elle ne change rien
+   à ce qui joue — et ça la rend rejouable sans risque. */
+app.get('/api/maison/musique/recherche', async (req, res) => {
+  try { res.json(await Maison.musique.chercher(req.query.q || '')); }
+  catch (e) { res.status(400).json({ resultats: [], raison: e.message }); }
+});
+
+/* Régler le chauffage — la SEULE écriture de la carte Maison.
+   Bornée à une pièce et à une température (5–30 °C) par `maison/netatmo.js` :
+   pas de mode absence, pas de « tout couper ». Une dalle tactile de cuisine se
+   touche par accident, et ce projet n'expose aucune opération de masse. */
+app.post('/api/maison/temperature', async (req, res) => {
+  try {
+    const { piece, temperature, minutes } = req.body || {};
+    const r = await Maison.netatmo.consigne(piece, temperature, minutes);
+    if (!r.ok) return res.status(400).json(r);
+    diffuser('maj', { quoi: 'maison', qui: req.get('x-jeton') ? undefined : 'Écran' });
+    res.json(r);
+  } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+
 app.get('/api/ecole', async (req, res) => {
   try {
     if (req.query.rafraichir) Ecole.viderCache();

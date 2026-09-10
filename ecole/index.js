@@ -274,7 +274,22 @@ class Ecole {
     return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
 
-  async tout({ jours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
+  /* 🔴 UN SEUL VOL À LA FOIS — et ce n'est pas une optimisation.
+     Le jeton Pronote est à USAGE UNIQUE : chaque connexion en rend un nouveau
+     et invalide le précédent. Deux appels simultanés se connectent donc deux
+     fois, le second grille le premier, et la session meurt — il faut alors
+     regénérer un QR code depuis l'espace web.
+     C'est arrivé le 10/09 : le rafraîchissement de l'écran mural et la passe de
+     rappels sont tombés en même temps. Tant qu'il n'y avait qu'un appelant, le
+     défaut ne pouvait pas se voir.
+     ⇒ Les appelants concurrents partagent la MÊME promesse. */
+  async tout(options = {}) {
+    if (Ecole._envol) return Ecole._envol.then((c) => ({ ...c, groupe: true }));
+    Ecole._envol = this._tout(options).finally(() => { Ecole._envol = null; });
+    return Ecole._envol;
+  }
+
+  async _tout({ jours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
     const signature = JSON.stringify([jours, this.clients.map((c) => c.etiquette), pronote.configure(), prenomsFoyer]);
     const maintenant = Date.now();
     if (Ecole._cache && Ecole._cache.signature === signature && maintenant - Ecole._cache.le < maxAgeMs) {
@@ -361,6 +376,7 @@ class Ecole {
   }
 
   static viderCache() { Ecole._cache = null; }
+  static _envol = null;
 }
 
 module.exports = { Ecole, vieNormalisee, pronote, comptesConfigures, fichierEtat, coursNormalise, devoirNormalise, noteNormalisee, messageNormalise, ErreurED, QcmRequis, anneeScolaire };

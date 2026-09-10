@@ -76,3 +76,7 @@ desktop.ini
 .deploiement-fetch-ko
 deploiement.log
 deploiement-sortie.log
+
+# Jeton de rafraichissement Netatmo : il TOURNE a chaque usage, donc il vit
+# hors du .env (qui n'est qu'une valeur d'amorcage). Il vaut l'acces au chauffage.
+maison/netatmo-jeton.json
