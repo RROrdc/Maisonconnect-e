@@ -196,6 +196,23 @@ async function apercu(e) {
     return;
   }
 
+  /* Vie scolaire : on AFFICHE la forme brute plutôt que de la mettre en page.
+     Tant qu'on ne sait pas ce que l'établissement y met vraiment — observation,
+     absence, retard, punition — concevoir un affichage serait deviner. */
+  if (commande === 'vie') {
+    const v = await cible._client.vieScolaire(cible.id);
+    titre(`${cible.prenom} — vie scolaire`);
+    const cles = Object.keys(v || {});
+    if (!cles.length) { console.log('  (rien)'); return; }
+    for (const k of cles) {
+      const arr = v[k];
+      if (!Array.isArray(arr)) { console.log(`  ${k} = ${JSON.stringify(arr).slice(0, 100)}`); continue; }
+      console.log(`  • ${k} : ${arr.length} entrée(s)`);
+      for (const x of arr.slice(0, 5)) console.log(`      ${JSON.stringify(x).slice(0, 300)}`);
+    }
+    return;
+  }
+
   if (commande === 'messages') {
     const messages = await ecole.messages(cible.prenom);
     titre(`${messages.length} message(s) reçu(s)`);
