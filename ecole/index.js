@@ -29,7 +29,7 @@ function canoniser(charge, prenomsFoyer) {
   const table = new Map(prenomsFoyer.map((p) => [clef(p), p]));
   const bon = (v) => table.get(clef(v)) || v;
   for (const e of charge.eleves || []) e.prenom = bon(e.prenom);
-  for (const liste of ['cours', 'devoirs', 'notes', 'messages']) {
+  for (const liste of ['cours', 'devoirs', 'notes', 'messages', 'vie']) {
     for (const x of charge[liste] || []) if (x && x.eleve) x.eleve = bon(x.eleve);
   }
   /* `modules` est indexé PAR PRÉNOM : si on le laissait tel quel, l'écran
@@ -109,6 +109,32 @@ function devoirNormalise(matiere, pourLe, eleve) {
     contenu: texteDeHtml(deBase64(aFaire.contenu)) || 'Travail à faire — détail dans EcoleDirecte',
     interrogation: Boolean(matiere.interrogation),
     fait: Boolean(aFaire.effectue),
+    source: 'ecoledirecte',
+  };
+}
+
+/* Vie scolaire : absences, retards, dispenses.
+   ⚠️ Écrit TOLÉRANT à dessein. Chez Rémi ces listes sont vides — on ne connaît
+   donc pas la forme exacte d'une vraie entrée, et deviner des noms de champs
+   pour ensuite afficher du vide serait pire que rien. On garde ce qu'on
+   reconnaît, on retombe sur ce qui est présent, et on conserve `brut` pour
+   pouvoir affiner le jour où une entrée arrive vraiment. */
+function vieNormalisee(v, eleve, type) {
+  const prem = (...c) => c.find((x) => x !== undefined && x !== null && x !== '') || '';
+  const date = String(prem(v.date, v.displayDate, v.dateDebut, v.debut)).slice(0, 10);
+  return {
+    eleve,
+    type: prem(v.typeElement, type),
+    date,
+    /* L'établissement remplit tantôt `motif`, tantôt `libelle`, tantôt
+       `commentaire`. On prend le premier qui dit quelque chose. */
+    motif: String(prem(v.motif, v.libelle, v.commentaire, v.designation)).trim(),
+    /* `justifie` vaut 1/0 chez EcoleDirecte. Une absence NON justifiée est
+       l'information qui compte : c'est elle qui demande une action. */
+    justifie: v.justifie === true || v.justifie === 1,
+    /* Une clé stable pour ne pas re-signaler la même chose chaque jour. */
+    cle: [eleve, type, date, String(prem(v.id, v.motif, v.libelle, ''))].join('|'),
+    brut: v,
     source: 'ecoledirecte',
   };
 }
@@ -235,6 +261,19 @@ class Ecole {
      La signature du cache inclut la configuration : sans elle, ajouter le
      compte d'Enora resterait sans effet visible pendant un quart d'heure et
      on croirait le `.env` cassé (§ 2 septies). */
+  /* Absences, retards et dispenses d'un élève. Les deux listes sont rendues
+     ensemble : pour la maison c'est la même information — « il s'est passé
+     quelque chose à l'école ». */
+  async vieScolaire(prenom) {
+    const e = await this.trouver(prenom);
+    const d = await e._client.vieScolaire(e.id);
+    const out = [];
+    for (const [cle, type] of [['absencesRetards', 'absence'], ['dispenses', 'dispense']]) {
+      for (const x of d[cle] || []) out.push(vieNormalisee(x, e.prenom, type));
+    }
+    return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }
+
   async tout({ jours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
     const signature = JSON.stringify([jours, this.clients.map((c) => c.etiquette), pronote.configure(), prenomsFoyer]);
     const maintenant = Date.now();
@@ -243,7 +282,7 @@ class Ecole {
     }
 
     const charge = {
-      eleves: [], cours: [], devoirs: [], notes: [], messages: [],
+      eleves: [], cours: [], devoirs: [], notes: [], messages: [], vie: [],
       /* `modules` dit ce que CHAQUE établissement alimente réellement. Le
          collège d'Augustin ferme la messagerie, le lycée de Martial ne remplit
          pas le cahier de textes : sans cette carte, un écran vide passerait
@@ -258,7 +297,7 @@ class Ecole {
 
     for (const e of eleves) {
       charge.eleves.push({ prenom: e.prenom, nom: e.nom, classe: e.classe, etablissement: e.etablissement, source: 'ecoledirecte' });
-      const alimente = { cours: false, devoirs: false, notes: false, messages: false };
+      const alimente = { cours: false, devoirs: false, notes: false, messages: false, vie: false };
       /* Une source en panne ne doit jamais emporter les autres : l'écran mural
          affiche plusieurs enfants, et un compte fâché ne doit pas tous les
          faire disparaître. Chaque lecture est isolée. */
@@ -267,6 +306,7 @@ class Ecole {
         ['devoirs', () => this.devoirs(e.prenom, { jours })],
         ['notes', () => this.notes(e.prenom)],
         ['messages', () => this.messages(e.prenom)],
+        ['vie', () => this.vieScolaire(e.prenom)],
       ]) {
         try {
           const r = await lire();
@@ -323,4 +363,4 @@ class Ecole {
   static viderCache() { Ecole._cache = null; }
 }
 
-module.exports = { Ecole, pronote, comptesConfigures, fichierEtat, coursNormalise, devoirNormalise, noteNormalisee, messageNormalise, ErreurED, QcmRequis, anneeScolaire };
+module.exports = { Ecole, vieNormalisee, pronote, comptesConfigures, fichierEtat, coursNormalise, devoirNormalise, noteNormalisee, messageNormalise, ErreurED, QcmRequis, anneeScolaire };

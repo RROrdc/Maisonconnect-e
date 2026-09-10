@@ -250,6 +250,12 @@
   .note:last-child{margin-bottom:0}
   .note b{display:block;margin-top:5px;font-size:12px;color:var(--post)}
 
+  /* Vie scolaire posée sur le tableau des post-it : teintée pour se distinguer
+     d'un mot de la famille, et soulignée de rouge quand elle demande une action. */
+  .note.ecole{background:color-mix(in srgb,var(--agenda) 12%,var(--card2))}
+  .note.ecole.alerte{box-shadow:inset 3px 0 0 var(--danger,#e5484d)}
+  .note.ecole .qui{display:inline;margin-right:6px}
+
   /* ---------- maison (Netatmo + musique) : les emplacements du différenciateur ---------- */
   /* Panneau Maison : cibles tactiles franches, on choisit sans viser. */
   .ens{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
@@ -1156,9 +1162,22 @@ function render(){
       <span class="tx"><span class="n">${esc(p.nom)}</span><span class="s">${esc(suite)}</span></span></button>`;
   }).join('');
 
-  // post-it
-  document.getElementById('postBody').innerHTML=S.postits.map(p=>
-    `<div class="note">${esc(p.message)}<b>— ${esc(p.who)}</b></div>`).join('')||'<div class="vide">Aucun mot</div>';
+  // post-it — et la vie scolaire, qui a sa place ici : c'est le tableau des
+  // messages de la maison, et une absence est un message.
+  const mots = S.postits.map(p=>
+    `<div class="note">${esc(p.message)}<b>— ${esc(p.who)}</b></div>`);
+  /* En tête, pas à la suite : une absence non justifiée compte plus qu'un mot
+     laissé la semaine dernière, et sur un mur on lit ce qui est en haut. */
+  const vie = ((S.ecole && S.ecole.vie) || []).slice(0, 3).map(v => {
+    const quoi = v.type === 'dispense' ? 'Dispense'
+      : (v.justifie ? 'Absence justifiée' : 'Absence NON justifiée');
+    return `<div class="note ecole${v.justifie||v.type==='dispense'?'':' alerte'}">`
+      + `<b class="qui">🏫 ${esc(v.eleve)}</b> ${esc(quoi)}`
+      + (v.motif ? ` — ${esc(v.motif)}` : '')
+      + `<b>— ${esc(v.date || 'école')}</b></div>`;
+  });
+  document.getElementById('postBody').innerHTML =
+    [...vie, ...mots].join('') || '<div class="vide">Aucun mot</div>';
 
   majNews('news','newsVp');
 }

@@ -211,6 +211,67 @@ function creerRappels({ donnees, diffuser, config }) {
     return bilan;
   }
 
+  /* ── Vie scolaire : absence, retard, dispense ──────────────────────────────
+     Contrairement aux devoirs, ce n'est PAS lié à une heure : une absence non
+     justifiée doit se savoir tout de suite, pas à dix-huit heures. On regarde
+     donc à chaque passage, et on ne signale que ce qui est NOUVEAU.
+
+     On garde la trace des entrées déjà annoncées, sinon la même absence
+     repartirait toutes les quinze minutes — le meilleur moyen de faire ignorer
+     les notifications (§ 2 nonies).
+
+     `pour: null` : ça part sur l'écran mural ET sur tous les téléphones. C'est
+     le choix de Rémi (« les deux »), et il se défend — une absence concerne les
+     parents au moins autant que l'enfant. */
+  const MAX_VUES = 200;
+
+  async function passerVie({ force = false, lireVie = null } = {}) {
+    if (typeof lireVie !== 'function') return { saute: 'aucune source' };
+    let entrees;
+    try { entrees = (await lireVie()) || []; }
+    catch (e) {
+      donnees.journaliser('erreur', 'rappels', 'Vie scolaire illisible : ' + e.message);
+      return { erreur: e.message };
+    }
+
+    let vues;
+    try { vues = JSON.parse(donnees.reglage('vie_scolaire_vues', '[]')); }
+    catch { vues = []; }
+    const dejaVu = new Set(Array.isArray(vues) ? vues : []);
+
+    const neuves = entrees.filter((v) => v.cle && !dejaVu.has(v.cle));
+    if (!neuves.length) return { neuves: 0 };
+
+    /* Au TOUT PREMIER passage, tout est « nouveau » : annoncer d'un coup
+       l'historique entier de l'année serait une avalanche inutile. On mémorise
+       sans rien envoyer, et on n'annonce qu'à partir de la fois suivante. */
+    const amorcage = !dejaVu.size;
+
+    for (const v of neuves) {
+      dejaVu.add(v.cle);
+      if (amorcage || force === 'muet') continue;
+      const quoi = v.type === 'dispense' ? 'Dispense' : (v.justifie ? 'Absence justifiée' : 'Absence non justifiée');
+      await donnees.ajouterNotif({
+        titre: `🏫 ${v.eleve} — ${quoi}`,
+        message: [v.date, v.motif].filter(Boolean).join(' · ') || 'Voir l’espace scolaire.',
+        pour: null,
+        de: 'École',
+        niveau: v.justifie || v.type === 'dispense' ? 'info' : 'alerte',
+      });
+    }
+
+    donnees.ecrireReglages({
+      vie_scolaire_vues: JSON.stringify([...dejaVu].slice(-MAX_VUES)),
+    });
+    if (amorcage) {
+      donnees.journaliser('info', 'rappels',
+        `Vie scolaire : ${neuves.length} entrée(s) existantes mémorisées sans alerter (premier passage).`);
+      return { neuves: 0, amorcage: neuves.length };
+    }
+    donnees.journaliser('info', 'rappels', `Vie scolaire : ${neuves.length} nouveauté(s) signalée(s).`);
+    return { neuves: neuves.length };
+  }
+
   /* Vérifié au démarrage puis toutes les 15 min : c'est l'heure qui décide, pas
      le minuteur. Un intervalle plus court ne changerait rien, un plus long
      raterait la fenêtre sur un poste éteint tôt. */
@@ -219,6 +280,7 @@ function creerRappels({ donnees, diffuser, config }) {
       try { passer(options); } catch (_) { /* déjà journalisé */ }
       /* Deux passes, deux heures, un seul minuteur. */
       passerDevoirs(options).catch(() => { /* déjà journalisé */ });
+      passerVie(options).catch(() => { /* déjà journalisé */ });
     };
     setTimeout(tenter, 20000).unref?.();
     const t = setInterval(tenter, 15 * 60 * 1000);
@@ -226,7 +288,7 @@ function creerRappels({ donnees, diffuser, config }) {
     return t;
   }
 
-  return { passer, passerDevoirs, planifier, anniversaires, echeances, devoirs };
+  return { passer, passerDevoirs, passerVie, planifier, anniversaires, echeances, devoirs };
 }
 
 module.exports = { creerRappels };

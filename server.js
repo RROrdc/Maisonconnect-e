@@ -1592,6 +1592,16 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
          Pronote, et un espace scolaire fâché n'empêche pas les anniversaires
          de partir. Même inversion que `devinerRayon`. */
       lireDevoirs: devoirsDuSoir,
+      /* Même inversion pour la vie scolaire : le module de rappels ne sait pas
+         d'où viennent les absences, il sait seulement les annoncer. */
+      lireVie: async () => {
+        const charge = await ecole.tout({
+          jours: Number(config('ecole_jours')) || 7,
+          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
+        });
+        return charge.vie || [];
+      },
     });
     console.log('\n   Depuis la tablette et les iPhone (l\'IP change avec le réseau Wi-Fi) :');
     for (const a of liste) console.log(`     ${a}/bento.html   ·   ${a}/app/`);
