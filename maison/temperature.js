@@ -78,10 +78,68 @@ function nombreDe(texte) {
   return m ? Number(m[0]) : null;
 }
 
+/* ── 🔴 On ne lance JAMAIS un raccourci qui ÉCRIT ───────────────────────────
+   Le 10/09, le raccourci « Température maison » contenait huit actions, dont
+   QUATRE « Activer/désactiver l'accessoire ou la scène ». Un écran mural qui le
+   déclenche toutes les minutes aurait allumé et éteint des appareils de la
+   maison en boucle. Il a échoué avant d'y arriver — mais compter là-dessus
+   n'est pas une protection.
+
+   On inspecte donc la description des actions AVANT de lancer. C'est la même
+   règle que partout ailleurs dans ce projet : la machine propose, le code
+   décide, et rien de destructeur ne part tout seul (§ 2 septies).
+
+   ⚠️ Si la base est illisible, on laisse passer plutôt que de bloquer une
+   fonction qui marche — mais on le DIT dans la réponse (`verifie: false`), pour
+   qu'une absence de contrôle ne se confonde pas avec un contrôle réussi. */
+const ECRITURE = /activer|désactiver|desactiver|régler|regler|définir|definir|contrôler|controler|supprimer|envoyer|lancer|ouvrir|fermer|verrouiller|turn |set |toggle|open |close |lock/i;
+
+function inspecter(nom) {
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    const chemin = path.join(os.homedir(), 'Library', 'Shortcuts', 'Shortcuts.sqlite');
+    if (!fs.existsSync(chemin)) return { verifie: false };
+    /* Copie cohérente : sans le WAL, un raccourci créé récemment n'apparaît pas
+       — piège déjà payé en migrant maison.db le 06/09. */
+    const copie = path.join(os.tmpdir(), `maison-sc-${process.pid}.db`);
+    try { fs.unlinkSync(copie); } catch { /* absent, tant mieux */ }
+    const src = new DatabaseSync(`file:${chemin}?mode=ro`, { readOnly: true });
+    src.exec(`VACUUM INTO '${copie.replace(/'/g, "''")}'`);
+    src.close();
+    const db = new DatabaseSync(copie, { readOnly: true });
+    const r = db.prepare('SELECT ZACTIONSDESCRIPTION d, ZHASOUTPUTACTION o FROM ZSHORTCUT WHERE ZNAME = ?').get(nom);
+    db.close();
+    try { fs.unlinkSync(copie); } catch { /* peu importe */ }
+    if (!r) return { verifie: true, existe: false };
+    return {
+      verifie: true, existe: true,
+      ecrit: ECRITURE.test(String(r.d || '')),
+      rendResultat: !!r.o,
+      actions: String(r.d || '').slice(0, 160),
+    };
+  } catch { return { verifie: false }; }
+}
+
 async function etat(nomRaccourci) {
   const nom = String(nomRaccourci || '').trim();
   if (!MAC) return { disponible: false, raison: 'se lit depuis le Mac' };
   if (!nom) return { disponible: false, raison: 'raccourci non configuré (/admin/ → Réglages)' };
+  /* Le contrôle passe AVANT le cache : un raccourci modifié pour écrire ne doit
+     pas continuer à tourner parce qu'une lecture saine est encore en mémoire. */
+  const insp = inspecter(nom);
+  if (insp.verifie && insp.existe === false) {
+    return { disponible: false, nom, raison: `raccourci « ${nom} » introuvable sur le Mac` };
+  }
+  if (insp.ecrit) {
+    return { disponible: false, nom, verifie: true, raison:
+      `refusé : « ${nom} » contient des actions qui MODIFIENT la maison (${insp.actions}). `
+      + 'Un raccourci de lecture ne doit contenir que « Obtenir le statut » puis « Arrêter et générer le résultat ».' };
+  }
+  if (insp.verifie && insp.existe && !insp.rendResultat) {
+    return { disponible: false, nom, verifie: true, raison:
+      `« ${nom} » ne renvoie rien : il lui manque l’action « Arrêter et générer le résultat ».` };
+  }
+
   const age = Date.now() - cache.le;
   const seuil = cache.valeur && cache.valeur.bloque ? CACHE_ECHEC_MS : CACHE_MS;
   if (age < seuil && cache.valeur && cache.valeur.nom === nom) return cache.valeur;
