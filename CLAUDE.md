@@ -7420,8 +7420,44 @@ l'utilisateur (pas les intelligentes, qui noieraient les siennes) et une
 - La recherche passe par **l'agent** comme le reste : `search library playlist 1`
   est de l'automatisation, donc refusée au démon (§ 2 untricies).
 
+### 🐞 Le catalogue s'affichait, aucun bouton ne s'ouvrait
+`JSON.stringify` rend des guillemets **doubles**. Posés dans un `onclick="…"`,
+ils referment l'attribut : le gestionnaire devient inerte, **sans erreur de
+syntaxe et sans rien dans la console** — donc invisible pour les deux contrôles
+existants (le script est valide, l'identifiant existe).
+Quatre boutons touchés (recettes, piste, les deux flèches de consigne), deux
+autres corrects mais qui recopiaient l'échappement à la main. ⇒ Un helper
+unique, `arg()`, plutôt que six `.replace` semés : on oublie au septième bouton,
+et c'est exactement ce qui venait d'arriver.
+- ✅ Un contrôle attrape désormais la construction fautive. **Vérifié en
+  réintroduisant le bug** : il tombe, puis repasse une fois remis. Un test qui
+  n'a jamais échoué ne prouve rien.
+
+### 🌡️ Netatmo branché pour de vrai
+Compte réel : **4 pièces** (Salle à manger, Chambre des Garçons, Chambre
+Parental, Bureau), un thermostat `NATherm1` et **3 vannes `NRV`**. Deux d'entre
+elles ne remontent pas de température — une vanne seule n'en donne pas toujours.
+- **La pièce affichée en grand est un RÉGLAGE** (`temperature_piece`, mis à
+  « Salle à manger » à la demande de Rémi). L'écran prenait la première pièce
+  mesurée, c'est-à-dire le Bureau — ce qui ne parle pas à qui traverse la
+  cuisine. Vide = première mesurée ; pièce sans capteur ⇒ on retombe sur une qui
+  en a une, plutôt qu'un tiret inexpliqué.
+- 🔑 **Vérifié plutôt que supposé : le jeton de rafraîchissement ne tourne PAS
+  ici** (deux démarrages, deux refresh, accès intact, aucun fichier écrit). Le
+  filet de persistance reste en place — d'autres applications Netatmo le font
+  tourner, et le découvrir en panne coûterait un aller-retour manuel.
+- ✅ **L'écriture est prouvée sur le vrai matériel** : `hg` → `manual`, consigne
+  posée, retour au programme après 15 min. Fait sans risque — 7 °C dans une pièce
+  à 22 °C ne déclenche rien, et Rémi a confirmé que la consigne basse est
+  volontaire tant qu'on ne chauffe pas. Les deux refus attendus tombent bien
+  (45 °C hors bornes, pièce inconnue).
+- ⚠️ Une lecture à froid a pris **22 s une seule fois**, juste après un
+  redémarrage ; les mesures suivantes tiennent en **0,4 à 1,2 s** (35 ms une fois
+  la topologie en cache). Non reproduit, donc pas de correctif à l'aveugle — mais
+  noté, parce que sur un mur ça se verrait.
+
 ### Vérifié
-**351 tests, 0 échec**, joués contre le Mac. Déploiement par `git push mac`,
+**355 tests, 0 échec**, joués contre le Mac. Déploiement par `git push mac`,
 santé et charge `/api/maison` relues après redémarrage.
 - 🔧 `~/.ssh/config` : une clé par hôte (`IdentitiesOnly`). Sans ça ssh propose
   les deux et le serveur coupe sur « Too many authentication failures » avant
