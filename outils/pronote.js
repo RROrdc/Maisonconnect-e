@@ -27,6 +27,14 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const jsQR = require('jsqr');
 const { PNG } = require('pngjs');
+/* 🐞 Cet outil ne chargeait PAS le .env — il échouait donc sur « Python
+   introuvable » alors que PYTHON_BIN y était renseigné depuis le 06/09, et le
+   message invitait à renseigner une clé… déjà renseignée. Le QR n'ayant que dix
+   minutes de validité, ce genre d'aller-retour coûte cher.
+   Le chemin est celui du DOSSIER DU PROJET, jamais le répertoire courant :
+   piège déjà payé le 18/08, un outil lancé d'ailleurs ignorait toute la
+   configuration. */
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const RACINE = path.join(__dirname, '..');
 const PONT = path.join(RACINE, 'ecole', 'pronote', 'pont.py');
