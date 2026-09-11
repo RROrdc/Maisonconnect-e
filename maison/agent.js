@@ -52,6 +52,15 @@ const serveur = http.createServer((req, res) => {
       .catch((e) => repondre(res, 500, { resultats: [], raison: e.message }));
   }
 
+  /* L'inventaire de la bibliothèque : même raison que la recherche, c'est de
+     l'automatisation, donc refusée au démon. Il est long à constituer, d'où le
+     délai plus large côté appelant. */
+  if (req.method === 'GET' && req.url.startsWith('/bibliotheque')) {
+    return musique.bibliotheque()
+      .then((b) => repondre(res, 200, b))
+      .catch((e) => repondre(res, 500, { albums: [], artistes: [], raison: e.message }));
+  }
+
   if (req.method === 'POST' && req.url === '/commande') {
     let brut = '';
     /* Une borne sur le corps : sans elle, une requête interminable retiendrait

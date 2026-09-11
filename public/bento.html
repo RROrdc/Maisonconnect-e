@@ -925,10 +925,10 @@
         <span class="ti">Maison</span></div>
       <div class="wb">
         <div class="bloc att" id="blocTemp"><span class="ic"><svg class="i"><use href="#ic-temp"/></svg></span>
-          <div class="tx"><div class="k">Température</div><div class="v" id="tempSous">à brancher sur le Mac</div></div>
+          <div class="tx"><div class="k">Température</div><div class="v" id="tempSous">lecture en cours…</div></div>
           <div class="big" id="tempVal">—</div></div>
         <div class="bloc mus" id="blocMus"><span class="ic"><svg class="i"><use href="#ic-music"/></svg></span>
-          <div class="tx" onclick="event.stopPropagation();openTile('maison')" style="cursor:pointer"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">AirPlay · à brancher</div></div>
+          <div class="tx" onclick="event.stopPropagation();openTile('maison')" style="cursor:pointer"><div class="k" id="musTitre">Musique</div><div class="v" id="musSous">lecture en cours…</div></div>
           <div class="lecteur">
             <button onclick="cmdMus('precedent')"><svg class="i"><use href="#ic-prev"/></svg></button>
             <button class="p" id="musPlay" onclick="cmdMus('bascule')"><svg class="i"><use href="#ic-play"/></svg></button>
@@ -1432,6 +1432,33 @@ function volAffiche(v){
   if(a) a.textContent = 'Volume ' + v + ' %';
 }
 
+/* L'inventaire peut demander une minute la première fois : on le DIT, sinon on
+   croit le bouton mort et on réappuie. Gardé en mémoire ensuite. */
+let BIB = null;
+async function voirBib(quoi){
+  const z = document.getElementById('bibZone'); if(!z) return;
+  if(!BIB){
+    z.innerHTML = '<div class="aide">Lecture de la bibliothèque… (la première fois peut demander une minute)</div>';
+    try{ BIB = await api('/api/maison/musique/bibliotheque'); }
+    catch(e){ z.innerHTML = '<div class="vide">'+esc(e.message)+'</div>'; return; }
+  }
+  const liste = (quoi==='albums' ? BIB.albums : BIB.artistes) || [];
+  if(!liste.length){
+    z.innerHTML = '<div class="vide">'+esc(BIB.raison || 'Rien à parcourir — Music est-il ouvert ?')+'</div>';
+    return;
+  }
+  const cmd = quoi==='albums' ? 'album' : 'artiste';
+  z.innerHTML = '<div class="ens">'+liste.map(n=>
+    '<button class="enc" onclick="lancerBib('+arg(cmd)+','+arg(n)+')"><span class="n">'+esc(n)+'</span></button>'
+  ).join('')+'</div>';
+}
+
+async function lancerBib(quoi,nom){
+  try{ await api('/api/maison/musique','POST',{commande:quoi,nom});
+       MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
+  catch(e){ showErr(e.message); }
+}
+
 async function lancerPlaylist(nom){
   try{ await api('/api/maison/musique','POST',{commande:'playlist',nom});
        MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
@@ -1848,6 +1875,15 @@ function body(k){
             +'<span class="n">'+esc(n)+'</span></button>').join('')
         + '</div>';
     }
+    /* Parcourir sans taper : sur un mur on regarde et on appuie. Chargé à la
+       demande — l'inventaire coûte cher et personne n'en a besoin tant que le
+       panneau n'est pas ouvert. */
+    h += '<div class="stitre">Parcourir</div>'
+      + '<div class="bar" style="margin-bottom:10px">'
+      + '<button onclick="voirBib(\'albums\')">Albums</button>'
+      + '<button onclick="voirBib(\'artistes\')">Artistes</button>'
+      + '</div><div id="bibZone"></div>';
+
     h += '<div class="stitre">Chercher un titre ou un artiste</div>'
       + '<input class="rech" id="rechMus" placeholder="Brassens, Les copains d’abord…" autocomplete="off"'
       + ' onkeydown="if(event.key===\'Enter\')chercherMusique(this.value)">'

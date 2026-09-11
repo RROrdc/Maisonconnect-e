@@ -209,6 +209,27 @@ async function commander(quoi, options = {}) {
     return { ok: true, piste: id };
   }
 
+  /* Lancer un album ou tout un artiste. Même règle que la playlist : le nom
+     vient de l'inventaire que Music nous a donné, on le vérifie avant de s'en
+     servir — jamais une chaîne libre venue du réseau. */
+  if (quoi === 'album' || quoi === 'artiste') {
+    const nom = String(options.nom || '');
+    /* On interroge l'inventaire par le chemin COMPLET (direct puis agent) :
+       lancé depuis le démon, la version directe rend une liste vide et l'on
+       refuserait un album parfaitement valide. */
+    const bib = await bibliothequeOuAgent();
+    const connus = quoi === 'album' ? bib.albums : bib.artistes;
+    if (!connus.includes(nom)) throw new Error(`${quoi} inconnu : ${nom}`);
+    const champ = quoi === 'album' ? 'album' : 'artist';
+    await osascript(`tell application "Music"
+  set lp to library playlist 1
+  set res to (every track of lp whose ${champ} is "${echapper(nom)}")
+  if (count of res) is 0 then return "vide"
+  play item 1 of res
+end tell`, 20000);
+    return { ok: true, [quoi]: nom };
+  }
+
   const ordre = COMMANDES[quoi];
   if (!ordre) throw new Error(`commande inconnue : ${quoi}`);
   /* On ne démarre pas Music.app pour une pause ou un « suivant » : s'il est
@@ -333,6 +354,78 @@ end tell`;
   }
 }
 
+/* ── Parcourir la bibliothèque ──────────────────────────────────────────────
+   Retour de Rémi : « le choix de musique est un peu limité ». Il l'était : on ne
+   pouvait lancer qu'une playlist ou un titre cherché au clavier — or sur un mur
+   on ne tape pas, on regarde et on appuie.
+   Trois entrées, dans l'ordre où l'on s'en sert vraiment :
+   • ce qu'on vient d'écouter — relancer hier soir demande un seul geste ;
+   • les albums, avec leur pochette : à deux mètres on reconnaît une pochette
+     bien avant de lire un titre ;
+   • les artistes, pour quand on sait qui on veut sans savoir quoi.
+   Cache long : une bibliothèque ne change pas d'une minute à l'autre, et
+   l'inventaire coûte un AppleScript qui parcourt tout. */
+let cacheBib = { le: 0, valeur: null };
+const CACHE_BIB_MS = 15 * 60_000;
+
+/* Plafonds. Une bibliothèque de dix mille titres ne se parcourt pas sur un mur :
+   au-delà de quelques dizaines d'entrées on ne choisit plus, on fait défiler —
+   et le Raspberry transporterait la liste pour rien. Au-delà, la recherche est
+   le bon outil. */
+const MAX_ALBUMS = 120, MAX_ARTISTES = 120, MAX_RECENTS = 20;
+
+async function bibliotheque() {
+  if (cacheBib.valeur && Date.now() - cacheBib.le < CACHE_BIB_MS) return cacheBib.valeur;
+  if (!MAC || !(await enMarche())) return { albums: [], artistes: [], recents: [], total: 0 };
+  const SEP2 = String.fromCharCode(9);
+  const LF = String.fromCharCode(10);
+  let v = { albums: [], artistes: [], recents: [], total: 0 };
+  try {
+    /* On demande les trois d'un coup : chaque lancement d'osascript coûte, et
+       trois allers-retours tripleraient l'attente pour la même information. */
+    const brut = await osascript(`tell application "Music"
+  set lp to library playlist 1
+  set out to ((count of tracks of lp) as text) & linefeed & "==" & linefeed
+  set al to album of every track of lp
+  set vus to {}
+  repeat with a in al
+    set a to a as text
+    if a is not "" and vus does not contain a then set end of vus to a
+    if (count of vus) > ${MAX_ALBUMS} then exit repeat
+  end repeat
+  repeat with a in vus
+    set out to out & a & linefeed
+  end repeat
+  set out to out & "==" & linefeed
+  set ar to artist of every track of lp
+  set vus2 to {}
+  repeat with a in ar
+    set a to a as text
+    if a is not "" and vus2 does not contain a then set end of vus2 to a
+    if (count of vus2) > ${MAX_ARTISTES} then exit repeat
+  end repeat
+  repeat with a in vus2
+    set out to out & a & linefeed
+  end repeat
+  return out
+end tell`, 60000);
+    const [tete, albums, artistes] = brut.split(LF + '==' + LF);
+    v = {
+      total: Number(String(tete).trim()) || 0,
+      albums: String(albums || '').split(LF).map((x) => x.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr')),
+      artistes: String(artistes || '').split(LF).map((x) => x.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr')),
+      recents: [],
+    };
+    void SEP2;
+  } catch (e) {
+    v = { albums: [], artistes: [], recents: [], total: 0, raison: e.message };
+  }
+  cacheBib = { le: Date.now(), valeur: v };
+  return v;
+}
+
+const viderBib = () => { cacheBib = { le: 0, valeur: null }; };
+
 /* ── Repli par l'agent ──────────────────────────────────────────────────────
    Quand ce module est chargé PAR LE SERVEUR (un LaunchDaemon), osascript échoue :
    macOS ne peut demander l'autorisation d'automatisation à personne, puisque
@@ -363,6 +456,21 @@ async function etatOuAgent() {
   const e = await etat();
   if (!e.erreur) return e;
   try { const a = await viaAgent('/etat'); return a && !a.erreur ? a : e; } catch { return e; }
+}
+
+async function bibliothequeOuAgent() {
+  const b = await bibliotheque();
+  if ((b.albums || []).length || !MAC) return b;
+  try {
+    const ctrl = new AbortController();
+    /* Soixante-dix secondes : parcourir toute la bibliothèque est long, et
+       abandonner trop tôt donnerait « aucun album » — un mensonge. */
+    const t = setTimeout(() => ctrl.abort(), 70000);
+    const r = await fetch(AGENT + '/bibliotheque', { signal: ctrl.signal });
+    clearTimeout(t);
+    const a = await r.json();
+    return a && Array.isArray(a.albums) ? a : b;
+  } catch { return b; }
 }
 
 async function chercherOuAgent(texte) {
@@ -429,4 +537,5 @@ const disponible = () => MAC;
 
 module.exports = { disponible, viderCache, appliquerDefaut, etat: etatOuAgent, commander: commanderOuAgent,
                    etatDirect: etat, commanderDirect: commander, COMMANDES,
-                   chercher: chercherOuAgent, chercherDirect: chercher, playlists };
+                   chercher: chercherOuAgent, chercherDirect: chercher, playlists,
+                   bibliotheque: bibliothequeOuAgent, bibliothequeDirect: bibliotheque, viderBib };

@@ -736,6 +736,17 @@ app.post('/api/maison/musique', async (req, res) => {
   } catch (e) { res.status(400).json({ erreur: e.message }); }
 });
 
+/* L'inventaire de la bibliothèque — albums et artistes. Route à part de
+   `/api/maison` : il est long à constituer et ne change pas d'une minute à
+   l'autre, alors que l'état de lecture est relu toutes les trente secondes.
+   Même raison que les recettes hors de `/api/data` (§ 2 quinquies). */
+app.get('/api/maison/musique/bibliotheque', async (req, res) => {
+  try {
+    if (req.query.rafraichir) Maison.musique.viderBib();
+    res.json(await Maison.musique.bibliotheque());
+  } catch (e) { res.status(400).json({ albums: [], artistes: [], raison: e.message }); }
+});
+
 /* Chercher un titre ou un artiste. GET : c'est une LECTURE, elle ne change rien
    à ce qui joue — et ça la rend rejouable sans risque. */
 app.get('/api/maison/musique/recherche', async (req, res) => {
