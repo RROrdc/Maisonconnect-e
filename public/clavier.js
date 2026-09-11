@@ -11,10 +11,10 @@
    du projet. C'est le même choix que le pavé numérique de /admin/.
 
    QUAND IL S'AFFICHE
-   Seulement sur un écran tactile SANS clavier natif : `pointer: coarse` exclut
-   le PC (souris), et l'exclusion d'iOS/Android évite de doubler un clavier
-   système qui, lui, fonctionne très bien. Détecter « suis-je la dalle ? » plus
-   finement serait deviner.
+   Le kiosque le DIT (`?clavier=1`) : lui seul sait qu'il n'a pas de clavier.
+   Aucune détection depuis le navigateur n'est fiable — voir le commentaire du
+   drapeau plus bas. Le choix est mémorisé pour que le back-office en hérite, et
+   iOS/Android sont exclus : leur clavier système fonctionne très bien.
 
    CE QU'IL ÉCRIT
    Il tape DANS le champ et déclenche `input` : le reste de la page se comporte
@@ -23,9 +23,25 @@
 (function () {
   'use strict';
 
-  const tactile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  /* 🐞 Première version : `pointer: coarse`. Ne marche PAS — Chromium sous Linux
+     se déclare « souris » même sur une dalle tactile, donc le clavier ne montait
+     jamais sur le mur (constaté le 11/09).
+     On ne devine donc plus : c'est le KIOSQUE qui sait qu'il n'a pas de clavier,
+     et il le dit par l'URL (`?clavier=1`). Le choix est mémorisé, pour que le
+     back-office en hérite — on y arrive par un bouton, sans paramètre.
+     L'heuristique tactile reste en dernier recours : elle ne peut qu'ajouter un
+     clavier là où il en faut probablement un, jamais en retirer un. */
+  const PREF = 'maison-clavier';
+  const q = new URLSearchParams(location.search).get('clavier');
+  if (q === '1' || q === '0') { try { localStorage.setItem(PREF, q); } catch { /* mode privé */ } }
+  let choix = null;
+  try { choix = localStorage.getItem(PREF); } catch { /* sans localStorage on retombe sur l'heuristique */ }
+
   const natif = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (!tactile || natif) return;
+  const tactile = (navigator.maxTouchPoints || 0) > 0
+    || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  const actif = choix === '1' ? true : choix === '0' ? false : (tactile && !natif);
+  if (!actif) return;
 
   /* AZERTY, parce que c'est ce que la famille connaît. Les accents courants
      sont sur une rangée à part plutôt que derrière un appui long : sur un mur on

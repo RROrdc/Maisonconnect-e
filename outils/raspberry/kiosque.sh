@@ -33,7 +33,10 @@ if [ ! -f "$CONF" ]; then
 # Adresse de l'écran mural. Un NOM, jamais une IP : l'adresse du serveur a déjà
 # changé trois fois dans ce projet, et un favori d'écran mural qui casse à
 # chaque changement de réseau, personne ne le répare.
-URL="http://maison.local:8090/bento.html"
+# `?clavier=1` : la dalle n'a pas de clavier, et aucune detection fiable ne le
+# dit depuis le navigateur (Chromium sous Linux se declare « souris »). C'est
+# donc le kiosque qui l'annonce — il est le seul a le savoir vraiment.
+URL="http://maison.local:8090/bento.html?clavier=1"
 
 # Combien de temps attendre le serveur avant d'abandonner (secondes).
 # Le Pi démarre plus vite que le Mac : sans cette attente, Chromium s'ouvrirait
