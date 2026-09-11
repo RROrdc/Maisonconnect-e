@@ -60,6 +60,17 @@
     (el.tagName === 'INPUT' && /^(text|search|email|tel|url|number|password)$/i.test(el.type || 'text'))
     || el.tagName === 'TEXTAREA');
 
+  /* 🐞 AUCUN BACKTICK dans les commentaires de cette fonction : la feuille de
+     style ci-dessous est un template literal, et un backtick de commentaire la
+     referme au milieu. Payé le 11/09 — clavier.js ne se chargeait plus du tout,
+     et le clavier avait disparu sans un mot dans la page.
+
+     Première version de la règle du bas : max-height 52vh. Le panneau se
+     rétractait d'un coup à l'ouverture du clavier — et sur une dalle tactile le
+     CLIC FANTÔME que le navigateur envoie ~300 ms après le doigt tombait alors
+     sur l'arrière-plan, qui fermait le panneau. On ne déplace donc plus rien :
+     on ajoute seulement de la place EN BAS, pour pouvoir défiler au-dessus du
+     clavier. */
   function style() {
     if (document.getElementById('clavierCss')) return;
     const s = document.createElement('style');
@@ -76,13 +87,6 @@
       .clv button.esp{flex:6 1 0}
       .clv button.ok{background:#2f855a}
       .clv button.sec{background:#2a2e34;font-size:16px}
-      /* 🐞 Première version : `max-height:52vh`. Le panneau se rétractait d'un
-         coup à l'ouverture du clavier — et sur une dalle tactile, le CLIC
-         FANTÔME que le navigateur envoie ~300 ms après le doigt tombait alors
-         sur l'arrière-plan, qui fermait le panneau. C'est ce que Rémi voyait
-         dans Menu et Courses (le 11/09).
-         On ne déplace donc plus rien : on ajoute seulement de la place EN BAS,
-         pour que le contenu puisse défiler au-dessus du clavier. */
       body.clv-ouvert .sheet{padding-bottom:46vh}`;
     document.head.appendChild(s);
   }

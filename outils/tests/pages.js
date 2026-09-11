@@ -24,6 +24,21 @@ const PAGES = ['bento.html', 'vocal.html',
 module.exports = async function (muet) {
   const t = A.compteur(); t.muet = muet;
 
+  /* 🐞 ANGLE MORT trouve le 11/09 : ces controles ne lisaient que les scripts
+     EMBARQUES dans les pages. `clavier.js` et `voix.js` sont des fichiers a
+     part — une erreur de syntaxe y passait donc inapercue, et le clavier a
+     disparu de l'ecran mural sans un mot. Un fichier servi est un fichier a
+     verifier, qu'il soit dans la page ou a cote. */
+  t.titre('Scripts servis a part');
+  for (const f of ['clavier.js', 'voix.js']) {
+    const chemin = path.join(PUBLIC, f);
+    if (!fs.existsSync(chemin)) { t.dire(false, `${f} introuvable`); continue; }
+    let bon = true, souci = '';
+    try { new vm.Script(fs.readFileSync(chemin, 'utf8')); }
+    catch (e) { bon = false; souci = e.message; }
+    t.dire(bon, `${f} — syntaxe`, souci || 'valide');
+  }
+
   t.titre('Scripts embarqués et identifiants');
   for (const rel of PAGES) {
     const chemin = path.join(PUBLIC, rel);
