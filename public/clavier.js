@@ -76,9 +76,14 @@
       .clv button.esp{flex:6 1 0}
       .clv button.ok{background:#2f855a}
       .clv button.sec{background:#2a2e34;font-size:16px}
-      /* Le champ ne doit jamais passer sous le clavier : sinon on tape à
-         l'aveugle, ce qui est pire que pas de clavier du tout. */
-      body.clv-ouvert .sheet{max-height:52vh}`;
+      /* 🐞 Première version : `max-height:52vh`. Le panneau se rétractait d'un
+         coup à l'ouverture du clavier — et sur une dalle tactile, le CLIC
+         FANTÔME que le navigateur envoie ~300 ms après le doigt tombait alors
+         sur l'arrière-plan, qui fermait le panneau. C'est ce que Rémi voyait
+         dans Menu et Courses (le 11/09).
+         On ne déplace donc plus rien : on ajoute seulement de la place EN BAS,
+         pour que le contenu puisse défiler au-dessus du clavier. */
+      body.clv-ouvert .sheet{padding-bottom:46vh}`;
     document.head.appendChild(s);
   }
 
@@ -88,8 +93,15 @@
     b.textContent = lib;
     if (cls) b.className = cls;
     /* `mousedown` plutôt que `click` : on empêche le champ de perdre le focus,
-       sinon la première frappe le referme. */
-    b.addEventListener('mousedown', (e) => { e.preventDefault(); act(); });
+       sinon la première frappe le referme.
+       Et `touchstart` en plus : sur tactile c'est LUI qu'il faut annuler pour
+       supprimer le clic fantôme à la source — celui qui fermait les panneaux. */
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); act(); }, { passive: false });
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      /* Sur tactile, `touchstart` a déjà écrit : ne pas doubler la lettre. */
+      if (!e.sourceCapabilities || !e.sourceCapabilities.firesTouchEvents) act();
+    });
     return b;
   }
 
@@ -158,6 +170,10 @@
   function ouvrir(el) {
     style();
     cible = el;
+    /* Amener le champ dans la moitié haute : le clavier occupe le bas, et taper
+       sans voir ce qu'on écrit ne sert à rien. Fait APRÈS le rendu du clavier,
+       sinon la hauteur disponible n'est pas encore la bonne. */
+    setTimeout(() => { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* vieux moteur */ } }, 60);
     if (!zone) { zone = document.createElement('div'); zone.className = 'clv'; document.body.appendChild(zone); }
     zone.style.display = '';
     document.body.classList.add('clv-ouvert');

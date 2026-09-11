@@ -1476,6 +1476,9 @@ async function chercherMusique(q){
     if(!r.resultats||!r.resultats.length){
       z.innerHTML='<div class="vide">'+esc(r.raison||'Rien trouvé.')+'</div>'; return;
     }
+    /* Les résultats arrivent SOUS le clavier : sans ce défilement on croit que
+       la recherche n'a rien trouvé — ce que Rémi a vécu. */
+    setTimeout(()=>{ try{ z.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch{} }, 60);
     z.innerHTML='<div class="ens">'+r.resultats.map(t=>
       '<button class="enc" onclick="lancerPiste('+arg(t.id)+')">'
       +'<span class="n">'+esc(t.titre)+(t.artiste?'<span class="tag">'+esc(t.artiste)+'</span>':'')+'</span></button>'
@@ -1682,7 +1685,13 @@ function closeTile(){
   document.getElementById('homeBtn').classList.remove('on');
   document.querySelectorAll('.rail button[data-k]').forEach(b=>b.classList.remove('on'));
 }
-document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeTile();});
+/* 🐞 Ceinture ET bretelles contre le clic fantôme du tactile (11/09) : même si
+   un clic finit par atteindre l'arrière-plan pendant qu'on tape, on ne ferme
+   pas. Perdre sa saisie parce qu'on a visé une touche est le pire des défauts —
+   on ne recommence pas, on abandonne. */
+document.getElementById('overlay').addEventListener('click',e=>{
+  if(e.target.id==='overlay' && !document.body.classList.contains('clv-ouvert')) closeTile();
+});
 const famOpts=s=>FAMILY.map(f=>`<option ${f===s?'selected':''}>${f}</option>`).join('');
 
 /* Nombre de couverts proposé : de « seul » à « douze ». Le choix est posé sur le
