@@ -2521,6 +2521,13 @@ function brancherFlux(){
     flux.addEventListener('notif',(ev)=>{                // message à afficher, sans rechargement
       try{montrerNotif(JSON.parse(ev.data));}catch(e){}
     });
+    /* Le mur PARLE. La synthèse est faite sur le Mac (le Raspberry n'a aucune
+       voix installée) : on reçoit une URL de son, on la joue. Le kiosque tourne
+       avec `--autoplay-policy=no-user-gesture-required`, sinon le navigateur
+       refuserait de jouer sans qu'on ait touché l'écran. */
+    flux.addEventListener('parler',(ev)=>{
+      try{ parler(JSON.parse(ev.data)); }catch(e){}
+    });
     flux.addEventListener('open',()=>{ fluxOuvert=true; });
     /* EventSource se reconnecte seul dans la plupart des cas, mais il ABANDONNE
        définitivement sur certaines erreurs (readyState CLOSED). On le rebranche
@@ -2531,6 +2538,22 @@ function brancherFlux(){
       if(flux.readyState===2){ setTimeout(brancherFlux, 5000); }
     };
   }catch(e){ fluxOuvert=false; majHorsLigne(); console.warn('flux indisponible, on reste sur le rafraîchissement périodique'); }
+}
+
+/* Jouer une annonce. Un seul son à la fois : deux personnes qui rentrent
+   ensemble ne doivent pas produire deux voix superposées — on garde la dernière,
+   qui est la plus à jour. */
+let SON = null;
+function parler(m){
+  if(!m || !m.url) return;
+  try{
+    if(SON){ SON.pause(); SON = null; }
+    SON = new Audio(m.url);
+    SON.play().catch(()=>{ /* le navigateur a refusé : on n'insiste pas */ });
+  }catch(e){ /* pas d'audio ici : l'écran reste muet, rien de casse */ }
+  /* On affiche AUSSI le texte : le son peut ne pas sortir (volume, enceinte
+     éteinte), et une salutation qu'on n'entend pas doit au moins se lire. */
+  if(m.texte) montrerNotif({ titre: m.texte, message: '' });
 }
 
 /* ---------- Notifications ----------

@@ -92,6 +92,11 @@ const REGLAGES = {
   temperature_piece: { env: '', defaut: '' },
   /* Idées de plats écartées, pour que le modèle cesse de les reproposer. */
   idees_ignorees: { env: '', defaut: '[]' },
+  /* Voix de macOS qui prononce les annonces sur le mur. On enregistre le NOM :
+     la liste dépend de la machine, et un identifiant choisi ici serait
+     introuvable ailleurs (même règle qu'au § 2 undecies). */
+  voix_say: { env: '', defaut: 'Thomas' },
+  voix_say_debit: { env: '', defaut: '170' },
   /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
      Vide = on ne touche jamais à la sortie. */
   musique_enceinte_defaut: { env: '', defaut: '' },
@@ -254,7 +259,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     /* Les pochettes d'album suivent la même règle et pour la même raison :
        leur nom EST l'empreinte de leur contenu, donc un contenu différent
        porte forcément un autre nom. */
-    const fige = /[\\/](?:plats|icones|pochettes)[\\/]/i.test(chemin);
+    const fige = /[\\/](?:plats|icones|pochettes|paroles)[\\/]/i.test(chemin);
     res.setHeader('Cache-Control', fige ? 'public, max-age=604800, immutable' : 'no-cache');
   },
 }));
@@ -734,6 +739,28 @@ app.post('/api/maison/musique', async (req, res) => {
     const { commande, ...options } = req.body || {};
     res.json(await Maison.musique.commander(String(commande || ''), options));
   } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+
+/* Faire parler l'écran mural. La synthèse est faite ICI (le Raspberry n'a aucune
+   voix installée) et diffusée par le flux : le bento reçoit une URL et la joue.
+   Réservé à l'administration — une phrase prononcée dans la cuisine n'est pas
+   une lecture anodine, et personne sur le Wi-Fi ne doit pouvoir faire parler le
+   mur. */
+app.post('/api/admin/dire', async (req, res) => {
+  try {
+    const r = await Maison.parole.dire(req.body && req.body.texte, {
+      voix: config('voix_say') || undefined,
+      debit: Number(config('voix_say_debit')) || undefined,
+    });
+    if (!r.ok) return res.status(400).json(r);
+    diffuser('parler', { url: r.url, texte: r.texte });
+    res.json(r);
+  } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
+});
+
+app.get('/api/admin/voix-systeme', async (_req, res) => {
+  try { res.json({ voix: await Maison.parole.voix(), defaut: Maison.parole.VOIX_DEFAUT }); }
+  catch (e) { res.status(400).json({ voix: [], raison: messageClair(e) }); }
 });
 
 /* L'inventaire de la bibliothèque — albums et artistes. Route à part de
