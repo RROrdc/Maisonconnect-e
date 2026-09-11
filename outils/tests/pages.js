@@ -57,6 +57,19 @@ module.exports = async function (muet) {
       nus.length ? `${nus.length} JSON.stringify non échappé(s) dans un attribut — passe par arg()`
                  : 'aucun JSON.stringify nu dans un attribut');
 
+    /* 🐞 Le 11/09 : `.horsligne{display:flex}` empechait `el.hidden = true` de
+       cacher quoi que ce soit — le `display:none` de l'attribut `hidden` vient
+       de la feuille par defaut du navigateur, la specificite la plus faible qui
+       soit. Le bandeau « Ecran deconnecte » est reste affiche en permanence.
+       Toute classe qui pose un `display` ET qui est masquee par `hidden` doit
+       donc declarer son propre `[hidden]`. */
+    const masques = [...html.matchAll(/<[^>]+class="([\w-]+)"[^>]*\shidden[\s>]/g)].map((m) => m[1]);
+    const sansRegle = [...new Set(masques)].filter((c) =>
+      new RegExp('[.#]' + c + '[^{]*{[^}]*display:').test(html) && !html.includes('.' + c + '[hidden]'));
+    t.dire(!sansRegle.length, `${rel} — les elements masques par [hidden] peuvent l'etre`,
+      sansRegle.length ? 'display: sans regle [hidden] → ' + sansRegle.join(', ')
+                       : `${new Set(masques).size} verifie(s)`);
+
     const styles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
     const ouv = (styles.match(/\{/g) || []).length, fer = (styles.match(/\}/g) || []).length;
     t.dire(ouv === fer, `${rel} — accolades CSS équilibrées`, `${ouv}/${fer}`);
