@@ -249,7 +249,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
        icônes ne bougent jamais. Tout le reste — pages ET scripts — est du code
        applicatif : le figer une semaine, c'est se retrouver à déboguer une
        version qui n'est plus celle du disque (une heure perdue le 19/08). */
-    const fige = /[\\/]plats[\\/]/i.test(chemin) || /[\\/]icones[\\/]/i.test(chemin);
+    /* Les pochettes d'album suivent la même règle et pour la même raison :
+       leur nom EST l'empreinte de leur contenu, donc un contenu différent
+       porte forcément un autre nom. */
+    const fige = /[\\/](?:plats|icones|pochettes)[\\/]/i.test(chemin);
     res.setHeader('Cache-Control', fige ? 'public, max-age=604800, immutable' : 'no-cache');
   },
 }));

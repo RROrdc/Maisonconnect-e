@@ -17,6 +17,9 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const { execFile } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const MAC = process.platform === 'darwin';
 
@@ -130,6 +133,9 @@ async function etat() {
         enceintes,
         actives,
         playlists: await playlists(),
+        /* Clé = la piste, pas l'album : deux morceaux du même album partagent
+           l'image, et l'empreinte du contenu le constatera toute seule. */
+        pochette: await pochette(titre ? `${artiste || ''}|${titre}` : null),
       };
     } catch (e) {
       v = { disponible: true, ouvert: true, erreur: e.message };
@@ -212,6 +218,61 @@ async function commander(quoi, options = {}) {
   }
   await osascript(`tell application "Music" to ${ordre}`);
   return { ok: true, commande: quoi };
+}
+
+/* ── Pochette de l'album ────────────────────────────────────────────────────
+   Demandée par Rémi : « une petite vignette de la musique avec le titre ».
+
+   On ne la renvoie PAS en base64 dans l'état : celui-ci est relu toutes les
+   trente secondes, et une pochette de 200 Ko ferait trente mégaoctets par heure
+   sur le Wi-Fi du Raspberry, pour une image qui ne change qu'au changement de
+   morceau. On la range donc comme les photos de plats (§ 2 quinquies) : un
+   fichier nommé par l'EMPREINTE DE SON CONTENU, servi en cache long. Deux
+   pistes qui partagent une pochette ne la stockent qu'une fois, et le navigateur
+   ne la retélécharge jamais. */
+const crypto = require('crypto');
+const DOSSIER_POCHETTES = path.join(__dirname, '..', 'public', 'pochettes');
+
+/* Mémoire par PISTE : sans elle on relancerait un AppleScript et une écriture
+   disque toutes les trente secondes pour le même morceau. */
+const pochettesVues = new Map();
+const MAX_VUES = 200;
+
+function extensionDe(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'jpg';
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'png';
+  return null;   // format inconnu : on préfère rien plutôt qu'un fichier illisible
+}
+
+async function pochette(cle) {
+  if (!MAC || !cle) return null;
+  if (pochettesVues.has(cle)) return pochettesVues.get(cle);
+  const tmp = path.join(os.tmpdir(), `maison-pochette-${process.pid}.bin`);
+  let url = null;
+  try {
+    await osascript(`tell application "Music"
+  set d to raw data of artwork 1 of current track
+end tell
+set f to open for access POSIX file "${tmp}" with write permission
+set eof f to 0
+write d to f
+close access f`, 8000);
+    const buf = fs.readFileSync(tmp);
+    const ext = extensionDe(buf);
+    if (ext && buf.length > 1024) {
+      const nom = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '.' + ext;
+      fs.mkdirSync(DOSSIER_POCHETTES, { recursive: true });
+      const dest = path.join(DOSSIER_POCHETTES, nom);
+      if (!fs.existsSync(dest)) fs.writeFileSync(dest, buf);
+      url = '/pochettes/' + nom;
+    }
+  } catch { /* pas d'artwork sur ce morceau : ce n'est pas une panne */ }
+  try { fs.unlinkSync(tmp); } catch { /* déjà parti */ }
+  /* On mémorise MÊME l'absence : sinon un morceau sans pochette relancerait un
+     AppleScript à chaque lecture d'état. */
+  if (pochettesVues.size > MAX_VUES) pochettesVues.clear();
+  pochettesVues.set(cle, url);
+  return url;
 }
 
 /* ── Choisir quoi écouter ───────────────────────────────────────────────────

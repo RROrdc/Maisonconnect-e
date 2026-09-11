@@ -255,6 +255,15 @@
   .mrow.xrow{margin-top:-4px;opacity:.9}
   .inline.xtra{min-width:120px;flex:1;font-size:15px}
 
+  /* Ce qui joue : la pochette d'abord, parce qu'on la reconnaît d'un coup d'œil
+     à deux mètres là où un titre demande de lire. */
+  .encours{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-top:8px;
+    border-radius:14px;background:var(--card2)}
+  .encours img{width:52px;height:52px;border-radius:10px;object-fit:cover;flex:0 0 auto}
+  .encours .tx{min-width:0}
+  .encours .t{font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .encours .a{font-size:14px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
   /* Hors ligne : posé au-dessus de tout, y compris de la veille — c'est
      précisément quand l'écran dort qu'on ne verrait pas la panne. Sobre : il
      informe, il n'affole pas. */
@@ -264,7 +273,10 @@
     background:#8a2c2c;color:#fff;box-shadow:0 2px 14px rgba(0,0,0,.35)}
   .horsligne .pt{width:9px;height:9px;border-radius:50%;background:#ffb4b4;
     animation:pulseHL 1.6s ease-in-out infinite}
-  .horsligne span:last-child{opacity:.85;font-weight:400}
+  .horsligne #horsligneQuand{opacity:.85;font-weight:400}
+  .horsligne .hlbtn{margin-left:6px;padding:6px 14px;border:0;border-radius:999px;
+    background:rgba(255,255,255,.18);color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .horsligne .hlbtn:active{transform:scale(.96)}
   @keyframes pulseHL{0%,100%{opacity:1}50%{opacity:.25}}
 
   /* Bibliothèque de plats : une grille de vignettes, cibles larges — on la
@@ -824,6 +836,10 @@
     <span class="pt"></span>
     <b>Écran déconnecté</b>
     <span id="horsligneQuand"></span>
+    <!-- Attendre le prochain cycle quand on est DEVANT l'écran est absurde :
+         un bouton rend la reprise immédiate, et son résultat dit franchement si
+         le serveur répond ou non. -->
+    <button class="hlbtn" id="horsligneTest" onclick="testerConnexion()">Tester la connexion</button>
   </div>
 
   <main class="bento">
@@ -900,6 +916,15 @@
             <button onclick="cmdMus('precedent')"><svg class="i"><use href="#ic-prev"/></svg></button>
             <button class="p" id="musPlay" onclick="cmdMus('bascule')"><svg class="i"><use href="#ic-play"/></svg></button>
             <button onclick="cmdMus('suivant')"><svg class="i"><use href="#ic-next"/></svg></button></div></div>
+        <!-- Ce qui joue, en grand. Masqué quand rien ne joue : une pochette
+             vide sur un mur, c'est un trou dans la mise en page. -->
+        <div class="encours" id="encours" hidden>
+          <img id="encoursImg" alt="">
+          <div class="tx">
+            <div class="t" id="encoursTitre"></div>
+            <div class="a" id="encoursArtiste"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1340,6 +1365,24 @@ function rendreMaison(){
   /* L'icône dit ce que le bouton VA faire, pas l'état courant : sur un mur on
      appuie sans lire. */
   if(p) p.querySelector('use').setAttribute('href', q.lecture ? '#ic-pause' : '#ic-play');
+
+  /* Le morceau en cours. On l'affiche dès qu'il y a un titre, même en pause :
+     savoir ce qui est chargé a de la valeur, et le faire disparaître à chaque
+     pause ferait sauter la mise en page. */
+  const ec = document.getElementById('encours');
+  if(ec){
+    if(q.ouvert && q.titre){
+      ec.hidden = false;
+      document.getElementById('encoursTitre').textContent = q.titre;
+      document.getElementById('encoursArtiste').textContent =
+        [q.artiste, q.album].filter(Boolean).join(' · ');
+      const im = document.getElementById('encoursImg');
+      /* On ne réécrit `src` que s'il change : sinon le navigateur redessine la
+         vignette toutes les trente secondes, et ça scintille. */
+      if(q.pochette){ if(im.getAttribute('src') !== q.pochette) im.src = q.pochette; im.style.display=''; }
+      else im.style.display = 'none';
+    } else ec.hidden = true;
+  }
 }
 
 async function choisirEnceinte(nom){
@@ -2340,13 +2383,37 @@ function majHorsLigne(){
   el.hidden = !perdu;
   if(perdu){
     const d = new Date(derniereDonnee);
-    document.getElementById('horsligneQuand').textContent =
-      '— dernières données à ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    /* La DATE compte autant que l'heure : après une nuit de coupure, « 15:05 »
+       tout seul se lit comme « il y a un instant ». On ne l'écrit que si ce
+       n'est pas aujourd'hui — sinon on alourdit pour rien. */
+    const auj = new Date();
+    const memeJour = d.toDateString() === auj.toDateString();
+    document.getElementById('horsligneQuand').textContent = '— dernières données '
+      + (memeJour ? 'à ' + hh
+                  : 'le ' + d.getDate() + ' ' + MOIS[d.getMonth()].toLowerCase() + ' à ' + hh);
   }
 }
 /* Contrôlé souvent : une coupure doit se voir en quelques secondes, pas au
    prochain rafraîchissement de cinq minutes. */
 setInterval(majHorsLigne, 5000);
+
+/* Reprendre tout de suite, sans attendre le cycle de cinq minutes. Le bouton
+   DIT ce qu'il a trouvé : un bouton dont on ignore l'effet ne se réappuie pas. */
+async function testerConnexion(){
+  const b = document.getElementById('horsligneTest');
+  const avant = b.textContent;
+  b.textContent = 'Test…'; b.disabled = true;
+  try{
+    await load();
+    await chargerEcole().catch(()=>{});
+    chargerMaison().catch(()=>{});
+    /* Le flux a pu mourir sans qu'EventSource le rouvre : on le rebranche. */
+    fluxOuvert = true; brancherFlux(); majHorsLigne();
+    b.textContent = document.getElementById('horsligne').hidden ? 'Reconnecté ✓' : 'Toujours rien';
+  }catch(e){ b.textContent = 'Serveur injoignable'; }
+  setTimeout(()=>{ b.textContent = avant; b.disabled = false; }, 3000);
+}
 
 function brancherFlux(){
   try{

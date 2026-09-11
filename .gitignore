@@ -33,6 +33,9 @@ sauvegardes/
 # redistribuer, et elles se régénèrent en un clic (/admin/ → Repas →
 # « Trouver les photos manquantes »).
 public/plats/
+# Pochettes d'album extraites de la bibliotheque Music : pas a nous de les
+# redistribuer, et elles se regenerent toutes seules a la lecture suivante.
+public/pochettes/
 
 # --- SECRET D'APPAREIL ECOLEDIRECTE ----------------------------------------
 # ecole/etat*.json contient le couple cn/cv qui prouve au serveur que CETTE
