@@ -752,6 +752,7 @@
   <symbol id="ic-note" viewBox="0 0 24 24"><path d="M9 3.2h6v5.6l2.6 2.8v1.6H6.4v-1.6L9 8.8zM12 13.2V21"/></symbol>
   <symbol id="ic-temp" viewBox="0 0 24 24"><path d="M14 14.9V5.2a2 2 0 1 0-4 0v9.7a4 4 0 1 0 4 0z"/></symbol>
   <symbol id="ic-music" viewBox="0 0 24 24"><path d="M9 18.2V5.6l9.4-1.9v12.6"/><circle cx="6.6" cy="18.4" r="2.5"/><circle cx="16" cy="16.3" r="2.5"/></symbol>
+  <symbol id="ic-reglages" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5zm0-5A1.5 1.5 0 1 0 13.5 12 1.5 1.5 0 0 0 12 10.5z"/><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z" opacity=".55"/></symbol>
   <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.4 14.6A8.6 8.6 0 0 1 9.4 3.6a8.8 8.8 0 1 0 11 11z"/></symbol>
   <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.4 19.6 6 18M18 6l1.6-1.6"/></symbol>
   <symbol id="ic-bag" viewBox="0 0 24 24"><rect x="4" y="7.2" width="16" height="13.6" rx="4"/><path d="M8.4 7.2V5.8a3.6 3.6 0 0 1 7.2 0v1.4M9 13.4h6"/></symbol>
@@ -791,6 +792,10 @@
     <button id="btnVoix" style="--ac:var(--course);display:none" onclick="basculeVoix()" title="Parler à la maison">
       <svg class="i" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path fill="currentColor" d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 0 0 2 0v-3.08A7 7 0 0 0 19 11z"/></svg></button>
     <button id="btnTheme" style="--ac:var(--todo)" onclick="basculeTheme()" title="Thème"><svg class="i"><use href="#ic-moon" id="useTheme"/></svg></button>
+    <!-- Le back-office depuis le mur : sur une tablette en kiosque il n'y a ni
+         barre d'adresse ni onglets, donc /admin/ était inatteignable sans
+         clavier. Le portail a déjà un « Voir l'écran mural » pour revenir. -->
+    <button style="--ac:var(--maison,#e07a5f)" onclick="location.href='/admin/'" title="Réglages (back-office)"><svg class="i"><use href="#ic-reglages"/></svg></button>
     <button style="--ac:var(--agenda)" onclick="showSaver()" title="Mettre en veille"><svg class="i"><use href="#ic-ecran"/></svg></button>
   </nav>
 
@@ -1682,7 +1687,12 @@ function body(k){
     let h='<input class="rech" id="rechPlat" placeholder="Chercher un plat…" oninput="filtrerPlats(this.value)" autocomplete="off">'
       +'<div class="plats" id="listePlats">';
     for(const p of tous){
-      const vign=p.photo?'<img src="'+esc(p.photo)+'" alt="">':'<span class="emo">'+esc(p.emoji||'🍽️')+'</span>';
+      /* 🐞 Vu sur la dalle le 11/09 : 87 photos d'environ 350 Ko demandées d'un
+         coup, soit ~30 Mo sur un Raspberry en Wi-Fi — les vignettes arrivaient
+         une par une et la grille paraissait vide. `lazy` ne charge que ce qui
+         est à l'écran. (Le vrai gain reste de redimensionner sur le Mac.) */
+      const vign=p.photo?'<img src="'+esc(p.photo)+'" alt="" loading="lazy" decoding="async">'
+                        :'<span class="emo">'+esc(p.emoji||'🍽️')+'</span>';
       h+='<button class="plat'+(p.recette?'':' sans')+'" data-nom="'+esc(String(p.nom).toLowerCase())+'"'
         +' onclick="ouvrirRecette('+arg(p.id)+')">'
         +vign+'<span class="t">'+esc(p.nom)+'</span>'
