@@ -55,7 +55,16 @@ module.exports = async function (muet) {
     const p4 = await A.api('/api/plat/' + platEssai);
     const p6 = await A.api('/api/plat/' + platEssai + '?couverts=6');
     t.dire(p4.statut === 200 && !!p4.j.plat, 'GET /api/plat/:id', p4.j.plat && p4.j.plat.nom);
-    t.dire(p6.j.plat.misAEchelle === true, 'mise à l’échelle signalée');
+    /* 🐞 Test trop strict, corrige le 11/09 : il exigeait `misAEchelle`, alors
+       qu'un plat SANS portions renseignees ne doit justement PAS etre mis a
+       l'echelle — « pates sauce tomate », saisi a la main, n'en a aucune.
+       Le code promet l'un OU l'autre, jamais le silence : soit il recalcule,
+       soit il dit pourquoi il ne peut pas. C'est CA qu'on verifie.
+       Meme confusion qu'au § 2 untricies entre ce que le code garantit et ce
+       que la famille a saisi. */
+    const ech = p6.j.plat.misAEchelle === true || p6.j.plat.echelleImpossible === true;
+    t.dire(ech, 'l’échelle est recalculée OU refusée explicitement',
+      p6.j.plat.misAEchelle ? 'recalculée' : 'refusée — aucune base de portions');
   }
 
   t.titre('Courses depuis le menu (ne crée rien)');

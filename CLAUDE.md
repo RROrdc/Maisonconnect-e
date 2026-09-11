@@ -7464,6 +7464,178 @@ santé et charge `/api/maison` relues après redémarrage.
   d'arriver à la bonne.
 - ❔ Non vérifié : le rendu réel sur la dalle (le Pi est débranché) et sur iPhone.
 
+## 2 tervicies bis. 📺 L'ÉCRAN MURAL VIT — et il parle (11/09/2026)
+
+Le Raspberry est accroché en cuisine et sert le bento depuis le Mac. Première
+journée où le projet est jugé **sur le mur**, au doigt, par la famille. Douze
+retours de Rémi, douze défauts réels — aucun n'était visible depuis l'API.
+
+### 🔌 Le kiosque visait encore le PC
+`kiosque.conf` pointait `192.168.10.117` (le PC), figé depuis le montage. Le Pi
+résout pourtant `maison.local` par avahi. ⇒ URL au **nom**, jamais à l'IP —
+quatrième fois que la note du § 2 octies se vérifie.
+- ⚠️ Le Pi s'appelle **`ecran-cuisine`**, pas `bento`. Il est en `192.168.10.104`.
+- 🐞 **`pkill -f "kiosque.sh"` lancé par SSH tue sa propre session** : la ligne de
+  commande du shell distant contient le motif. Même piège que `pkill -f chromium`
+  le 05/09. Le motif à crochets (`[k]iosque.sh`) ne se reconnaît pas lui-même.
+
+### 🔴 LE bug du bandeau : `display:flex` bat `hidden`
+Le bandeau « Écran déconnecté » est resté affiché **en permanence** pendant que
+tout fonctionnait. J'ai corrigé **deux fois le critère de détection** — qui était
+juste depuis le début.
+
+La cause est en CSS : `display:flex` posé sur une classe l'emporte sur le
+`display:none` que le navigateur applique à l'attribut `hidden`, dont la
+spécificité est la plus faible qui soit. **`el.hidden = true` ne cachait rien.**
+Le même défaut rendait le bloc « morceau en cours » visible et vide.
+- ⚠️ **Leçon de méthode** : quand une correction ne change rien, c'est le signe
+  qu'on ne corrige pas la bonne chose. Deux tentatives sur le critère auraient dû
+  suffire à me faire regarder ailleurs.
+- ✅ Contrôle ajouté : toute classe qui pose un `display` et qu'on masque par
+  `hidden` doit déclarer son propre `[hidden]`. Vérifié en réintroduisant le bug.
+
+### ⌨️ La dalle ne savait pas écrire
+Ni clavier ni souris : aucun champ texte n'était utilisable — ni une course, ni
+un plat, ni la recherche de musique, ni le **code d'accès de /admin/**.
+- **Pavé numérique dans /admin/** (le code n'a que des chiffres).
+- `squeekboard` est installé sur le Pi et Chromium relancé avec
+  `--enable-wayland-ime` : **essayé, le clavier ne monte pas**. Ce n'est pas un
+  réglage à trouver. Le drapeau reste (il ne coûte rien).
+- ⇒ **`public/clavier.js`** — AZERTY dans la page, rangée d'accents, bascule
+  `123`. Chargé par le bento ET le back-office.
+- 🐞 `pointer: coarse` ne marche PAS : **Chromium sous Linux se déclare
+  « souris »** même sur une dalle tactile. On ne devine plus — c'est le kiosque
+  qui l'annonce (`?clavier=1`), lui seul le sait. Le drapeau est ajouté **par le
+  script**, pas par `kiosque.conf` : sinon corriger l'adresse du serveur ferait
+  perdre le clavier sans qu'on comprenne.
+
+### 🐞 Trois bugs que j'ai créés, et ce qu'ils enseignent
+1. **Commentaire dans une commande à continuation de ligne.** En bash, `\` suivi
+   d'une ligne de commentaire JOINT les deux : tout le reste passe en
+   commentaire, **URL comprise**. L'écran a tourné vingt minutes sur une page
+   vide pendant que je cherchais pourquoi mes drapeaux n'apparaissaient pas.
+2. **Backtick dans un commentaire placé DANS un template literal.** Il referme la
+   chaîne au milieu : `clavier.js` devenait invalide et ne se chargeait plus du
+   tout — clavier disparu, sans un mot dans la page.
+   🔑 **Angle mort du test, plus grave que le bug** : la série `pages` ne lisait
+   que les scripts EMBARQUÉS. `clavier.js` et `voix.js` sont des fichiers à part,
+   donc jamais vérifiés. Corrigé : un fichier servi est un fichier à vérifier.
+3. **Clic fantôme du tactile.** Le clavier rétractait le panneau ; le clic que le
+   navigateur envoie ~300 ms après le doigt tombait alors sur l'arrière-plan, qui
+   fermait la fenêtre. Post-it y échappait parce que son champ est plus haut.
+   ⇒ `touchstart` annulé (la cause), panneau qui ne bouge plus (le symptôme),
+   arrière-plan qui refuse de fermer pendant la saisie (la ceinture).
+
+### 🌡️ Netatmo branché — et deux pannes de ma main
+4 pièces réelles (Salle à manger, Chambre des Garçons, Chambre Parental, Bureau),
+un thermostat et 3 vannes. **Écriture prouvée sur le vrai matériel** : `hg` →
+`manual`, retour au programme après 15 min, sans déclencher le chauffage.
+- La pièce affichée en grand est un **réglage** (« Salle à manger ») : l'écran
+  prenait le Bureau, qui ne parle à personne dans une cuisine.
+- 🐞 Je ne renouvelais le jeton que sur un **403**. Netatmo a répondu « Invalid
+  access token » sous un autre code ⇒ température « à brancher » pendant des
+  heures. On se fie désormais au **sens** du refus, pas à son numéro.
+- 🔴 Puis mes relances ont provoqué un **429**. Chaque lecture redemandait un
+  jeton, chaque échec relançait : la panne devenait une tempête.
+  **C'est la faute exacte qui a fait suspendre notre adresse chez Pronote le
+  matin même** — deux fois la même leçon dans la journée. ⇒ temps de repos de
+  90 s après tout refus, dans les deux modules.
+
+### 🎵 La musique devient utilisable
+Mesuré avant de conclure : la bibliothèque **locale** ne fait que 68 pistes.
+Le « choix limité » ne venait pas de l'interface.
+- 🔑 Music expose **9 playlists Apple Music** auxquelles Rémi est abonné, que
+  j'excluais en écrivant qu'elles « noieraient les siennes ». C'était faux : ce
+  ne sont pas des listes intelligentes, ce sont les siennes. **3 → 12 playlists**,
+  groupées par provenance.
+- Albums, artistes, stations — chargés à la demande, plafonnés à 120.
+- **Pochette, titre, artiste** et **curseur de volume** dans la carte. La
+  pochette suit le patron des photos de plats : nommée par l'empreinte de son
+  contenu, donc jamais retéléchargée.
+- ⚠️ Les mix « Pour vous » (Découverte, Chill, En boucle…) n'existent pour
+  AppleScript que s'ils sont **ajoutés à la bibliothèque**. Rémi l'a fait : ils
+  sont remontés tout seuls, sans une ligne de code.
+
+### 🗣️ L'écran PARLE — le Mac synthétise, le Pi joue
+Vérifié sur le Raspberry : **aucune synthèse installée**, ni speech-dispatcher ni
+espeak. `speechSynthesis` n'y a donc aucune voix. Le Mac en a huit françaises.
+C'est la conclusion du § 2 sexvicies pour un Pi 4, appliquée.
+- WAV nommé par l'**empreinte du texte et de la voix**, cache long : « Bonjour
+  Monsieur » n'est synthétisé qu'une fois.
+- Le texte passe par un **fichier**, jamais par la ligne de commande : les
+  arguments d'un processus sont visibles de toute la machine, et une phrase peut
+  contenir un prénom.
+- Le texte s'affiche AUSSI : une salutation qu'on n'entend pas doit se lire.
+- ✅ **Son de l'écran confirmé par Rémi** — sortie HDMI, rien à acheter.
+
+### 👋 Accueil à l'arrivée — construit, et il alterne
+Trois téléphones enregistrés (Rémi, Martial, Enora), détectés présents.
+- **Réveil mDNS** : un iPhone en veille ne répond pas au ping et paraîtrait
+  parti. Un datagramme sur le port 5353 le réveille assez pour l'ARP.
+- `maison/accueil.js`, **module PUR** : ni base, ni horloge, ni réseau — tout lui
+  est donné, donc testable sans rien monter.
+- Contexte réel : le **dernier cours terminé** pour un enfant, ses devoirs ;
+  l'anniversaire proche, l'agenda de demain, le repas du soir, les courses pour
+  un adulte.
+- 🐞 Trois défauts trouvés **en lisant les phrases à voix haute** : « cours **de**
+  Espagnol » (élision), « Bonjour Enora, **T**u as fini tard » (majuscule au
+  milieu), et surtout — **un contexte disponible SUPPRIMAIT la variation** au
+  lieu de l'enrichir. Martial aurait entendu la même phrase chaque soir.
+  Mesuré après correction : 8 formulations sur 14 retours.
+- Les **trois garde-fous du § 2 vicies sont tenus dans le code** : aucun
+  historique (état en RAM, rien en base), anti-rebond de 30 min avec silence
+  22 h–7 h, et l'accueil ne touche jamais aux couverts.
+
+### 🎒 Pronote suspendu — par ma faute
+Le jeton étant périmé, chaque lecture retentait une connexion. Le serveur
+relisant l'école toutes les 15 min, Pronote a fini par répondre **« Votre adresse
+IP est provisoirement suspendue »** — et un QR neuf n'aurait rien débloqué tant
+que la suspension durait.
+⇒ Réglage `ecole_pronote_pause`, lu à chaque appel (jamais mis en cache) pour
+pouvoir reprendre sans redémarrer. **Mis de côté à la demande de Rémi.**
+
+### Divers
+- **Devoirs sur le mur** : ils n'apparaissaient pas parce que la présence
+  déclarait « week-end sans les enfants » **dès le vendredi minuit**. La fenêtre
+  était la même pour tous, alors que seuls les garçons *arrivent* le vendredi —
+  Martial et Enora ont cours ce jour-là. Pour eux le week-end commence samedi.
+- **Idées de plats** : bouton « Ignorer » par proposition (elles revenaient
+  indéfiniment), plus « Tout reproposer » — une liste qu'on ne peut pas vider est
+  une liste qu'on n'ose pas remplir.
+- **Sauce tomate** rangée au rayon frais (la règle du premier nom tombait sur
+  « tomate ») → épicerie, avec deux cas de non-régression.
+- **Bouton back-office** dans le rail du mur, **lien « Écran mural »** dans la
+  barre du portail : sur un kiosque il n'y a ni barre d'adresse ni onglets.
+- **Bouton « Quitter le plein écran »** + service local sur le Pi + raccourci sur
+  le bureau (passé en **simple clic** : un double-clic n'est pas un geste
+  tactile). Filet : le kiosque revient seul au bout de dix minutes.
+- **Chien de garde du Wi-Fi** en service système : le Pi a disparu du réseau en
+  pleine journée. Paliers du plus doux au plus brutal, jamais de redémarrage
+  avant vingt minutes d'absence réelle et pas plus d'un par heure.
+- **Vignettes du catalogue en chargement paresseux** : 87 photos (~30 Mo)
+  demandées d'un coup sur un Raspberry en Wi-Fi.
+
+### ❔ Matériel — ce qui manque vraiment
+- **Aucun micro**, ni dans le Pi ni dans l'écran. Vérifié à trois niveaux
+  (`/proc/asound/cards`, `lsusb -t`, sources pipewire). **Jarvis qui écoute
+  attend du matériel, pas du code.** Un Jabra USB (speakerphone) serait idéal :
+  USB Audio Class, donc aucun pilote, et **annulation d'écho matérielle** — sans
+  quoi l'écran s'entendrait lui-même.
+- ⚠️ Le **Bluetooth est à écarter** : A2DP donne le son sans micro, HFP donne le
+  micro en 8 kHz. Et le Pi 4 partage son antenne Wi-Fi/BT — on vient justement de
+  poser un chien de garde parce qu'il perd le réseau.
+- Le **ventilateur** est branché sur la carte de l'écran, pas sur le Pi : aucun
+  `cooling_device`, aucun PWM, donc rien à piloter depuis le logiciel. Le Pi est
+  à 41,8 °C sans aucun bridage. C'est un geste physique.
+
+### Vérifié
+**371 tests, 0 échec**, joués contre le Mac. Rendu photographié sur la vraie
+dalle à six reprises — c'est ce qui a révélé la moitié des défauts ci-dessus.
+- 🐞 Un test corrigé au passage : il exigeait `misAEchelle` alors qu'un plat sans
+  portions renseignées ne doit justement PAS être mis à l'échelle. Le code
+  promet l'un OU l'autre, jamais le silence. Même confusion qu'au § 2 untricies
+  entre ce que le code garantit et ce que la famille a saisi.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
