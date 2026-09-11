@@ -1868,11 +1868,16 @@ function body(k){
     /* Choisir quoi écouter. Deux entrées, parce que ce sont deux gestes
        différents : « mets la playlist du dimanche » se choisit dans une liste,
        « mets du Brassens » se tape. */
-    const pls = q.playlists || [];
-    if(pls.length){
-      h += '<div class="stitre">Playlists</div><div class="ens">'
-        + pls.map((n)=>'<button class="enc" onclick="lancerPlaylist('+arg(n)+')">'
-            +'<span class="n">'+esc(n)+'</span></button>').join('')
+    /* Les playlists, groupées par provenance : « Morceaux préférés » et
+       « Classic rock : les indispensables » ne se choisissent pas pour les
+       mêmes raisons, et mêlées elles font une liste qu'on ne sait plus lire. */
+    const pls = (q.playlists || []).map(x => typeof x === 'string' ? {nom:x, source:'à vous'} : x);
+    for(const grp of ['à vous','Apple Music']){
+      const dedans = pls.filter(x => x.source === grp);
+      if(!dedans.length) continue;
+      h += '<div class="stitre">Playlists — '+esc(grp)+'</div><div class="ens">'
+        + dedans.map((x)=>'<button class="enc" onclick="lancerPlaylist('+arg(x.nom)+')">'
+            +'<span class="n">'+esc(x.nom)+'</span></button>').join('')
         + '</div>';
     }
     /* Parcourir sans taper : sur un mur on regarde et on appuie. Chargé à la

@@ -191,7 +191,7 @@ async function commander(quoi, options = {}) {
      chaîne libre venue du réseau. */
   if (quoi === 'playlist') {
     const nom = String(options.nom || '');
-    const dispo = await playlists();
+    const dispo = (await playlistsOuAgent()).map((p) => p.nom);
     if (!dispo.includes(nom)) throw new Error(`playlist inconnue : ${nom}`);
     await osascript(`tell application "Music" to play playlist "${echapper(nom)}"`, 15000);
     return { ok: true, playlist: nom };
@@ -309,11 +309,33 @@ async function playlists() {
   if (!MAC || !(await enMarche())) return [];
   let liste = [];
   try {
-    /* `user playlist` seulement : les playlists intelligentes et les dossiers
-       d'Apple Music noieraient les siennes. */
-    const brut = await osascript(
-      'tell application "Music" to get name of every user playlist', 10000);
-    liste = brut.split(', ').map((x) => x.trim()).filter(Boolean);
+    /* 🐞 Corrigé le 11/09 : je ne listais que les `user playlist`, en écrivant
+       que les autres « noieraient les siennes ». C'était faux ici — les neuf
+       autres sont des playlists Apple Music AUXQUELLES RÉMI S'EST ABONNÉ, pas
+       des listes intelligentes générées toutes seules. Et avec une bibliothèque
+       locale de 68 titres, ce sont justement elles qui font le choix.
+       On les rend donc toutes, en disant d'où elles viennent : mélanger « Morceaux
+       préférés » et « Classic rock : les indispensables » sans distinction
+       ferait une liste qu'on ne sait plus lire.
+       `Bibliothèque` est écartée : ce n'est pas une playlist, c'est tout. */
+    const LF = String.fromCharCode(10), TAB = String.fromCharCode(9);
+    const brut = await osascript(`tell application "Music"
+  set out to ""
+  repeat with p in playlists
+    set c to (class of p) as text
+    if c is not "library playlist" then
+      set out to out & (name of p) & tab & c & linefeed
+    end if
+  end repeat
+  return out
+end tell`, 15000);
+    liste = brut.split(LF).map((l) => l.split(TAB))
+      .filter((c) => c[0] && c[0].trim())
+      .map((c) => ({
+        nom: c[0].trim(),
+        /* « à vous » plutôt que « utilisateur » : c'est ce que ça veut dire. */
+        source: /subscription/i.test(c[1] || '') ? 'Apple Music' : 'à vous',
+      }));
   } catch { /* pas d'autorisation ici : l'agent réessaiera */ }
   cachePl = { le: Date.now(), valeur: liste };
   return liste;
@@ -456,6 +478,17 @@ async function etatOuAgent() {
   const e = await etat();
   if (!e.erreur) return e;
   try { const a = await viaAgent('/etat'); return a && !a.erreur ? a : e; } catch { return e; }
+}
+
+/* Même repli que le reste : depuis le démon, la lecture directe rend une liste
+   vide et l'on refuserait une playlist parfaitement valable. */
+async function playlistsOuAgent() {
+  const l = await playlists();
+  if (l.length || !MAC) return l;
+  try {
+    const e = await viaAgent('/etat');
+    return Array.isArray(e && e.playlists) ? e.playlists : l;
+  } catch { return l; }
 }
 
 async function bibliothequeOuAgent() {
