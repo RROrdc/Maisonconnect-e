@@ -97,6 +97,14 @@ const REGLAGES = {
      introuvable ailleurs (même règle qu'au § 2 undecies). */
   voix_say: { env: '', defaut: 'Thomas' },
   voix_say_debit: { env: '', defaut: '170' },
+  /* Accueil à l'arrivée. Une ligne par appareil : « adresse MAC | Prénom ».
+     RIEN n'est écrit en base : l'état vit en mémoire et meurt avec le
+     serveur — on ne fabrique pas un journal de présence des enfants. */
+  arrivee_active: { env: '', defaut: '0' },
+  arrivee_appareils: { env: '', defaut: '' },
+  arrivee_absence_min: { env: '', defaut: '30' },
+  arrivee_silence_de: { env: '', defaut: '22' },
+  arrivee_silence_a: { env: '', defaut: '7' },
   /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
      Vide = on ne touche jamais à la sortie. */
   musique_enceinte_defaut: { env: '', defaut: '' },
@@ -756,6 +764,49 @@ app.post('/api/admin/dire', async (req, res) => {
     diffuser('parler', { url: r.url, texte: r.texte });
     res.json(r);
   } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
+});
+
+/* ── Accueil à l'arrivée ────────────────────────────────────────────────────
+   La phrase est construite avec la MÊME personnalité que l'assistant vocal :
+   Rémi reçoit « Monsieur », les enfants leur prénom, et personne n'est traité
+   comme un inconnu. Sans ça on aurait deux voix dans la maison, et ça
+   s'entendrait (§ 2 quaterdecies). */
+function phraseAccueil(qui) {
+  const st = styleVocal(qui[0]);
+  const nom = st.appellation || qui[0];
+  if (qui.length > 1) return `Bonjour, vous voilà. ${qui.join(' et ')} sont rentrés.`;
+  return st.appellation ? `Bonjour ${nom}.` : `Bonjour ${nom}, content de vous revoir.`;
+}
+
+async function annoncerArrivee(qui) {
+  const texte = phraseAccueil(qui);
+  const r = await Maison.parole.dire(texte, {
+    voix: config('voix_say') || undefined,
+    debit: Number(config('voix_say_debit')) || undefined,
+  });
+  /* Même si la synthèse échoue, on DIT qui est rentré : l'écran reste utile
+     sans le son, et une panne muette ne s'explique pas. */
+  diffuser('parler', { url: r.ok ? r.url : null, texte });
+}
+
+app.get('/api/admin/arrivee', (_req, res) => {
+  try {
+    res.json({
+      suivis: Maison.arrivee.appareils(config('arrivee_appareils')),
+      /* Un ÉTAT, jamais un historique : on ne dit pas quand, seulement si. */
+      etat: Maison.arrivee.etat(),
+      actif: config('arrivee_active') === '1',
+    });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+/* Voir les appareils du réseau pour aider à saisir les adresses : personne ne
+   connaît l'adresse MAC de son téléphone par cœur. */
+app.get('/api/admin/arrivee/reseau', async (_req, res) => {
+  try {
+    const t = await Maison.arrivee.tableArp();
+    res.json({ appareils: [...t.entries()].map(([mac, ip]) => ({ mac, ip })) });
+  } catch (e) { res.status(400).json({ appareils: [], raison: messageClair(e) }); }
 });
 
 app.get('/api/admin/voix-systeme', async (_req, res) => {
@@ -1705,6 +1756,23 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
         return charge.vie || [];
       },
     });
+
+    /* Accueil à l'arrivée. Démarré SEULEMENT si Rémi l'a activé et qu'au moins
+       un appareil est déclaré : un détecteur qui scanne le réseau toutes les
+       quarante-cinq secondes pour ne rien suivre serait du bruit pur. */
+    if (config('arrivee_active') === '1' && String(config('arrivee_appareils') || '').trim()) {
+      Maison.arrivee.demarrer({
+        reglages: {
+          arrivee_appareils: config('arrivee_appareils'),
+          arrivee_absence_min: config('arrivee_absence_min'),
+          arrivee_silence_de: config('arrivee_silence_de'),
+          arrivee_silence_a: config('arrivee_silence_a'),
+        },
+        annoncer: annoncerArrivee,
+        journaliser: (n, s2, m) => donnees.journaliser(n, s2, m),
+      });
+      console.log("   👋 Accueil à l'arrivée : actif");
+    }
     console.log('\n   Depuis la tablette et les iPhone (l\'IP change avec le réseau Wi-Fi) :');
     for (const a of liste) console.log(`     ${a}/bento.html   ·   ${a}/app/`);
     /* À privilégier pour le kiosque : un nom ne change pas quand le DHCP

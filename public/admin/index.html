@@ -1423,6 +1423,34 @@ const REGLAGES_CONNUS = [
    + "la barre la plus proche de l'écran de cuisine. Le retour ne se fait QUE si rien ne joue : on ne coupe "
    + "jamais la musique de quelqu'un qui écoute ailleurs. Si l'enceinte est éteinte, rien ne se passe et "
    + "l'écran le dit. Laisse vide pour ne jamais toucher à la sortie."],
+  ['voix_say', 'Voix qui parle sur le mur', 'texte',
+   "Nom d'une voix française de macOS — « Thomas », « Jacques », « Eddy »… "
+   + "C'est le MAC qui synthétise : le Raspberry n'a aucune voix installée, et celles "
+   + "qu'on pourrait y poser sont robotiques. La liste complète est dans Réglages système "
+   + "→ Accessibilité → Contenu parlé, où l'on peut aussi télécharger des voix « premium », "
+   + "gratuites et bien meilleures."],
+  ['voix_say_debit', 'Débit de la voix (mots/minute)', 'texte',
+   "170 est un ton posé, celui d'un majordome. 180 est le débit naturel, 140 devient lent."],
+
+  ['arrivee_active', 'Dire bonjour quand quelqu’un rentre', 'choix',
+   "L'écran salue la personne qui arrive, avec la même voix et les mêmes usages que "
+   + "l'assistant : Rémi reçoit « Monsieur », les enfants leur prénom. "
+   + "RIEN n'est enregistré — ni qui, ni quand. L'état vit en mémoire et meurt au "
+   + "redémarrage du serveur : ce projet ne fabrique pas un journal de présence des enfants."],
+  ['arrivee_appareils', 'Téléphones suivis', 'zone',
+   "Une ligne par appareil : adresse MAC, une barre verticale, le prénom. "
+   + "Exemple : « a1:b2:c3:d4:e5:f6 | Rémi ». "
+   + "L'adresse se lit sur l'iPhone dans Réglages → Général → Informations → Adresse Wi-Fi. "
+   + "⚠️ Prends bien celle du réseau de la MAISON (l'adresse privée d'iOS est fixe par "
+   + "réseau) — un « Oublier ce réseau » la change et il faudra la ressaisir."],
+  ['arrivee_absence_min', 'Absence minimale avant de saluer (minutes)', 'texte',
+   "En dessous, on ne dit rien. Un téléphone disparaît et réapparaît tout seul du réseau "
+   + "sans que personne n'ait bougé ; saluer à chaque fois rendrait l'écran insupportable."],
+  ['arrivee_silence_de', 'Silence à partir de (heure)', 'texte',
+   "L'écran se tait la nuit. 22 = plus rien à partir de vingt-deux heures."],
+  ['arrivee_silence_a', 'Silence jusqu’à (heure)', 'texte',
+   "7 = la parole revient à sept heures."],
+
   ['temperature_piece', 'Pièce affichée en grand sur le mur', 'texte',
    "Nom de la pièce Netatmo mise en avant sur l'écran mural — « Salle à manger », par exemple. "
    + "Les autres restent lisibles dans le panneau Maison. Laisse vide pour prendre la première "

@@ -38,6 +38,7 @@ const musique = require('./musique');
 const temperature = require('./temperature');
 const netatmo = require('./netatmo');
 const parole = require('./parole');
+const arrivee = require('./arrivee');
 
 /* Ce qui est réellement disponible ICI ET MAINTENANT — la même idée que
    `recettes.sources()` : l'interface grise ce qui ne peut pas marcher, en
@@ -100,4 +101,4 @@ async function tout(reglages = {}) {
    quelles sources ont un cache. */
 const viderCache = () => { musique.viderCache(); temperature.viderCache(); netatmo.viderCache(); };
 
-module.exports = { sources, tout, viderCache, musique, temperature, netatmo, parole };
+module.exports = { sources, tout, viderCache, musique, temperature, netatmo, parole, arrivee };
