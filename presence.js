@@ -158,7 +158,16 @@ function creerPresence({ donnees, config }) {
     const vac = enVacances(date);
 
     const j = jourDe(date).getDay();
-    const weekEnd = (j === 6 || j === 0 || j === 5);   // le vendredi soir compte
+    /* 🐞 Deux fenêtres, pas une — trouvé sur l'écran le 11/09.
+       Le vendredi comptait comme week-end pour TOUT LE MONDE, parce que les
+       garçons arrivent ce jour-là (marqueur « Recup garcons », 14 h 30). Mais
+       Martial et Enora vivent ici à l'année et ont cours le vendredi : les
+       déclarer absents dès minuit était factuellement faux, et le mur
+       n'affichait AUCUN devoir le jour même où on prépare le week-end.
+       Pour eux le week-end commence donc le samedi.
+       (L'arrivée des garçons le vendredi, elle, est portée par le marqueur du
+       calendrier et par le réglage `garde_we_avant` — pas par cette fenêtre.) */
+    const weekEnd = (j === 6 || j === 0);
 
     /* Filet contre une récurrence oubliée : pendant une vacance scolaire, un
        marqueur de week-end non accompagné d'un marqueur de vacances est ignoré.
