@@ -1422,9 +1422,34 @@ admin('post', '/reglages', (req) => {
      reprend effet au prochain appel, sans attendre l'expiration ni redémarrer.
      Le modèle d'IA, lui, est relu explicitement — il vit dans un module. */
   recettes.definirModele(config('ia_modele'));
+  /* L'accueil à l'arrivée vit dans une boucle démarrée au lancement : sans cette
+     reprise, cocher la case dans /admin/ n'aurait AUCUN effet jusqu'au prochain
+     redémarrage — et l'on croirait la fonction cassée. Le même raisonnement que
+     pour les signatures de cache juste au-dessus. */
+  reprendreArrivee();
   majFaite('reglages', req);
   return { reglages: r };
 });
+
+/* Démarre, redémarre ou arrête le détecteur selon les réglages du moment. */
+function reprendreArrivee() {
+  try {
+    Maison.arrivee.arreter();
+    if (config('arrivee_active') !== '1') return;
+    const liste = String(config('arrivee_appareils') || '').trim();
+    if (!liste) return;
+    Maison.arrivee.demarrer({
+      reglages: {
+        arrivee_appareils: liste,
+        arrivee_absence_min: config('arrivee_absence_min'),
+        arrivee_silence_de: config('arrivee_silence_de'),
+        arrivee_silence_a: config('arrivee_silence_a'),
+      },
+      annoncer: annoncerArrivee,
+      journaliser: (n, s2, m) => donnees.journaliser(n, s2, m),
+    });
+  } catch (e) { noter('arrivee', e); }
+}
 
 /* Des idées de plats qu'on n'a PAS. Complémentaire du menu proposé, qui lui ne
    sait composer qu'avec la bibliothèque existante. Rien n'est ajouté : on
@@ -1768,17 +1793,8 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
     /* Accueil à l'arrivée. Démarré SEULEMENT si Rémi l'a activé et qu'au moins
        un appareil est déclaré : un détecteur qui scanne le réseau toutes les
        quarante-cinq secondes pour ne rien suivre serait du bruit pur. */
+    reprendreArrivee();
     if (config('arrivee_active') === '1' && String(config('arrivee_appareils') || '').trim()) {
-      Maison.arrivee.demarrer({
-        reglages: {
-          arrivee_appareils: config('arrivee_appareils'),
-          arrivee_absence_min: config('arrivee_absence_min'),
-          arrivee_silence_de: config('arrivee_silence_de'),
-          arrivee_silence_a: config('arrivee_silence_a'),
-        },
-        annoncer: annoncerArrivee,
-        journaliser: (n, s2, m) => donnees.journaliser(n, s2, m),
-      });
       console.log("   👋 Accueil à l'arrivée : actif");
     }
     console.log('\n   Depuis la tablette et les iPhone (l\'IP change avec le réseau Wi-Fi) :');
