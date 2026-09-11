@@ -38,6 +38,14 @@ const CACHE_ETAT_MS = 60_000;
 const MIN = 5, MAX = 30;
 
 let acces = { jeton: null, expire: 0 };
+/* 🔴 Temps de repos apres un refus de renouvellement — la lecon du 11/09, apprise
+   DEUX FOIS dans la meme journee (Pronote le matin, Netatmo l'apres-midi).
+   Quand le jeton d'acces devient invalide, chaque lecture en redemande un. Si le
+   renouvellement echoue lui aussi, on redemande a chaque appel : la panne se
+   transforme en rafale, et le service finit par repondre 429 — puis par
+   suspendre l'adresse. On attend donc avant de retenter, et on le DIT. */
+let repos = { jusqua: 0, raison: '' };
+const REPOS_MS = 90_000;
 let topo = { le: 0, valeur: null };
 let etatCache = { le: 0, valeur: null };
 
@@ -73,6 +81,10 @@ function configure() {
 
 async function jeton() {
   if (acces.jeton && Date.now() < acces.expire) return acces.jeton;
+  if (Date.now() < repos.jusqua) {
+    const s = Math.ceil((repos.jusqua - Date.now()) / 1000);
+    throw new Error(`${repos.raison} — nouvelle tentative dans ${s} s`);
+  }
   const c = conf();
   const refresh = lireRafraichissement();
   const r = await fetch(`${API}/oauth2/token`, {
@@ -85,9 +97,17 @@ async function jeton() {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) {
-    throw new Error(j.error_description || j.error
-      || `refus de Netatmo (${r.status}) — le jeton de rafraîchissement est-il encore valable ?`);
+    const pourquoi = r.status === 429
+      ? 'Netatmo a répondu « trop de requêtes » (429)'
+      : (j.error_description || j.error
+         || `refus de Netatmo (${r.status}) — le jeton de rafraîchissement est-il encore valable ?`);
+    /* On se met en repos QUEL QUE SOIT le motif : un identifiant faux et un
+       débit dépassé se traitent pareil du point de vue du service — on arrête
+       de frapper. */
+    repos = { jusqua: Date.now() + REPOS_MS, raison: pourquoi };
+    throw new Error(pourquoi);
   }
+  repos = { jusqua: 0, raison: '' };
   /* On persiste le NOUVEAU jeton avant de rendre l'accès : si l'écriture échoue,
      mieux vaut échouer maintenant que découvrir la perte au redémarrage. */
   if (j.refresh_token && j.refresh_token !== refresh) ecrireRafraichissement(j.refresh_token);
