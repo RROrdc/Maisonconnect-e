@@ -33,10 +33,7 @@ if [ ! -f "$CONF" ]; then
 # Adresse de l'écran mural. Un NOM, jamais une IP : l'adresse du serveur a déjà
 # changé trois fois dans ce projet, et un favori d'écran mural qui casse à
 # chaque changement de réseau, personne ne le répare.
-# `?clavier=1` : la dalle n'a pas de clavier, et aucune detection fiable ne le
-# dit depuis le navigateur (Chromium sous Linux se declare « souris »). C'est
-# donc le kiosque qui l'annonce — il est le seul a le savoir vraiment.
-URL="http://maison.local:8090/bento.html?clavier=1"
+URL="http://maison.local:8090/bento.html"
 
 # Combien de temps attendre le serveur avant d'abandonner (secondes).
 # Le Pi démarre plus vite que le Mac : sans cette attente, Chromium s'ouvrirait
@@ -47,6 +44,18 @@ EOF
 fi
 # shellcheck source=/dev/null
 . "$CONF"
+
+# 🔤 La dalle n'a pas de clavier, et aucune detection depuis le navigateur n'est
+# fiable : Chromium sous Linux se declare « souris » meme sur un ecran tactile.
+# C'est donc le kiosque qui l'annonce, et il l'ajoute LUI-MEME a l'URL plutot que
+# de compter sur kiosque.conf — sinon quiconque corrige l'adresse du serveur
+# perdrait le clavier sans comprendre pourquoi. CLAVIER=0 dans la conf desactive.
+if [ "${CLAVIER:-1}" = "1" ] && ! printf '%s' "$URL" | grep -q 'clavier='; then
+  case "$URL" in
+    *\?*) URL="$URL&clavier=1" ;;
+    *)    URL="$URL?clavier=1" ;;
+  esac
+fi
 
 SANTE="${URL%/*}/api/health"
 
