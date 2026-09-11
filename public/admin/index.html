@@ -285,6 +285,12 @@ tr.inactif td{opacity:.45}
     <button class="ong" data-vue="reglages">⚙️ Réglages</button>
     <div class="bas">
       <div class="moi" id="moi"></div>
+      <!-- Aller-retour avec le mur. Le lien existait au bas du tableau de bord,
+           donc atteignable seulement depuis une vue : sur la dalle, où l'on
+           arrive par le bouton du rail, on se retrouvait coincé dans le portail.
+           Il vit maintenant dans la barre, visible de partout — et le bento a
+           son bouton ⚙ en face. -->
+      <a class="ong" href="/bento.html" style="text-decoration:none;display:block">🏠 Écran mural</a>
       <button class="ong" id="theme">◐ Thème</button>
       <button class="ong" id="sortir">⤶ Se déconnecter</button>
     </div>
@@ -2194,3 +2200,4 @@ $('#theme').onclick = ()=>{
   }
 })();
 </script>
+<script src="/clavier.js"></script>

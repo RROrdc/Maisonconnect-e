@@ -44,7 +44,11 @@ const TABLE = [
     'farine', 'sucre', 'sel', 'poivre', 'huile', 'vinaigre', 'moutarde', 'mayonnaise', 'ketchup',
     'riz', 'pates', 'spaghetti', 'tagliatelles', 'penne', 'macaroni', 'semoule', 'couscous',
     'lentilles', 'pois chiches', 'quinoa', 'boulgour', 'ebly', 'conserve', 'bocal',
-    'tomates pelees', 'concentre', 'bouillon', 'levure', 'chocolat', 'miel', 'confiture',
+    /* « sauce tomate » etait rangee au rayon FRAIS : la regle du premier nom
+       tombait sur « tomate ». Les expressions plus longues gagnent a position
+       egale, mais encore faut-il qu'elles existent — signale par Remi le 11/09. */
+    'tomates pelees', 'sauce tomate', 'coulis de tomate', 'coulis', 'passata',
+    'concentre', 'bouillon', 'levure', 'chocolat', 'miel', 'confiture',
     'cafe', 'the', 'tisane', 'cereales', 'biscuits', 'chapelure', 'maizena', 'curry', 'paprika',
     'cumin', 'curcuma', 'cannelle', 'muscade', 'herbes de provence', 'olives', 'cornichons',
     'thon', 'sardines', 'lait de coco', 'pain', 'baguette', 'tortillas', 'wraps', 'bagels',

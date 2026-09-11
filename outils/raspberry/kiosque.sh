@@ -118,7 +118,12 @@ while true; do
     "${BACKEND[@]}" \
     --kiosk \
     --noerrdialogs \
-    --disable-infobars \
+    # 🔤 Clavier virtuel. La dalle n'a pas de clavier : sans ce drapeau, aucun
+    # champ texte du bento n'est utilisable — ni la recherche de musique, ni
+    # « écrire un plat », ni l'ajout d'une course (signalé par Rémi le 11/09).
+    # squeekboard est déjà là sur Pi OS ; c'est Chromium qui, par défaut, ne
+    # parle pas le protocole d'entrée de Wayland.
+    --enable-wayland-ime     --enable-features=WaylandIme,TouchpadOverscrollHistoryNavigation     --disable-infobars \
     --disable-session-crashed-bubble \
     --disable-features=Translate,TranslateUI,TranslateSubFrames \
     --disable-translate-new-ux \

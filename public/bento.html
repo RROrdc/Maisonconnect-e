@@ -978,6 +978,7 @@
 </div>
 
 <script src="/voix.js"></script>
+<script src="/clavier.js"></script>
 <script>
 const FAMILY=['Rémi','Amandine','Enora','Martial','Garçons','Toute la famille'];
 const DAYS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -1442,12 +1443,12 @@ async function voirBib(quoi){
     try{ BIB = await api('/api/maison/musique/bibliotheque'); }
     catch(e){ z.innerHTML = '<div class="vide">'+esc(e.message)+'</div>'; return; }
   }
-  const liste = (quoi==='albums' ? BIB.albums : BIB.artistes) || [];
+  const liste = (quoi==='albums' ? BIB.albums : quoi==='radios' ? BIB.radios : BIB.artistes) || [];
   if(!liste.length){
     z.innerHTML = '<div class="vide">'+esc(BIB.raison || 'Rien à parcourir — Music est-il ouvert ?')+'</div>';
     return;
   }
-  const cmd = quoi==='albums' ? 'album' : 'artiste';
+  const cmd = quoi==='albums' ? 'album' : quoi==='radios' ? 'radio' : 'artiste';
   z.innerHTML = '<div class="ens">'+liste.map(n=>
     '<button class="enc" onclick="lancerBib('+arg(cmd)+','+arg(n)+')"><span class="n">'+esc(n)+'</span></button>'
   ).join('')+'</div>';
@@ -1887,6 +1888,7 @@ function body(k){
       + '<div class="bar" style="margin-bottom:10px">'
       + '<button onclick="voirBib(\'albums\')">Albums</button>'
       + '<button onclick="voirBib(\'artistes\')">Artistes</button>'
+      + '<button onclick="voirBib(\'radios\')">Stations</button>'
       + '</div><div id="bibZone"></div>';
 
     h += '<div class="stitre">Chercher un titre ou un artiste</div>'

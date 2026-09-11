@@ -212,6 +212,17 @@ async function commander(quoi, options = {}) {
   /* Lancer un album ou tout un artiste. Même règle que la playlist : le nom
      vient de l'inventaire que Music nous a donné, on le vérifie avant de s'en
      servir — jamais une chaîne libre venue du réseau. */
+  /* Une station de radio : « Station de Rémi Rommelard », « En boucle »… Elles
+     ne se jouent pas comme une playlist, d'où la commande à part. */
+  if (quoi === 'radio') {
+    const nom = String(options.nom || '');
+    const bib = await bibliothequeOuAgent();
+    if (!(bib.radios || []).includes(nom)) throw new Error(`station inconnue : ${nom}`);
+    await osascript(
+      `tell application "Music" to play (first radio station whose name is "${echapper(nom)}")`, 15000);
+    return { ok: true, radio: nom };
+  }
+
   if (quoi === 'album' || quoi === 'artiste') {
     const nom = String(options.nom || '');
     /* On interroge l'inventaire par le chemin COMPLET (direct puis agent) :
@@ -429,13 +440,23 @@ async function bibliotheque() {
   repeat with a in vus2
     set out to out & a & linefeed
   end repeat
+  set out to out & "==" & linefeed
+  -- Les stations : « Station de … », « En boucle » et consorts en font partie
+  -- quand elles ont été ajoutées. On ne devine pas leur existence, on demande.
+  try
+    repeat with r in radio stations
+      set out to out & (name of r) & linefeed
+    end repeat
+  end try
   return out
 end tell`, 60000);
-    const [tete, albums, artistes] = brut.split(LF + '==' + LF);
+    const [tete, albums, artistes, radios] = brut.split(LF + '==' + LF);
+    const lignes = (x) => String(x || '').split(LF).map((y) => y.trim()).filter(Boolean);
     v = {
       total: Number(String(tete).trim()) || 0,
-      albums: String(albums || '').split(LF).map((x) => x.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr')),
-      artistes: String(artistes || '').split(LF).map((x) => x.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr')),
+      albums: lignes(albums).sort((a, b) => a.localeCompare(b, 'fr')),
+      artistes: lignes(artistes).sort((a, b) => a.localeCompare(b, 'fr')),
+      radios: lignes(radios),
       recents: [],
     };
     void SEP2;

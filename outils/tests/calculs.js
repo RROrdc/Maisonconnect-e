@@ -25,6 +25,9 @@ const CAS_RAYONS = [
   ['pommes de terre', 'Fruits & légumes'], ['2 pommes', 'Fruits & légumes'],
   ['1 gousse d’ail', 'Fruits & légumes'], ['3 tomates', 'Fruits & légumes'],
   ['tomates pelées', 'Épicerie'], ['jus d’orange', 'Boissons'],
+  /* Le piège du premier nom : « sauce tomate » tombait au rayon frais.
+     Signalé par Rémi le 11/09 sur sa vraie liste de courses. */
+  ['sauce tomate', 'Épicerie'], ['coulis de tomate', 'Épicerie'],
   ['papier toilette', 'Maison / hygiène'], ['lessive', 'Maison / hygiène'], ['déo', 'Maison / hygiène'],
   /* Les pièges : un fragment ne doit JAMAIS déclencher. */
   ['bouillon de volaille', 'Épicerie'],   // pas « ail » dans « volaille »
