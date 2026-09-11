@@ -772,10 +772,18 @@ app.post('/api/admin/dire', async (req, res) => {
    comme un inconnu. Sans ça on aurait deux voix dans la maison, et ça
    s'entendrait (§ 2 quaterdecies). */
 function phraseAccueil(qui) {
+  /* Plusieurs personnes ensemble : on les nomme, sans tourner la phrase autour
+     d'un vouvoiement qui ne conviendrait pas à tout le monde. */
+  if (qui.length > 1) return `Bonjour ${qui.slice(0, -1).join(', ')} et ${qui[qui.length - 1]}.`;
   const st = styleVocal(qui[0]);
-  const nom = st.appellation || qui[0];
-  if (qui.length > 1) return `Bonjour, vous voilà. ${qui.join(' et ')} sont rentrés.`;
-  return st.appellation ? `Bonjour ${nom}.` : `Bonjour ${nom}, content de vous revoir.`;
+  if (st.appellation) return `Bonjour ${st.appellation}.`;
+  /* 🔑 On TUTOIE les enfants. C'est le choix assumé du § 2 quaterdecies, et il
+     se voit tout de suite à l'oral : « content de vous revoir » à Clovis sonne
+     comme si l'écran ne savait pas à qui il parle. */
+  const enfant = st.roleInterlocuteur === 'enfant';
+  return enfant
+    ? `Bonjour ${qui[0]}, content de te revoir.`
+    : `Bonjour ${qui[0]}, content de vous revoir.`;
 }
 
 async function annoncerArrivee(qui) {
