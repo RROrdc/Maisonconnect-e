@@ -53,7 +53,21 @@ function appelerPont(...parametres) {
   return json;
 }
 
-const configure = () => require('fs').existsSync(path.join(__dirname, 'pronote-identifiants.json'));
+/* 🔴 Un interrupteur de PAUSE, appris à nos dépens le 11/09.
+   Quand le jeton est périmé, chaque lecture retente une connexion — et Pronote
+   finit par répondre « Votre adresse IP est provisoirement suspendue ». Le
+   serveur relisant l'école toutes les quinze minutes, il entretenait tout seul
+   sa propre punition, et un QR neuf n'aurait rien débloqué tant que la
+   suspension durait.
+   `ecole_pronote_pause` coupe net les tentatives, le temps de laisser retomber.
+   Lu à chaque appel (jamais mis en cache) : on veut pouvoir reprendre sans
+   redémarrer le serveur. */
+const enPause = () => {
+  try { return require('../donnees').reglage('ecole_pronote_pause', '0') === '1'; }
+  catch { return false; }
+};
+const configure = () => !enPause()
+  && require('fs').existsSync(path.join(__dirname, 'pronote-identifiants.json'));
 
 /* Une seule commande, une seule connexion : voir le commentaire du pont. */
 function tout({ jours = 7 } = {}) {
