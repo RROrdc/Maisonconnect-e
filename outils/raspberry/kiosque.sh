@@ -124,18 +124,23 @@ while true; do
   #    après chaque coupure de courant : rédhibitoire.
   #    « basic » = Chromium chiffre lui-même et ne demande plus rien. Il n'a de
   #    toute façon aucun mot de passe à garder : il n'affiche qu'une page.
+  # 🐞 AUCUN COMMENTAIRE ENTRE LES LIGNES QUI SUIVENT. Une continuation \\
+  #    suivie d'une ligne de commentaire JOINT les deux : tout le reste de la
+  #    commande passe en commentaire, URL comprise. Paye le 11/09 — l'ecran
+  #    mural a tourne vingt minutes sur une page vide, et /proc ne montrait
+  #    plus ni les drapeaux ni l'adresse.
+  # 🔤 --enable-wayland-ime reveille squeekboard, deja installe sur Pi OS.
+  #    Essaye : il ne monte pas quand meme. Le drapeau reste (il ne coute rien),
+  #    mais c'est clavier.js qui fait le travail.
   "$CHROME" \
     --password-store=basic \
     --user-data-dir="$HOME/.config/chromium-kiosque" \
     "${BACKEND[@]}" \
     --kiosk \
     --noerrdialogs \
-    # 🔤 Clavier virtuel. La dalle n'a pas de clavier : sans ce drapeau, aucun
-    # champ texte du bento n'est utilisable — ni la recherche de musique, ni
-    # « écrire un plat », ni l'ajout d'une course (signalé par Rémi le 11/09).
-    # squeekboard est déjà là sur Pi OS ; c'est Chromium qui, par défaut, ne
-    # parle pas le protocole d'entrée de Wayland.
-    --enable-wayland-ime     --enable-features=WaylandIme,TouchpadOverscrollHistoryNavigation     --disable-infobars \
+    --enable-wayland-ime \
+    --enable-features=WaylandIme,TouchpadOverscrollHistoryNavigation \
+    --disable-infobars \
     --disable-session-crashed-bubble \
     --disable-features=Translate,TranslateUI,TranslateSubFrames \
     --disable-translate-new-ux \
