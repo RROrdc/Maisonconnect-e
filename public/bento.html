@@ -255,6 +255,18 @@
   .mrow.xrow{margin-top:-4px;opacity:.9}
   .inline.xtra{min-width:120px;flex:1;font-size:15px}
 
+  /* Hors ligne : posé au-dessus de tout, y compris de la veille — c'est
+     précisément quand l'écran dort qu'on ne verrait pas la panne. Sobre : il
+     informe, il n'affole pas. */
+  .horsligne{position:fixed;top:0;left:0;right:0;z-index:9999;
+    display:flex;align-items:center;gap:10px;justify-content:center;
+    padding:9px 14px;font-size:15px;font-weight:600;
+    background:#8a2c2c;color:#fff;box-shadow:0 2px 14px rgba(0,0,0,.35)}
+  .horsligne .pt{width:9px;height:9px;border-radius:50%;background:#ffb4b4;
+    animation:pulseHL 1.6s ease-in-out infinite}
+  .horsligne span:last-child{opacity:.85;font-weight:400}
+  @keyframes pulseHL{0%,100%{opacity:1}50%{opacity:.25}}
+
   /* Bibliothèque de plats : une grille de vignettes, cibles larges — on la
      parcourt debout, souvent les mains occupées. */
   .rech{width:100%;box-sizing:border-box;padding:14px 16px;border-radius:14px;border:0;
@@ -752,6 +764,7 @@
   <symbol id="ic-note" viewBox="0 0 24 24"><path d="M9 3.2h6v5.6l2.6 2.8v1.6H6.4v-1.6L9 8.8zM12 13.2V21"/></symbol>
   <symbol id="ic-temp" viewBox="0 0 24 24"><path d="M14 14.9V5.2a2 2 0 1 0-4 0v9.7a4 4 0 1 0 4 0z"/></symbol>
   <symbol id="ic-music" viewBox="0 0 24 24"><path d="M9 18.2V5.6l9.4-1.9v12.6"/><circle cx="6.6" cy="18.4" r="2.5"/><circle cx="16" cy="16.3" r="2.5"/></symbol>
+  <symbol id="ic-sortir" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9"/></symbol>
   <symbol id="ic-reglages" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5zm0-5A1.5 1.5 0 1 0 13.5 12 1.5 1.5 0 0 0 12 10.5z"/><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z" opacity=".55"/></symbol>
   <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.4 14.6A8.6 8.6 0 0 1 9.4 3.6a8.8 8.8 0 1 0 11 11z"/></symbol>
   <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.4 19.6 6 18M18 6l1.6-1.6"/></symbol>
@@ -796,8 +809,22 @@
          barre d'adresse ni onglets, donc /admin/ était inatteignable sans
          clavier. Le portail a déjà un « Voir l'écran mural » pour revenir. -->
     <button style="--ac:var(--maison,#e07a5f)" onclick="location.href='/admin/'" title="Réglages (back-office)"><svg class="i"><use href="#ic-reglages"/></svg></button>
+    <!-- Quitter le kiosque : masqué tant que le petit service du Raspberry ne
+         répond pas. Même règle que le bouton Jarvis — un bouton mort sur un mur
+         de cuisine est pire que pas de bouton. -->
+    <button id="btnQuitter" style="--ac:var(--todo);display:none" onclick="quitterKiosque()" title="Quitter le plein écran"><svg class="i"><use href="#ic-sortir"/></svg></button>
     <button style="--ac:var(--agenda)" onclick="showSaver()" title="Mettre en veille"><svg class="i"><use href="#ic-ecran"/></svg></button>
   </nav>
+
+  <!-- 🔌 Hors ligne. Un écran mural qui perd son serveur garde ses dernières
+       données SANS RIEN DIRE — on lit alors des courses périmées en croyant
+       qu'elles sont à jour. Le bandeau ne s'affiche QUE déconnecté, et il dit
+       l'heure de la dernière donnée fraîche : c'est ça l'information utile. -->
+  <div id="horsligne" class="horsligne" hidden>
+    <span class="pt"></span>
+    <b>Écran déconnecté</b>
+    <span id="horsligneQuand"></span>
+  </div>
 
   <main class="bento">
     <!-- accueil : salutation contextuelle + plannings enfants -->
@@ -985,8 +1012,9 @@ async function load(){try{const d=await api('/api/data');d.ecole=S.ecole||{eleve
   /* Les réglages de voix arrivent avec les données : on les ré-applique à chaque
      fois, pour qu'un changement fait dans /admin/ prenne effet sans recharger
      l'écran mural — qu'on ne recharge jamais à la main. */
-  if(typeof appliquerReglagesVoix==='function')appliquerReglagesVoix();}
-  catch(e){showErr('⚠ Chargement : '+e.message);}}
+  if(typeof appliquerReglagesVoix==='function')appliquerReglagesVoix();
+  derniereDonnee=Date.now(); majHorsLigne();}
+  catch(e){ majHorsLigne(); showErr('⚠ Chargement : '+e.message);}}
 
 /* ---------- horloge (numérique + aiguilles) ---------- */
 function tick(){
@@ -2245,6 +2273,63 @@ resetIdle();
    Le rafraîchissement périodique reste, très espacé : il rattrape la météo, les actus
    et l'agenda (qui changent sans passer par nous), et sert de filet si le flux meurt. */
 let majEnAttente;
+/* ---------- Reprendre la main sur l'écran ----------
+   La dalle n'a ni clavier ni souris : sans ça, sortir du kiosque imposait une
+   session SSH depuis un autre poste. Le bento tourne DANS le navigateur du
+   Raspberry, donc `127.0.0.1` est le Pi lui-même.
+   Le bouton reste caché tant que le service ne répond pas — sur le PC ou un
+   téléphone, il n'a aucun sens. */
+const ECRAN_SVC = 'http://127.0.0.1:8099';
+let RETOUR_MIN = 10;
+
+(async () => {
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1200);
+    const r = await fetch(ECRAN_SVC + '/etat', { signal: ctrl.signal });
+    const e = await r.json();
+    if (e && e.ok) { RETOUR_MIN = e.retourMin || 10; document.getElementById('btnQuitter').style.display = ''; }
+  } catch { /* pas sur le Pi, ou service absent : le bouton reste caché */ }
+})();
+
+/* Deux touchers, comme les suppressions : une dalle de cuisine se touche par
+   accident, et celui-ci fait disparaître l'écran. */
+let quitterArme = null;
+function quitterKiosque(){
+  const b = document.getElementById('btnQuitter');
+  if (!quitterArme) {
+    quitterArme = setTimeout(() => { quitterArme = null; b.classList.remove('on'); }, 4000);
+    b.classList.add('on');
+    montrerNotif({ titre: 'Quitter le plein écran ?', message:
+      'Touche à nouveau pour confirmer. L’écran revient tout seul dans ' + RETOUR_MIN + ' minutes.' });
+    return;
+  }
+  clearTimeout(quitterArme); quitterArme = null;
+  fetch(ECRAN_SVC + '/quitter').catch(() => {});
+}
+
+/* ---------- Connexion au serveur ----------
+   Trois signaux, parce qu'aucun ne suffit seul : le flux SSE tombe tout de
+   suite mais se reconnecte parfois sans que les données reviennent ; un
+   `load()` qui échoue est la preuve la plus sûre ; un `load()` qui réussit est
+   la seule preuve que tout va bien. */
+let derniereDonnee = Date.now();
+let fluxOuvert = true;
+
+function majHorsLigne(){
+  const el = document.getElementById('horsligne');
+  if(!el) return;
+  const perdu = !fluxOuvert || (Date.now() - derniereDonnee) > 11*60*1000;
+  el.hidden = !perdu;
+  if(perdu){
+    const d = new Date(derniereDonnee);
+    document.getElementById('horsligneQuand').textContent =
+      '— dernières données à ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+}
+/* Contrôlé souvent : une coupure doit se voir en quelques secondes, pas au
+   prochain rafraîchissement de cinq minutes. */
+setInterval(majHorsLigne, 5000);
+
 function brancherFlux(){
   try{
     const flux=new EventSource('/api/flux');
@@ -2254,8 +2339,11 @@ function brancherFlux(){
     flux.addEventListener('notif',(ev)=>{                // message à afficher, sans rechargement
       try{montrerNotif(JSON.parse(ev.data));}catch(e){}
     });
-    flux.addEventListener('open',()=>console.log('flux temps réel connecté'));
-  }catch(e){console.warn('flux indisponible, on reste sur le rafraîchissement périodique');}
+    flux.addEventListener('open',()=>{ fluxOuvert=true; majHorsLigne(); });
+    /* EventSource reconnecte tout seul ; on note juste la coupure pour
+       l'afficher, et `open` la lèvera. */
+    flux.onerror=()=>{ fluxOuvert=false; majHorsLigne(); };
+  }catch(e){ fluxOuvert=false; majHorsLigne(); console.warn('flux indisponible, on reste sur le rafraîchissement périodique'); }
 }
 
 /* ---------- Notifications ----------

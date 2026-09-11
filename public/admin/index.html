@@ -241,6 +241,12 @@ tr.inactif td{opacity:.45}
   main{padding:20px 16px 60px}
   .semaine{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+  /* Cibles larges : on tape avec un doigt, debout, sans viser. */
+  .pave{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .pave button{padding:16px 0;font-size:22px;font-weight:600;border:0;border-radius:14px;
+    background:var(--card2,#eef1f6);color:inherit;cursor:pointer;font-family:inherit}
+  .pave button:active{transform:scale(.96)}
+  .pave button.sec{font-size:17px;font-weight:500;opacity:.8}
 </style>
 
 <!-- ============================ CONNEXION ============================ -->
@@ -251,6 +257,15 @@ tr.inactif td{opacity:.45}
     <div class="qui" id="qui"></div>
     <input id="code" type="password" inputmode="numeric" autocomplete="off"
            placeholder="Code d'accès" maxlength="8">
+    <!-- 🔢 Pavé numérique DANS la page.
+         Sur la dalle de cuisine il n'y a ni clavier ni souris, et le clavier
+         virtuel du système ne s'ouvre pas dans Chromium en kiosque : le champ
+         était donc impossible à remplir, et le back-office inatteignable depuis
+         le mur. Le code ne fait que des chiffres — un pavé suffit, il marche
+         partout, et il ne dépend d'aucun réglage système.
+         Il s'affiche pour tout le monde : sur un téléphone il double le clavier
+         natif sans gêner, et détecter « suis-je sur la dalle ? » serait deviner. -->
+    <div class="pave" id="pave" aria-label="Pavé numérique"></div>
     <p class="s" id="msg" style="margin:14px 0 0;min-height:20px"></p>
     <button class="btn" id="entrer" style="width:100%;margin-top:12px;padding:13px">Entrer</button>
   </div>
@@ -366,6 +381,31 @@ function deconnecter(raison){
 }
 
 $('#entrer').onclick = connecter;
+
+/* Pavé numérique : on écrit DANS le champ et on déclenche `input`, pour que le
+   reste de la page (validation, message d'erreur) se comporte exactement comme
+   avec un vrai clavier. Rien de spécifique au pavé ailleurs dans le code. */
+(function paveNumerique() {
+  const zone = $('#pave'), champ = $('#code');
+  if (!zone || !champ) return;
+  const frappe = (v) => {
+    if (v === 'effacer') champ.value = champ.value.slice(0, -1);
+    else if (v === 'valider') return connecter();
+    else if (champ.value.length < Number(champ.maxLength || 8)) champ.value += v;
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    champ.focus();
+  };
+  const touches = ['1','2','3','4','5','6','7','8','9',
+                   ['effacer','⌫'], '0', ['valider','✓']];
+  for (const t of touches) {
+    const [val, lib] = Array.isArray(t) ? t : [t, t];
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = lib;
+    if (Array.isArray(t)) b.className = 'sec';
+    b.onclick = () => frappe(val);
+    zone.appendChild(b);
+  }
+})();
 $('#code').onkeydown = (ev)=>{ if(ev.key==='Enter') connecter(); };
 $('#sortir').onclick = ()=>deconnecter();
 
