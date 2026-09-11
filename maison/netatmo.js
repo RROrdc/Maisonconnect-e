@@ -95,7 +95,7 @@ async function jeton() {
   return acces.jeton;
 }
 
-async function appel(chemin, params = {}, methode = 'GET') {
+async function appel(chemin, params = {}, methode = 'GET', rejeu = false) {
   const t = await jeton();
   const opts = { method: methode, headers: { authorization: `Bearer ${t}` } };
   let url = `${API}/api/${chemin}`;
@@ -113,11 +113,21 @@ async function appel(chemin, params = {}, methode = 'GET') {
     r = await fetch(url, { ...opts, signal: ctrl.signal });
     j = await r.json().catch(() => ({}));
   } finally { clearTimeout(minuteur); }
+  const message = (j.error && (j.error.message || j.error)) || '';
   if (!r.ok) {
-    /* 403 = jeton d'accès périmé plus tôt que prévu : on le jette et on rejoue
-       UNE fois. Insister au-delà, c'est marteler l'API pour rien. */
-    if (r.status === 403 && acces.jeton) { acces = { jeton: null, expire: 0 }; return appel(chemin, params, methode); }
-    throw new Error((j.error && (j.error.message || j.error)) || `Netatmo a répondu ${r.status}`);
+    /* 🐞 Corrigé le 11/09 : je ne rattrapais QUE le 403. Netatmo a répondu
+       « Invalid access token » sous un autre code, le jeton n'a donc jamais été
+       renouvelé, et la température est restée « à brancher » pendant des heures
+       — jusqu'à l'expiration naturelle du cache. On se fie désormais au SENS de
+       la réponse, pas à son numéro : tout refus d'authentification jette le
+       jeton d'accès et rejoue UNE fois. Insister au-delà, c'est marteler l'API
+       pour rien — et c'est ce qui a fait suspendre notre adresse chez Pronote. */
+    const authKO = r.status === 401 || r.status === 403 || /token|autoris|forbidden/i.test(message);
+    if (authKO && acces.jeton && !rejeu) {
+      acces = { jeton: null, expire: 0 };
+      return appel(chemin, params, methode, true);
+    }
+    throw new Error(message || `Netatmo a répondu ${r.status}`);
   }
   return j.body || j;
 }
