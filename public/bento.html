@@ -263,6 +263,13 @@
   .encours .tx{min-width:0}
   .encours .t{font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .encours .a{font-size:14px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Le titre cède la place au curseur plutôt que de le pousser dehors : on lit
+     le début d'un titre, on ne lit jamais un curseur à moitié. */
+  .encours .tx{flex:1 1 auto}
+  .encours .vol-c{flex:0 0 104px;appearance:none;height:26px;background:transparent;cursor:pointer}
+  .encours .vol-c::-webkit-slider-runnable-track{height:6px;border-radius:99px;background:var(--card)}
+  .encours .vol-c::-webkit-slider-thumb{appearance:none;width:22px;height:22px;margin-top:-8px;
+    border-radius:50%;background:var(--maison,#e07a5f);border:0;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 
   /* Hors ligne : posé au-dessus de tout, y compris de la veille — c'est
      précisément quand l'écran dort qu'on ne verrait pas la panne. Sobre : il
@@ -924,6 +931,11 @@
             <div class="t" id="encoursTitre"></div>
             <div class="a" id="encoursArtiste"></div>
           </div>
+          <!-- Volume au doigt. Un curseur se glisse bien sur une dalle, là où
+               une liste de paliers coûterait toute la largeur. Les paliers
+               restent dans le panneau Maison pour les gros doigts pressés. -->
+          <input type="range" class="vol-c" id="encoursVol" min="0" max="100" step="5"
+                 aria-label="Volume" oninput="volAffiche(this.value)" onchange="volume(this.value)">
         </div>
       </div>
     </section>
@@ -1356,8 +1368,11 @@ function rendreMaison(){
   if(!q.disponible){ t.textContent = q.raison || 'à brancher sur le Mac'; return; }
   if(!q.ouvert){ t.textContent = 'AirPlay · Musique fermée'; }
   else if(q.titre){
-    document.getElementById('musTitre').textContent = q.titre;
-    t.textContent = [q.artiste, (q.actives || [])[0]].filter(Boolean).join(' · ') || 'AirPlay';
+    /* Le titre est dans le bloc « en cours », juste en dessous et en plus gros :
+       le répéter ici volerait la place à l'information qui manque vraiment —
+       OÙ le son sort. */
+    document.getElementById('musTitre').textContent = 'Musique';
+    t.textContent = 'AirPlay · ' + ((q.actives || [])[0] || 'aucune enceinte');
   } else {
     document.getElementById('musTitre').textContent = 'Musique';
     t.textContent = 'AirPlay · ' + ((q.actives || [])[0] || 'aucune enceinte');
@@ -1381,6 +1396,10 @@ function rendreMaison(){
          vignette toutes les trente secondes, et ça scintille. */
       if(q.pochette){ if(im.getAttribute('src') !== q.pochette) im.src = q.pochette; im.style.display=''; }
       else im.style.display = 'none';
+      /* On ne repositionne PAS le curseur pendant qu'un doigt le tient : sinon
+         il saute sous le doigt à chaque rafraîchissement de trente secondes. */
+      const vc = document.getElementById('encoursVol');
+      if(vc && document.activeElement !== vc && typeof q.volume === 'number') vc.value = q.volume;
     } else ec.hidden = true;
   }
 }
@@ -1395,6 +1414,14 @@ async function volume(v){
        await chargerMaison(); if(openK==='maison')drawSheet('maison'); }
   catch(e){ console.warn('[volume]',e.message); }
 }
+/* Retour immédiat pendant le glissement : la commande, elle, ne part qu'au
+   relâchement (`onchange`) — envoyer à chaque pixel noierait l'agent et Music
+   sous les requêtes. */
+function volAffiche(v){
+  const a = document.getElementById('encoursArtiste');
+  if(a) a.textContent = 'Volume ' + v + ' %';
+}
+
 async function lancerPlaylist(nom){
   try{ await api('/api/maison/musique','POST',{commande:'playlist',nom});
        MAISON=await api('/api/maison?rafraichir=1'); rendreMaison(); if(openK==='maison')drawSheet('maison'); }
@@ -2378,8 +2405,16 @@ function majHorsLigne(){
      alerte qui se trompe, donc une alerte qu'on n'écoute plus.
      On n'annonce donc la coupure que si le flux est tombé ET que les données
      ont vraiment vieilli. La fraîcheur des données fait foi, pas le transport. */
+  /* 🐞 Deuxième correction, le 11/09 : se fier au flux donnait encore un faux
+     positif — le bandeau criait pendant que la température, la musique et les
+     devoirs s'affichaient parfaitement. `EventSource` peut rester fermé sans
+     que rien ne soit cassé, et une alerte qui se trompe ne sera plus jamais
+     lue.
+     Seul critère désormais : L'ÂGE DES DONNÉES. Le rafraîchissement tourne
+     toutes les cinq minutes ; au-delà de six, c'est une vraie coupure, pas un
+     aléa de transport. Détection un peu plus lente, mais elle ne ment pas. */
   const age = Date.now() - derniereDonnee;
-  const perdu = (!fluxOuvert && age > 90*1000) || age > 11*60*1000;
+  const perdu = age > 6*60*1000;
   el.hidden = !perdu;
   if(perdu){
     const d = new Date(derniereDonnee);
@@ -2424,10 +2459,15 @@ function brancherFlux(){
     flux.addEventListener('notif',(ev)=>{                // message à afficher, sans rechargement
       try{montrerNotif(JSON.parse(ev.data));}catch(e){}
     });
-    flux.addEventListener('open',()=>{ fluxOuvert=true; majHorsLigne(); });
-    /* EventSource reconnecte tout seul ; on note juste la coupure pour
-       l'afficher, et `open` la lèvera. */
-    flux.onerror=()=>{ fluxOuvert=false; majHorsLigne(); };
+    flux.addEventListener('open',()=>{ fluxOuvert=true; });
+    /* EventSource se reconnecte seul dans la plupart des cas, mais il ABANDONNE
+       définitivement sur certaines erreurs (readyState CLOSED). On le rebranche
+       alors — sans rien afficher : le temps réel qui tombe se rattrape au
+       rafraîchissement périodique, ce n'est pas une panne à annoncer. */
+    flux.onerror=()=>{
+      fluxOuvert=false;
+      if(flux.readyState===2){ setTimeout(brancherFlux, 5000); }
+    };
   }catch(e){ fluxOuvert=false; majHorsLigne(); console.warn('flux indisponible, on reste sur le rafraîchissement périodique'); }
 }
 

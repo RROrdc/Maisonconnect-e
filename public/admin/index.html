@@ -1736,11 +1736,35 @@ function brancher(){
         <span><b>${e(i.emoji||'')} ${e(i.nom)}</b>
           <span class="puce" style="margin-left:6px">${e(i.categorie||'plat')}</span>
           <div style="color:var(--muted);font-size:13px;margin-top:3px">${e(i.pourquoi)}</div></span>
+        <button type="button" class="btn doux ignorer" data-nom="${e(i.nom)}"
+                style="margin-left:auto;padding:6px 12px;font-size:13px"
+                title="Ne plus jamais proposer ce plat">Ignorer</button>
       </label>`).join('')}
       <div class="actions" style="justify-content:flex-start;margin-top:12px">
         <button class="btn" id="ideesAjouter">Ajouter les plats cochés</button>
         <button class="btn doux" id="ideesAutres">↻ D'autres idées</button>
+        <button class="btn doux" id="ideesOubli" title="Remettre à zéro la liste des plats ignorés">Tout reproposer</button>
       </div></div>`;
+
+    /* « Ignorer » retire la ligne TOUT DE SUITE : attendre la prochaine
+       génération pour voir l'effet donnerait l'impression que le bouton n'a rien
+       fait, et on le réappuierait. L'écart est enregistré côté serveur, donc il
+       survit au rechargement de la page. */
+    for(const b of document.querySelectorAll('.ignorer')){
+      b.onclick = async (ev)=>{
+        ev.preventDefault(); ev.stopPropagation();
+        const nom = b.dataset.nom;
+        try{
+          await api('POST','/api/admin/idees/ignorer',{nom});
+          b.closest('label').remove();
+          toast('« '+nom+' » ne sera plus proposé.');
+        }catch(err){ toast('✗ '+err.message); }
+      };
+    }
+    $('#ideesOubli').onclick = async ()=>{
+      try{ await api('DELETE','/api/admin/idees/ignorer'); toast('Liste des plats ignorés vidée.'); }
+      catch(err){ toast('✗ '+err.message); }
+    };
 
     $('#ideesAjouter').onclick = async ()=>{
       const choisis = [...document.querySelectorAll('.idee:checked')].map((c)=>liste[Number(c.dataset.k)]);

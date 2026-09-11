@@ -90,6 +90,8 @@ const REGLAGES = {
   /* Quelle pièce l'écran mural met en avant. Vide = la première qui a une
      mesure. Aucun foyer codé en dur (§ 5 quater). */
   temperature_piece: { env: '', defaut: '' },
+  /* Idées de plats écartées, pour que le modèle cesse de les reproposer. */
+  idees_ignorees: { env: '', defaut: '[]' },
   /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
      Vide = on ne touche jamais à la sortie. */
   musique_enceinte_defaut: { env: '', defaut: '' },
@@ -1330,10 +1332,44 @@ admin('post', '/reglages', (req) => {
 /* Des idées de plats qu'on n'a PAS. Complémentaire du menu proposé, qui lui ne
    sait composer qu'avec la bibliothèque existante. Rien n'est ajouté : on
    propose, Rémi choisit. */
+/* La liste des idées écartées vit dans les réglages : c'est une préférence du
+   foyer, pas une donnée. Bornée, sinon la consigne envoyée au modèle enflerait
+   sans fin — et une consigne trop longue dilue les instructions qui comptent. */
+const MAX_IGNOREES = 120;
+function ideesIgnorees() {
+  try { const l = JSON.parse(config('idees_ignorees') || '[]'); return Array.isArray(l) ? l : []; }
+  catch { return []; }
+}
+
+app.post('/api/admin/idees/ignorer', (req, res) => {
+  try {
+    const nom = String((req.body && req.body.nom) || '').trim();
+    if (!nom) return res.status(400).json({ error: 'nom manquant' });
+    const cle = (x) => String(x).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+    const liste = ideesIgnorees().filter((x) => cle(x) !== cle(nom));
+    liste.push(nom);
+    donnees.ecrireReglages({ idees_ignorees: JSON.stringify(liste.slice(-MAX_IGNOREES)) });
+    res.json({ ok: true, ignorees: liste.length });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+/* Se raviser doit être aussi simple qu'écarter : une liste qu'on ne peut pas
+   vider est une liste qu'on n'ose pas remplir. */
+app.delete('/api/admin/idees/ignorer', (req, res) => {
+  try {
+    donnees.ecrireReglages({ idees_ignorees: '[]' });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
 app.post('/api/admin/plats/idees', async (req, res) => {
   try {
     if (!recettes.sources().nom) return res.status(400).json({ error: recettes.sources().pourquoi });
-    const existants = donnees.listePlatsAdmin().map((p) => p.nom);
+    /* Les plats ÉCARTÉS comptent comme connus : sans ça, le modèle repropose
+       indéfiniment ce qu'on vient de refuser, et la fonction devient pénible
+       exactement à l'usage qu'on en fait — on relance pour voir autre chose.
+       Demande de Rémi le 11/09. */
+    const existants = donnees.listePlatsAdmin().map((p) => p.nom).concat(ideesIgnorees());
     const liste = await recettes.idees(existants, {
       equipements: equipements(),
       combien: Number(req.body && req.body.combien) || 5,
