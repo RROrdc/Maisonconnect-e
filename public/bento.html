@@ -1294,12 +1294,23 @@ async function chargerMaison(){
 
 function rendreMaison(){
   const t = document.getElementById('musSous'), p = document.getElementById('musPlay');
-  if(!t || !MAISON) return;
+  /* 🐞 Tant que `/api/maison` n'a pas répondu, la carte affichait « à brancher
+     sur le Mac » — une panne AFFIRMÉE alors qu'on est simplement en train de
+     lire. La première lecture après un démarrage peut demander plusieurs
+     secondes (jeton Netatmo, AppleScript). On dit donc qu'on lit. */
+  if(!t) return;
+  if(!MAISON){
+    const st0 = document.getElementById('tempSous');
+    if(st0) st0.textContent = 'lecture en cours…';
+    t.textContent = 'lecture en cours…';
+    return;
+  }
 
   /* Température. On n'affiche un nombre QUE si on en a un : une valeur inventée
      sur un mur est pire qu'un tiret, et la raison dit quoi faire. */
   const bt = document.getElementById('blocTemp'), vt = document.getElementById('tempVal'), st = document.getElementById('tempSous');
   const T = MAISON.temperature || {};
+  void bt;
   if(vt && st){
     if(typeof T.valeur === 'number'){
       vt.textContent = Math.round(T.valeur * 10) / 10 + '°';
@@ -2318,7 +2329,14 @@ let fluxOuvert = true;
 function majHorsLigne(){
   const el = document.getElementById('horsligne');
   if(!el) return;
-  const perdu = !fluxOuvert || (Date.now() - derniereDonnee) > 11*60*1000;
+  /* 🐞 Vu sur la dalle le 11/09 : le bandeau criait alors que tout marchait.
+     `EventSource` lève `error` à CHAQUE reconnexion — y compris les normales,
+     et elles sont fréquentes. Le traiter comme une panne immédiate donne une
+     alerte qui se trompe, donc une alerte qu'on n'écoute plus.
+     On n'annonce donc la coupure que si le flux est tombé ET que les données
+     ont vraiment vieilli. La fraîcheur des données fait foi, pas le transport. */
+  const age = Date.now() - derniereDonnee;
+  const perdu = (!fluxOuvert && age > 90*1000) || age > 11*60*1000;
   el.hidden = !perdu;
   if(perdu){
     const d = new Date(derniereDonnee);

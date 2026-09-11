@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Relancer l'écran mural
+Comment=Revient au bento après être sorti du kiosque
+Exec=/home/remi/maison/outils/raspberry/relancer-ecran.sh
+Icon=view-refresh
+Terminal=false
+Categories=Utility;
