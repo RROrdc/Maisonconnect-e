@@ -101,6 +101,62 @@ const CAS_PICTOS = [
   ['', '', 'pas de nom, pas d’emoji'],
 ];
 
+/* ── Accueil a l'arrivee ────────────────────────────────────────────────────
+   Module PUR : rien a monter, donc on peut eprouver les cas tordus. */
+function testAccueil(t) {
+  const A = require('../../maison/accueil');
+  t.titre("Ce que l'ecran dit quand on rentre");
+
+  A.oublier();
+  const remi = A.phrase({ qui: ['Remi'], appellation: 'Monsieur', role: 'parent', heure: 19, graine: 0 });
+  t.dire(/^Bonjour Monsieur/.test(remi), 'Remi recoit son appellation', remi);
+
+  A.oublier();
+  const enfant = A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, graine: 0 });
+  t.dire(!/vous/i.test(enfant), 'un enfant est TUTOYE', enfant);
+
+  /* L'elision : « cours de Espagnol » trahit une phrase fabriquee des la
+     premiere ecoute. */
+  A.oublier();
+  let vu = '';
+  for (let i = 0; i < 12 && !/cours/.test(vu); i++) {
+    vu = A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, dernierCours: 'Espagnol', graine: i });
+  }
+  t.dire(!/cours de Espagnol/.test(vu), "elision devant une voyelle", vu);
+
+  /* Une matiere qui n'apprend rien ne merite pas d'etre citee. */
+  A.oublier();
+  let etude = false;
+  for (let i = 0; i < 12; i++) {
+    if (/cours/.test(A.phrase({ qui: ['Enora'], role: 'enfant', heure: 17, dernierCours: 'Étude', graine: i }))) etude = true;
+  }
+  t.dire(!etude, "« Etude » n'est jamais citee comme un cours");
+
+  /* LE defaut du premier jet : un contexte disponible supprimait toute
+     variation, et Martial entendait la meme phrase chaque soir. */
+  A.oublier();
+  const vues = new Set();
+  for (let i = 0; i < 14; i++) {
+    vues.add(A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, dernierCours: 'Physique', devoirs: 2, graine: i }));
+  }
+  t.dire(vues.size >= 4, 'la formule varie malgre un contexte disponible', vues.size + ' formulations');
+
+  /* A plusieurs, aucune touche personnelle : elle tomberait a cote pour l'un
+     des deux. */
+  A.oublier();
+  const duo = A.phrase({ qui: ['Martial', 'Enora'], heure: 17, dernierCours: 'Maths', devoirs: 3 });
+  t.dire(/Martial et Enora/.test(duo) && !/cours|devoir/.test(duo), 'a plusieurs, on nomme et on s arrete la', duo);
+
+  t.dire(A.phrase({ qui: [] }) === '', 'personne a saluer : rien a dire');
+  /* Une majuscule au milieu de la phrase trahit l'assemblage. */
+  A.oublier();
+  let tard = '';
+  for (let i = 0; i < 12 && !/fini tard/.test(tard); i++) {
+    tard = A.phrase({ qui: ['Enora'], role: 'enfant', heure: 21, graine: i });
+  }
+  t.dire(!/, [A-ZÀ-Ý]/.test(tard.replace(/, (Martial|Enora|Remi)/, '')), 'pas de majuscule au milieu', tard);
+}
+
 module.exports = async function (muet) {
   const t = A.compteur(); t.muet = muet;
 
@@ -228,6 +284,8 @@ module.exports = async function (muet) {
     t.dire((s >= recherche.SEUIL) === garde, `« ${plat} » → « ${titre} »`,
       `${Math.round(s * 100)} % — ${garde ? 'à garder' : 'à jeter'}`);
   }
+
+  testAccueil(t);
 
   return t;
 };

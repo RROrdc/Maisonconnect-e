@@ -27,7 +27,9 @@ const { creerMenu } = require('./menu');
 const { creerPresence } = require('./presence');
 const feries = require('./feries');
 const { Ecole } = require('./ecole');
-const Maison = require('./maison');   // musique AirPlay, température — voir maison/index.js
+const Maison = require('./maison');
+const accueil = require('./maison/accueil');
+const { JOURS: JOURS_SEMAINE } = require('./donnees/commun');
 const pertinence = require('./ecole/pertinence');
 const ecole = new Ecole();
 
@@ -771,19 +773,46 @@ app.post('/api/admin/dire', async (req, res) => {
    Rémi reçoit « Monsieur », les enfants leur prénom, et personne n'est traité
    comme un inconnu. Sans ça on aurait deux voix dans la maison, et ça
    s'entendrait (§ 2 quaterdecies). */
+/* Le contexte que l'écran connaît déjà : son emploi du temps, ce qu'il a à
+   faire, ce qu'on mange. On le RASSEMBLE ici, et `maison/accueil.js` choisit —
+   lui reste pur, donc testable sans rien monter. */
+function contexteAccueil(qui) {
+  const st = styleVocal(qui);
+  const ctx = { qui: [qui], role: st.roleInterlocuteur, appellation: st.appellation,
+                heure: new Date().getHours() };
+  try {
+    /* Le dernier cours terminé aujourd'hui : c'est de là qu'il ou elle rentre. */
+    if (ctx.role === 'enfant') {
+      const p = (donnees.lirePlannings() || {})[qui];
+      const jour = JOURS_SEMAINE[(new Date().getDay() + 6) % 7];
+      const creneaux = (p && p.semaine && p.semaine[jour]) || [];
+      const hhmm = new Date().toTimeString().slice(0, 5);
+      const passes = creneaux.filter((c) => (c.fin || c.h || '') <= hhmm);
+      if (passes.length) ctx.dernierCours = passes[passes.length - 1].quoi;
+    }
+  } catch { /* pas d'emploi du temps : on s'en passe */ }
+  try {
+    const m = meteoCache && meteoCache.valeur;
+    if (m && typeof m.temp === 'number') ctx.meteo = m.temp;
+  } catch { /* météo indisponible : sans objet */ }
+  try {
+    const menu = (donnees.lireMenu ? donnees.lireMenu() : []) || [];
+    const auj = new Date().toISOString().slice(0, 10);
+    const jour = menu.find((x) => x.date === auj);
+    if (jour && jour.soir) ctx.repasSoir = jour.soir;
+  } catch { /* menu vide : rien à annoncer */ }
+  try {
+    if (ctx.role !== 'enfant') {
+      const c = (donnees.lireCourses ? donnees.lireCourses() : []) || [];
+      ctx.courses = c.filter((x) => !x.pris).length;
+    }
+  } catch { /* liste indisponible */ }
+  return ctx;
+}
+
 function phraseAccueil(qui) {
-  /* Plusieurs personnes ensemble : on les nomme, sans tourner la phrase autour
-     d'un vouvoiement qui ne conviendrait pas à tout le monde. */
-  if (qui.length > 1) return `Bonjour ${qui.slice(0, -1).join(', ')} et ${qui[qui.length - 1]}.`;
-  const st = styleVocal(qui[0]);
-  if (st.appellation) return `Bonjour ${st.appellation}.`;
-  /* 🔑 On TUTOIE les enfants. C'est le choix assumé du § 2 quaterdecies, et il
-     se voit tout de suite à l'oral : « content de vous revoir » à Clovis sonne
-     comme si l'écran ne savait pas à qui il parle. */
-  const enfant = st.roleInterlocuteur === 'enfant';
-  return enfant
-    ? `Bonjour ${qui[0]}, content de te revoir.`
-    : `Bonjour ${qui[0]}, content de vous revoir.`;
+  if (qui.length > 1) return accueil.phrase({ qui });
+  return accueil.phrase(contexteAccueil(qui[0]));
 }
 
 async function annoncerArrivee(qui) {
