@@ -162,7 +162,13 @@ module.exports = async function (muet) {
     return A.ymd(f);
   };
 
-  const dansHuitJours = A.ymd(new Date(Date.now() + 8 * 864e5));
+  /* 🐞 4e piège, trouvé le 12/09 : « huit jours » compte AUJOURD'HUI. Le code
+     fait `for (i = 0; i < 8)`, donc la fenêtre s'arrête à aujourd'hui + 7 — et
+     le test visait + 8. Un marqueur « Les enfants » du 19 au 20 tombait alors
+     pile à cheval sur la limite : le contexte n'en montrait qu'un jour, ce qui
+     était JUSTE, et le test accusait le code.
+     Une borne de fenêtre se recopie du code, elle ne se réinvente pas. */
+  const dansHuitJours = A.ymd(new Date(Date.now() + 7 * 864e5));
   const aujourdhui = A.ymd(new Date());
   const longs = (etat.agenda || []).filter((e) => {
     const debut = e.jour || A.ymd(new Date(e.start));
