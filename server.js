@@ -102,6 +102,11 @@ const REGLAGES = {
   /* Accueil à l'arrivée. Une ligne par appareil : « adresse MAC | Prénom ».
      RIEN n'est écrit en base : l'état vit en mémoire et meurt avec le
      serveur — on ne fabrique pas un journal de présence des enfants. */
+  /* Quand il vaut 1, un membre SANS code ne peut plus entrer — y compris un
+     compte ajouté après coup. Tant qu'il vaut 0, l'amorçage reste ouvert :
+     c'est ce qui permet d'entrer la première fois, mais ça ne doit jamais
+     survivre à la pose des codes. */
+  acces_code_obligatoire: { env: '', defaut: '0' },
   arrivee_active: { env: '', defaut: '0' },
   arrivee_appareils: { env: '', defaut: '' },
   arrivee_absence_min: { env: '', defaut: '30' },
@@ -1407,10 +1412,59 @@ app.post('/api/appareil', (req, res) => {
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
 
+/* ── Freiner le forçage de code ──────────────────────────────────────────────
+   Un code à quatre chiffres, c'est dix mille possibilités : sans frein, on les
+   essaie toutes en quelques secondes, et poser des codes n'aurait servi à rien.
+   Trois choix, et le premier est le plus important :
+   • EN MÉMOIRE, jamais en base. Enregistrer « qui s'est trompé, quand » serait
+     un journal de plus sur la famille — le projet n'en fabrique pas (§ 2 vicies).
+     Le compteur meurt au redémarrage, ce qui n'aide personne à forcer : il
+     faudrait redémarrer le serveur pour le vider.
+   • Le délai DOUBLE. Cinq erreurs restent gratuites — un enfant qui tape mal ne
+     doit pas être puni — puis l'attente croît vite : 30 s, 1 min, 2 min… Après
+     une dizaine d'essais, forcer prendrait des années.
+   • On compte par PERSONNE ET par adresse : bloquer seulement la personne
+     laisserait un attaquant balayer tous les prénoms, et bloquer seulement
+     l'adresse punirait toute la maison pour une erreur. */
+const essaisCode = new Map();
+const ATTENTE_MAX = 15 * 60 * 1000;
+function freinCode(cle) {
+  const e = essaisCode.get(cle);
+  if (!e || e.rates < 5) return 0;
+  const attente = Math.min(ATTENTE_MAX, 30000 * Math.pow(2, e.rates - 5));
+  const reste = e.dernier + attente - Date.now();
+  return reste > 0 ? reste : 0;
+}
+function noterEssai(cle, reussi) {
+  if (reussi) return essaisCode.delete(cle);
+  const e = essaisCode.get(cle) || { rates: 0, dernier: 0 };
+  e.rates += 1; e.dernier = Date.now();
+  essaisCode.set(cle, e);
+  /* La table ne grandit pas indéfiniment : au-delà de 500 clés, on oublie les
+     plus anciennes. Un attaquant qui en créerait des milliers ferait tomber les
+     siennes en premier, pas celles de la famille. */
+  if (essaisCode.size > 500) {
+    const vieux = [...essaisCode.entries()].sort((a, b) => a[1].dernier - b[1].dernier);
+    for (const [k] of vieux.slice(0, 200)) essaisCode.delete(k);
+  }
+}
+
 app.post('/api/session', (req, res) => {
   try {
     const { personne, code } = req.body || {};
-    const p = donnees.verifierCode(personne, code);
+    const cle = String(personne || '?') + '|' + (req.ip || '?');
+    const reste = freinCode(cle);
+    if (reste > 0) {
+      /* On DIT combien de temps attendre : sans ça on croit son code faux et on
+         le change, ce qui est exactement la mauvaise réaction. */
+      return res.status(429).json({
+        error: `Trop d'essais. Réessaie dans ${Math.ceil(reste / 1000)} secondes.`,
+      });
+    }
+    const p = donnees.verifierCode(personne, code, {
+      exigerCode: config('acces_code_obligatoire') === '1',
+    });
+    noterEssai(cle, !!p);
     if (!p) return res.status(401).json({ error: 'Code incorrect.' });
     res.json({ jeton: donnees.creerSession(p.nom), moi: donnees.profil(p) });
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }

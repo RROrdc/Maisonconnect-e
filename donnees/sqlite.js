@@ -580,13 +580,17 @@ function definirCode(nom, code) {
   return { code: true };
 }
 
-function verifierCode(nom, code) {
+function verifierCode(nom, code, options = {}) {
   const p = un(`SELECT * FROM personnes WHERE nom = ? AND actif = 1`, nom);
   if (!p) return null;
   /* Un membre SANS code peut entrer : c'est l'amorçage (personne n'a de code au
      départ), et c'est déjà le niveau d'ouverture de l'app sur le réseau local.
-     Le tableau de bord affiche un avertissement tant qu'il en reste. */
-  if (!p.code_hash) return p;
+     Le tableau de bord affiche un avertissement tant qu'il en reste.
+     ⚠️ Ce trou se referme tout seul quand chacun a son code — MAIS il se
+     rouvrirait au prochain membre ajouté, en silence. D'où le réglage
+     `acces_code_obligatoire` : une fois posé, un compte sans code n'entre plus,
+     même neuf. Indispensable avant d'envisager la moindre exposition. */
+  if (!p.code_hash) return options.exigerCode ? null : p;
   if (!code) return null;
   const essai = crypto.scryptSync(String(code), p.code_sel, 64);
   const attendu = Buffer.from(p.code_hash, 'hex');
