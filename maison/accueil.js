@@ -98,9 +98,6 @@ function touches({ role, heure, dernierCours, prochainCours, meteo, repasSoir,
      pas. « N'oublie pas la danse » est un ordre déguisé ; « il y a danse tout à
      l'heure » dit la même chose sans peser (règle n° 2). */
   if (prochainCours) out.push(`il y a ${prochainCours} tout à l'heure`);
-  /* 🔴 Les DEVOIRS ont été retirés d'ici le 12/09. Ils sont sur le mur, dans
-     l'app et dans le rappel du soir : les jeter à un enfant qui passe la porte
-     ne l'informe de rien et transforme l'accueil en convocation. */
   if (repasSoir) out.push(`ce soir, ${repasSoir}`);
 
   /* ── Ce qui parle aux ADULTES ──────────────────────────────────────────
@@ -128,6 +125,23 @@ function touches({ role, heure, dernierCours, prochainCours, meteo, repasSoir,
     else if (meteo <= 3) out.push(conjuguer('il ne fait pas chaud dehors', tutoie));
   }
   if (heure >= 20) out.push(conjuguer('{tu_as} fini tard', tutoie));
+  return out;
+}
+
+/* Touches LÉGÈRES — mentionnées de temps en temps, jamais mises en avant.
+   Rémi, 12/09 : « pour les enfants, des fois tu peux leur parler de leur
+   devoir ». Ce qui pesait n'était donc pas le sujet, c'était le DÉCOMPTE SEC
+   répété à chaque retour : « tu as 3 devoirs pour bientôt » est une convocation.
+   Deux différences avec les touches ordinaires, et elles font tout :
+   • aucun chiffre — le détail est sur le mur, à deux mètres ;
+   • poids 1 au lieu de 3, donc environ un retour sur huit. C'est « des fois ». */
+function touchesLegeres({ role, devoirs }, tutoie) {
+  const out = [];
+  if (role === 'enfant' && devoirs > 0) {
+    out.push(tutoie
+      ? 'du travail t’attend, quand tu voudras'
+      : 'du travail vous attend, quand vous voudrez');
+  }
   return out;
 }
 
@@ -179,9 +193,10 @@ function phrase(ctx = {}) {
      seulement, retirer les devoirs a fait tomber Martial à trois formules — une
      répétition un soir sur trois, attrapée par le test le 12/09. Quatre
      génériques rendent la variété sans noyer ce qu'on sait de vrai. */
+  const leger = touchesLegeres({ ...ctx, heure }, tutoie);
   const pool = dispo.length
-    ? [...dispo, ...dispo, ...dispo, ...gen.slice(0, 4), ...flat]
-    : [...gen, ...flat];
+    ? [...dispo, ...dispo, ...dispo, ...gen.slice(0, 4), ...leger, ...flat]
+    : [...gen, ...leger, ...flat];
   const suite = choisir(pool, 's:' + nom, ctx.graine);
 
   /* Une touche qui est déjà une question se suffit ; sinon on la rattache par

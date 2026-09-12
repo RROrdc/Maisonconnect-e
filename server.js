@@ -864,6 +864,31 @@ async function annoncerArrivee(qui) {
   diffuser('parler', { url: r.ok ? r.url : null, texte });
 }
 
+/* Banc d'essai de l'accueil — même principe que celui de la voix (§ 2
+   quaterdecies). Sans lui, éprouver une formulation demanderait de sortir de
+   chez soi une demi-heure, et l'on jugerait une imitation reconstruite à la
+   main plutôt que le vrai chemin. Ici c'est `phraseAccueil` qui parle, avec le
+   contexte réel de la maison. */
+app.post('/api/admin/accueil/essai', async (req, res) => {
+  try {
+    const qui = [].concat((req.body && req.body.qui) || []).filter(Boolean);
+    if (!qui.length) return res.status(400).json({ ok: false, raison: 'personne à saluer' });
+    const textes = [];
+    for (let i = 0; i < Math.min(5, Number(req.body.combien) || 1); i++) {
+      const texte = phraseAccueil(qui);
+      textes.push(texte);
+      if (req.body.muet) continue;
+      const r = await Maison.parole.dire(texte, {
+        voix: config('voix_say') || undefined,
+        debit: Number(config('voix_say_debit')) || undefined,
+      });
+      diffuser('parler', { url: r.ok ? r.url : null, texte });
+      if (i < 4) await new Promise((x) => setTimeout(x, 6500));
+    }
+    res.json({ ok: true, textes });
+  } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
+});
+
 app.get('/api/admin/arrivee', (_req, res) => {
   try {
     res.json({

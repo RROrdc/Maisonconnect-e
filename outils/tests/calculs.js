@@ -153,13 +153,25 @@ function testAccueil(t) {
      que la corvee revienne sans que personne ne s'en apercoive. */
   A.oublier();
   let charge = '';
-  for (let i = 0; i < 24 && !charge; i++) {
-    for (const c of [
-      A.phrase({ qui: ['Amandine'], role: 'parent', heure: 18, courses: 13, graine: i }),
-      A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, devoirs: 3, dernierCours: 'Physique', graine: i }),
-    ]) if (/article|liste de courses|devoir|n.oublie/i.test(c)) charge = c;
+  for (let i = 0; i < 40 && !charge; i++) {
+    const c = A.phrase({ qui: ['Amandine'], role: 'parent', heure: 18, courses: 13, graine: i });
+    if (/article|liste de courses|n.oublie/i.test(c)) charge = c;
   }
-  t.dire(!charge, "aucune tache n'est annoncee a l'arrivee", charge || 'aucune sur 48 phrases');
+  t.dire(!charge, "aucune corvee n'est annoncee a l'arrivee", charge || 'aucune sur 40 phrases');
+
+  /* Les devoirs, EUX, peuvent revenir — « des fois » (Remi, 12/09). Deux
+     conditions : jamais de decompte chiffre, et une mention rare. Un test qui
+     se contenterait de « ca apparait » laisserait revenir la convocation. */
+  A.oublier();
+  let vus2 = 0, chiffre = '';
+  for (let i = 0; i < 40; i++) {
+    const p = A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, devoirs: 3,
+      dernierCours: 'Physique', graine: i });
+    if (/travail/.test(p)) vus2++;
+    if (/\d+ devoir|3 devoir/.test(p)) chiffre = p;
+  }
+  t.dire(vus2 > 0 && vus2 <= 14, 'le travail est evoque parfois, pas a chaque retour', vus2 + '/40');
+  t.dire(!chiffre, 'jamais de decompte de devoirs a la porte', chiffre || 'aucun chiffre');
 
   /* Ce qui remplace : une bonne nouvelle, pas une banalite de plus. */
   A.oublier();
