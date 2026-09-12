@@ -2495,6 +2495,42 @@ function majHorsLigne(){
    prochain rafraîchissement de cinq minutes. */
 setInterval(majHorsLigne, 5000);
 
+/* ── LE RETOUR À LA VIE ─────────────────────────────────────────────────────
+   🔴 Vu le 12/09 : le Wi-Fi du Raspberry a lâché seize minutes, puis le réseau
+   est revenu — et l'écran est resté mort. Il a fallu relancer la page à la main.
+   Sur un mur qu'on ne touche jamais, c'est inacceptable : chaque hoquet du
+   Wi-Fi imposerait d'aller chercher un clavier.
+
+   Pourquoi la reconnexion seule ne suffit pas : `EventSource` se rebranche tout
+   seul TANT QU'IL EST EN VIE, et on le relance nous-mêmes s'il se ferme. Mais
+   il peut rester indéfiniment « en cours de connexion » après une coupure
+   franche, sans jamais se fermer ni s'ouvrir — donc aucun de nos deux filets ne
+   se déclenche, et l'écran attend pour toujours.
+
+   Le seul geste qui remet TOUT d'aplomb (flux, données, état, minuteurs) est de
+   recharger. C'est brutal, donc encadré par trois conditions :
+   • les données ont vraiment vieilli (le même critère que le bandeau, qui a
+     déjà coûté deux faux positifs le 11/09) ;
+   • le serveur RÉPOND de nouveau — sans ça on rechargerait en boucle dans le
+     vide pendant toute une panne, et on verrait une page blanche au lieu du
+     bandeau qui explique ;
+   • jamais plus d'une fois par quart d'heure. */
+let dernierSauvetage = 0;
+async function sauverEcran(){
+  const age = Date.now() - derniereDonnee;
+  if(age < 7*60*1000) return;                      // pas encore une vraie coupure
+  if(Date.now() - dernierSauvetage < 15*60*1000) return;
+  try{
+    /* `cache:'no-store'` : sans ça le navigateur peut resservir une réponse
+       gardée et nous faire croire que le serveur est revenu. */
+    const r = await fetch('/api/health?t=' + Date.now(), {cache:'no-store'});
+    if(!r.ok) return;                               // serveur toujours absent : on attend
+    dernierSauvetage = Date.now();
+    location.reload();
+  }catch(e){ /* réseau encore coupé : le bandeau reste, c'est lui qui informe */ }
+}
+setInterval(sauverEcran, 60*1000);
+
 /* Reprendre tout de suite, sans attendre le cycle de cinq minutes. Le bouton
    DIT ce qu'il a trouvé : un bouton dont on ignore l'effet ne se réappuie pas. */
 async function testerConnexion(){
