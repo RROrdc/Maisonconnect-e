@@ -107,6 +107,11 @@ const REGLAGES = {
   arrivee_absence_min: { env: '', defaut: '30' },
   arrivee_silence_de: { env: '', defaut: '22' },
   arrivee_silence_a: { env: '', defaut: '7' },
+  /* Compliments à l'arrivée. Vides par défaut, et réservés aux prénoms listés :
+     un compliment adressé à quelqu'un qui ne l'a pas demandé met mal à l'aise,
+     et devant des invités plus encore. Une phrase par ligne. */
+  accueil_compliments_pour: { env: '', defaut: '' },
+  accueil_compliments: { env: '', defaut: '' },
   /* Enceinte AirPlay vers laquelle le son revient tout seul quand rien ne joue.
      Vide = on ne touche jamais à la sortie. */
   musique_enceinte_defaut: { env: '', defaut: '' },
@@ -630,6 +635,21 @@ const enListe = (cle, nom) => String(config(cle) || '').split(',')
      figurent pas dans la table des membres — ils ne sont dans la maison qu'un
      week-end sur deux — donc leur rôle est introuvable. On les reconnaît via le
      réglage `garde_alternes`, à défaut ils seraient traités comme des adultes. */
+/* L'appellation était UNE valeur globale (« Monsieur ») pour une LISTE de
+   personnes : ajouter Amandine lui donnait « Monsieur ». Chaque ligne peut
+   désormais porter la sienne — « Amandine|Madame » — et une ligne sans barre
+   garde l'appellation générale. Rétrocompatible : rien à ressaisir. */
+function appellationDe(personne) {
+  const cible = String(personne || '').trim().toLowerCase();
+  for (const ligne of String(config('voix_appellation_pour') || '').split(/[\n,;]/)) {
+    const [nom, titre] = ligne.split('|');
+    if (String(nom || '').trim().toLowerCase() === cible && cible) {
+      return (titre || '').trim() || config('voix_appellation') || '';
+    }
+  }
+  return '';
+}
+
 function styleVocal(personne) {
   const membre = donnees.listeMembres().find((m) => m.nom === personne);
   const role = (membre && membre.role)
@@ -637,7 +657,7 @@ function styleVocal(personne) {
   return {
     style: config('voix_personnalite'),
     humour: config('voix_humour'),
-    appellation: enListe('voix_appellation_pour', personne) ? config('voix_appellation') : '',
+    appellation: appellationDe(personne),
     interlocuteur: personne,
     roleInterlocuteur: role,
   };
@@ -801,12 +821,30 @@ function contexteAccueil(qui) {
     const jour = menu.find((x) => x.date === auj);
     if (jour && jour.soir) ctx.repasSoir = jour.soir;
   } catch { /* menu vide : rien à annoncer */ }
+  /* 🔴 Les courses restantes étaient calculées ici jusqu'au 12/09. Retirées :
+     annoncer « il reste 13 articles » à quelqu'un qui rentre, c'est lui tendre
+     une corvée sur le pas de la porte (voir l'en-tête de maison/accueil.js).
+     À la place, une BONNE nouvelle que le module attendait depuis le début sans
+     que personne ne la lui donne : l'anniversaire qui approche. C'est la seule
+     chose qu'on regrette vraiment d'avoir oubliée. */
   try {
-    if (ctx.role !== 'enfant') {
-      const c = (donnees.lireCourses ? donnees.lireCourses() : []) || [];
-      ctx.courses = c.filter((x) => !x.pris).length;
+    if (ctx.role !== 'enfant' && donnees.anniversairesDans) {
+      const jours = Math.max(0, Number(config('rappels_anniversaire_jours')) || 7);
+      const a = (donnees.anniversairesDans(jours) || [])[0];
+      if (a && a.nom) {
+        ctx.anniversaire = `de ${a.nom}`;
+        ctx.anniversaireAujourdhui =
+          (donnees.anniversairesDans(0) || []).some((x) => x.nom === a.nom);
+      }
     }
-  } catch { /* liste indisponible */ }
+  } catch { /* pas d'anniversaire connu : sans objet */ }
+  /* Compliments — réservés aux personnes désignées, jamais génériques. */
+  try {
+    if (enListe('accueil_compliments_pour', qui)) {
+      ctx.compliments = String(config('accueil_compliments') || '')
+        .split('\n').map((s) => s.trim()).filter(Boolean);
+    }
+  } catch { /* aucun compliment configuré */ }
   return ctx;
 }
 

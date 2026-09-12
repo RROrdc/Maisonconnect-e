@@ -147,6 +147,45 @@ function testAccueil(t) {
   const duo = A.phrase({ qui: ['Martial', 'Enora'], heure: 17, dernierCours: 'Maths', devoirs: 3 });
   t.dire(/Martial et Enora/.test(duo) && !/cours|devoir/.test(duo), 'a plusieurs, on nomme et on s arrete la', duo);
 
+  /* 🔴 ON ACCUEILLE, ON NE CHARGE PAS (Remi, 12/09). On passe EXPRES les champs
+     retires : un appelant qui les envoie encore ne doit pas les faire ressortir.
+     Sans ce controle, il suffirait de remettre trois lignes dans touches() pour
+     que la corvee revienne sans que personne ne s'en apercoive. */
+  A.oublier();
+  let charge = '';
+  for (let i = 0; i < 24 && !charge; i++) {
+    for (const c of [
+      A.phrase({ qui: ['Amandine'], role: 'parent', heure: 18, courses: 13, graine: i }),
+      A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, devoirs: 3, dernierCours: 'Physique', graine: i }),
+    ]) if (/article|liste de courses|devoir|n.oublie/i.test(c)) charge = c;
+  }
+  t.dire(!charge, "aucune tache n'est annoncee a l'arrivee", charge || 'aucune sur 48 phrases');
+
+  /* Ce qui remplace : une bonne nouvelle, pas une banalite de plus. */
+  A.oublier();
+  let anniv = '';
+  for (let i = 0; i < 14 && !anniv; i++) {
+    const p = A.phrase({ qui: ['Amandine'], role: 'parent', heure: 18, anniversaire: 'de Clovis', graine: i });
+    if (/anniversaire/.test(p)) anniv = p;
+  }
+  t.dire(/bientot l.anniversaire de Clovis|bient.t l.anniversaire de Clovis/.test(anniv),
+    "un anniversaire proche est annonce, et dans un francais correct", anniv);
+
+  /* Compliments : ils sortent pour qui en a, et l'appellation ALTERNE avec le
+     prenom — « des fois bonjour Madame » (Remi, 12/09). Une appellation dite a
+     chaque fois sonne comme un automate. */
+  A.oublier();
+  const flat = ['vous etes superbe', 'vous gerez tout d une main de maitre'];
+  const dits = new Set(), noms = new Set();
+  for (let i = 0; i < 16; i++) {
+    const p = A.phrase({ qui: ['Amandine'], role: 'parent', appellation: 'Madame',
+      heure: 18, compliments: flat, graine: i });
+    if (flat.some((f) => p.includes(f))) dits.add(p);
+    noms.add(/Madame/.test(p) ? 'titre' : 'prenom');
+  }
+  t.dire(dits.size > 0, 'un compliment est prononce pour qui en a', [...dits][0] || '(aucun)');
+  t.dire(noms.size === 2, "l'appellation alterne avec le prenom", [...noms].join(' + '));
+
   t.dire(A.phrase({ qui: [] }) === '', 'personne a saluer : rien a dire');
   /* Une majuscule au milieu de la phrase trahit l'assemblage. */
   A.oublier();

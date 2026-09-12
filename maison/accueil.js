@@ -7,13 +7,24 @@
    répondeur. Une salutation identique dix fois de suite cesse d'être une
    attention et devient un bruit qu'on n'entend plus.
 
-   TROIS RÈGLES, dans cet ordre :
+   QUATRE RÈGLES, dans cet ordre :
    1. LE NOM D'ABORD, toujours. C'est la seule partie qui compte vraiment, et
       c'est elle qui doit survivre si la phrase est coupée par une porte qui
       claque.
-   2. UNE SEULE touche en plus. Deux, et l'écran devient bavard — c'est le
+   2. 🔴 ON ACCUEILLE, ON NE CHARGE PAS. Aucune tâche, aucun décompte de ce qui
+      reste à faire. « Il reste 13 articles sur la liste de courses » à quelqu'un
+      qui rentre du travail n'est pas un accueil : c'est une corvée tendue sur le
+      pas de la porte, et ça s'entend comme un reproche.
+      Signalé par Rémi le 12/09 — « pas hyper positif, et ça met de la charge
+      mentale ». Il a raison, et le même défaut visait les enfants en pire :
+      « tu as trois devoirs pour bientôt » à un collégien qui rentre.
+      ⚠️ Ce n'est pas une perte d'information : les courses sont sur le mur, les
+      devoirs ont leur panneau et leur rappel du soir. Le répéter à l'arrivée,
+      c'est le dire deux fois — et gâcher le seul moment qui n'appartenait
+      qu'à la personne qui rentre.
+   3. UNE SEULE touche en plus. Deux, et l'écran devient bavard — c'est le
       « le fait d'abord, l'esprit après, jamais à la place » du § 2 quaterdecies.
-   3. LE CONTEXTE AVANT LE HASARD. « Ton cours de maths s'est bien passé ? » vaut
+   4. LE CONTEXTE AVANT LE HASARD. « Ton cours de maths s'est bien passé ? » vaut
       mieux que « belle journée » parce qu'on sait que c'est vrai. Le générique
       ne sert que lorsqu'on n'a rien de précis à dire.
 
@@ -39,6 +50,8 @@ const GENERIQUES = [
   'la maison {est} prête',
   'bonne fin de journée',
   'tout est en ordre ici',
+  'bienvenue à la maison',
+  'quel plaisir de {te} revoir',
 ];
 
 const MATIERES_COURTES = /^(étude|permanence|vie de classe|cantine|repas|pause)$/i;
@@ -65,8 +78,11 @@ function choisir(liste, cle, graine) {
 
 /* Les touches de contexte, de la plus parlante à la plus banale. On rend la
    PREMIÈRE qui s'applique : celle qui prouve qu'on sait de quoi on parle. */
-function touches({ role, heure, dernierCours, prochainCours, meteo, devoirs, repasSoir,
-                   agendaDemain, anniversaire, courses }, tutoie) {
+/* ⚠️ `devoirs` et `courses` ne figurent plus ici — délibérément. Un appelant qui
+   les passe encore ne casse rien : ils sont simplement ignorés, et c'est cette
+   garantie que le test vérifie. */
+function touches({ role, heure, dernierCours, prochainCours, meteo, repasSoir,
+                   agendaDemain, anniversaire, anniversaireAujourdhui }, tutoie) {
   const out = [];
   const enfant = role === 'enfant';
 
@@ -78,16 +94,13 @@ function touches({ role, heure, dernierCours, prochainCours, meteo, devoirs, rep
     const de = /^[aeiouyàâéèêëîïôöûü]/i.test(dernierCours) ? "d’" : 'de ';
     out.push(conjuguer(`{ton} cours ${de}${dernierCours} s'est bien passé ?`, tutoie));
   }
-  /* Une activité qui approche vaut mieux qu'une banalité : elle est utile. */
-  if (prochainCours) {
-    out.push(conjuguer(`n'oublie pas ${prochainCours}`, tutoie)
-      .replace('n\'oublie pas', tutoie ? 'n’oublie pas' : 'n’oubliez pas'));
-  }
-  if (enfant && devoirs > 0) {
-    out.push(devoirs === 1
-      ? conjuguer('{tu_as} un devoir pour bientôt', tutoie)
-      : conjuguer(`{tu_as} ${devoirs} devoirs pour bientôt`, tutoie));
-  }
+  /* Une activité qui approche est utile — mais on l'ANNONCE, on ne la commande
+     pas. « N'oublie pas la danse » est un ordre déguisé ; « il y a danse tout à
+     l'heure » dit la même chose sans peser (règle n° 2). */
+  if (prochainCours) out.push(`il y a ${prochainCours} tout à l'heure`);
+  /* 🔴 Les DEVOIRS ont été retirés d'ici le 12/09. Ils sont sur le mur, dans
+     l'app et dans le rappel du soir : les jeter à un enfant qui passe la porte
+     ne l'informe de rien et transforme l'accueil en convocation. */
   if (repasSoir) out.push(`ce soir, ${repasSoir}`);
 
   /* ── Ce qui parle aux ADULTES ──────────────────────────────────────────
@@ -97,12 +110,16 @@ function touches({ role, heure, dernierCours, prochainCours, meteo, devoirs, rep
      pas la conversation. */
   if (!enfant) {
     /* Un anniversaire qui approche est la seule chose qu'on regrette vraiment
-       d'avoir oubliée. Elle passe donc avant le reste. */
-    if (anniversaire) out.unshift(`c'est l'anniversaire ${anniversaire}`);
+       d'avoir oubliée — et c'est une bonne nouvelle, pas une corvée. Elle passe
+       donc avant le reste. */
+    if (anniversaire) {
+      out.unshift(anniversaireAujourdhui
+        ? `c'est l'anniversaire ${anniversaire} aujourd'hui`
+        : `c'est bientôt l'anniversaire ${anniversaire}`);
+    }
     if (agendaDemain) out.push(`demain, ${agendaDemain}`);
-    /* Les courses seulement s'il y en a beaucoup : « il reste deux articles »
-       n'aide personne. */
-    if (courses >= 8) out.push(`il reste ${courses} articles sur la liste de courses`);
+    /* 🔴 Les COURSES ont été retirées d'ici le 12/09, pour la raison écrite en
+       tête du fichier. La liste est sur le mur, à deux mètres. */
   }
   /* La météo seulement si elle mérite d'être signalée : « il fait 14 degrés »
      n'apprend rien à quelqu'un qui vient de traverser la rue. */
@@ -130,9 +147,14 @@ function phrase(ctx = {}) {
   const tutoie = ctx.role === 'enfant';
   const appel = ctx.appellation || nom;
 
-  const debut = ctx.appellation
-    ? `${choisir(ACCUEIL_VOUS, 'd:' + nom, ctx.graine)} ${appel}`
-    : `${choisir(tutoie ? ACCUEIL : ACCUEIL_VOUS, 'd:' + nom, ctx.graine)} ${appel}`;
+  /* « Et des fois bonjour Madame » (Rémi, 12/09). Une appellation employée à
+     CHAQUE fois finit par sonner comme un automate ; alternée avec le prénom,
+     elle redevient une marque d'égard. L'assistant vocal, lui, n'alterne pas :
+     là on répond à une question, ici on accueille quelqu'un. */
+  const nommer = ctx.appellation
+    ? choisir([ctx.appellation, nom], 'n:' + nom, ctx.graine)
+    : appel;
+  const debut = `${choisir(tutoie ? ACCUEIL : ACCUEIL_VOUS, 'd:' + nom, ctx.graine)} ${nommer}`;
 
   /* 🐞 Premier jet : « le contexte s'il existe, sinon le générique ». Résultat,
      Martial entendait la même phrase sur son cours tous les soirs — le contexte
@@ -142,7 +164,24 @@ function phrase(ctx = {}) {
      une fois sur trois on dit simplement bonjour. */
   const gen = GENERIQUES.map((g) => conjuguer(g, tutoie));
   const dispo = touches({ ...ctx, heure }, tutoie);
-  const pool = dispo.length ? [...dispo, ...dispo, ...gen.slice(0, 2)] : gen;
+
+  /* Compliments — demandés par Rémi le 12/09 (« vous êtes en beauté aujourd'hui,
+     vous gérez d'une main de maître »).
+     🔑 Ils ne sont JAMAIS génériques : le serveur ne les fournit que pour les
+     personnes explicitement désignées dans les réglages. Dire « vous êtes
+     superbe » à un enfant, ou à quelqu'un qui ne l'a pas demandé, sonnerait
+     faux — exactement le bug d'Amandine appelée « Monsieur » (§ 2 quaterdecies).
+     Ils sont pris tels quels, sans conjugaison : c'est du texte écrit à la main
+     dans /admin/, et personne n'a envie qu'un automate retouche un compliment. */
+  const flat = [].concat(ctx.compliments || []).filter((x) => typeof x === 'string' && x.trim());
+
+  /* Le contexte pèse TROIS fois, mais ne monopolise pas : avec deux génériques
+     seulement, retirer les devoirs a fait tomber Martial à trois formules — une
+     répétition un soir sur trois, attrapée par le test le 12/09. Quatre
+     génériques rendent la variété sans noyer ce qu'on sait de vrai. */
+  const pool = dispo.length
+    ? [...dispo, ...dispo, ...dispo, ...gen.slice(0, 4), ...flat]
+    : [...gen, ...flat];
   const suite = choisir(pool, 's:' + nom, ctx.graine);
 
   /* Une touche qui est déjà une question se suffit ; sinon on la rattache par
