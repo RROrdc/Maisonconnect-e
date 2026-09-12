@@ -47,11 +47,20 @@ async function api(chemin, methode = 'GET', corps, entetes = {}) {
   return { statut: r.status, j: await r.json().catch(() => ({})) };
 }
 
-/* Session d'administration. Tant que personne n'a de code, l'amorçage laisse
-   entrer sans code — c'est documenté et volontaire. */
+/* Session d'administration.
+   ⚠️ Jusqu'au 12/09 ces tests entraient SANS code : l'amorçage le permettait
+   tant que personne n'en avait. Depuis que chacun a le sien, il faut le donner.
+   Le code passe par l'environnement et jamais par un fichier du dépôt — un
+   secret qui traîne dans le code finit publié (§ 2 sexdecies). */
 async function session(personne = 'Rémi') {
-  const r = await api('/api/session', 'POST', { personne, code: '' });
-  if (r.statut !== 200 || !r.j.jeton) throw new Error(`Session refusée pour ${personne}.`);
+  const code = process.env.MAISON_CODE || '';
+  const r = await api('/api/session', 'POST', { personne, code });
+  if (r.statut === 429) throw new Error(`Trop d'essais : ${r.j.error || ''}`.trim());
+  if (r.statut !== 200 || !r.j.jeton) {
+    throw new Error(`Session refusée pour ${personne}. `
+      + 'Pose MAISON_CODE=<son code> avant de lancer les tests '
+      + '(les codes sont dans ~/codes-maison.txt sur le serveur).');
+  }
   const entetes = { 'x-session': r.j.jeton };
   return {
     entetes, moi: r.j.moi,
