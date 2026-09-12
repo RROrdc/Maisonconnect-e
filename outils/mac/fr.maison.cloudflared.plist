@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Tunnel Cloudflare — accès à l'app depuis l'extérieur, sans ouvrir de port.
+
+  ⚠️ LaunchAGENT, et non Daemon comme le serveur : le tunnel lit ses
+  identifiants dans ~/.cloudflared, qui appartient à la session de l'utilisateur.
+  Un Daemon tournant avant l'ouverture de session ne les verrait pas.
+  Conséquence à connaître : après un redémarrage, le tunnel attend le
+  déverrouillage — la même limite que FileVault impose déjà au reste (§ 2
+  tricies). L'écran mural, lui, passe par le réseau local et n'est pas concerné.
+
+  Installation :
+    cp outils/mac/fr.maison.cloudflared.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/fr.maison.cloudflared.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.maison.cloudflared</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/remi/bin/cloudflared</string>
+    <string>--no-autoupdate</string>
+    <string>tunnel</string>
+    <string>run</string>
+    <string>maison</string>
+  </array>
+
+  <!-- Le tunnel doit revenir tout seul : une coupure réseau ne doit pas
+       demander qu'on vienne le relancer à la main. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Sans cette pause, un échec répété (identifiants absents, réseau coupé)
+       relancerait le processus en boucle serrée. -->
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/remi/Library/Logs/maison-cloudflared.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/remi/Library/Logs/maison-cloudflared.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/remi</string>
+</dict>
+</plist>
