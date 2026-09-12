@@ -1450,6 +1450,16 @@ const REGLAGES_CONNUS = [
    "L'écran se tait la nuit. 22 = plus rien à partir de vingt-deux heures."],
   ['arrivee_silence_a', 'Silence jusqu’à (heure)', 'texte',
    "7 = la parole revient à sept heures."],
+  ['accueil_compliments_pour', 'Compliments à l’arrivée — pour qui', 'texte',
+   "Prénoms séparés par une virgule. Vide = personne, et c'est le défaut. "
+   + "Un compliment n'a de sens que pour qui l'a demandé : « vous êtes superbe » adressé "
+   + "à un enfant, ou lâché devant des invités, met tout le monde mal à l'aise. "
+   + "Même principe que l'appellation « Monsieur », qui ne vaut que pour les personnes nommées."],
+  ['accueil_compliments', 'Les compliments', 'zone',
+   "Une phrase par ligne, écrite comme tu veux la faire dire — rien n'est reformulé. "
+   + "Elle suit le prénom : « Bonjour Madame, » + ta phrase. "
+   + "Exemples : « vous êtes en beauté aujourd'hui », « vous gérez tout d'une main de maître ». "
+   + "Elles se mêlent aux autres formules, donc elles ne reviennent pas à chaque fois."],
 
   ['temperature_piece', 'Pièce affichée en grand sur le mur', 'texte',
    "Nom de la pièce Netatmo mise en avant sur l'écran mural — « Salle à manger », par exemple. "
@@ -1559,9 +1569,13 @@ VUES.reglages = ()=>`
       <div class="ch"><label class="ch">…pour qui</label>
         <input id="v_appellation_pour" placeholder="Rémi">
         <div style="color:var(--faint);font-size:12.5px;margin-top:6px">
-          Prénoms séparés par des virgules. Les <b>autres sont appelés par leur prénom</b> — sans
-          cette liste, « Monsieur » était servi à tout le monde, y compris à Amandine. Les
-          <b>enfants n'y ont jamais droit</b>, quel que soit ce réglage.</div></div>
+          Prénoms séparés par des virgules ou un par ligne. Les <b>autres sont appelés par leur
+          prénom</b> — sans cette liste, « Monsieur » était servi à tout le monde, y compris à
+          Amandine. Les <b>enfants n'y ont jamais droit</b>, quel que soit ce réglage.<br>
+          Une appellation <b>propre à quelqu'un</b> s'écrit après une barre verticale :
+          « <code>Amandine|Madame</code> ». Sans barre, c'est l'appellation générale ci-dessus qui
+          s'applique. À l'<b>arrivée</b>, elle alterne avec le prénom — dite à chaque fois, elle
+          finirait par sonner comme un automate.</div></div>
 
       <div class="ch"><label class="ch">Mot d'éveil</label>
         <input id="v_eveil" value="jarvis" placeholder="jarvis">
