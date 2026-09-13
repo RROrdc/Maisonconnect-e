@@ -38,7 +38,11 @@ const vraiment = args.includes('--vraiment');
 const tous = args.includes('--tous');
 const iMax = args.indexOf('--max');
 const MAX = iMax >= 0 ? Number(args[iMax + 1]) || 0 : 0;
-const lien = args.find((a) => !a.startsWith('--'));
+/* 🐞 La VALEUR d'une option n'est pas un lien : sans ce filtre, « --max 200 »
+   faisait chercher un album nommé « 200 », qui échouait bruyamment au milieu
+   des vrais. */
+const valeursOptions = new Set([args[iMax + 1], args[iDossier + 1]].filter(Boolean));
+const lien = args.find((a) => !a.startsWith('--') && !valeursOptions.has(a));
 
 const ko = (n) => Math.round(n / 1024) + ' Ko';
 
