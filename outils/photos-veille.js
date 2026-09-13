@@ -50,7 +50,7 @@ async function essayer(unLien) {
   const g = a.photos[0];
   console.log(`    la plus grande dérivée : ${g.largeur}×${g.hauteur}, ${ko(g.octets)}`);
   console.log(`    poids total à la source : ${Math.round(poids / 1024 / 1024)} Mo`);
-  console.log(`    après redimensionnement (estimé) : ~${Math.round(a.photos.length * 0.2)} Mo`);
+  console.log(`    après redimensionnement (estimé) : ~${Math.min(Math.round(poids/1024/1024), Math.round(a.photos.length * 0.2))} Mo`);
   return a;
 }
 
@@ -104,7 +104,7 @@ async function depuisDossier(racine, sharp) {
   }
   const poids = photos.reduce((t, p) => t + p.octets, 0);
   console.log(`    poids à la source : ${Math.round(poids / 1024 / 1024)} Mo`);
-  console.log(`    après redimensionnement (estimé) : ~${Math.round(photos.length * 0.2)} Mo`);
+  console.log(`    après redimensionnement (estimé) : ~${Math.min(Math.round(poids/1024/1024), Math.round(photos.length * 0.2))} Mo`);
 
   if (!vraiment) return 0;
 
