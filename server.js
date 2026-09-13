@@ -107,6 +107,10 @@ const REGLAGES = {
      c'est ce qui permet d'entrer la première fois, mais ça ne doit jamais
      survivre à la pose des codes. */
   acces_code_obligatoire: { env: '', defaut: '0' },
+  /* Domaine HTTPS sur lequel Face ID est possible. Une passkey est liée au
+     domaine qui l'a créée : sans lui, rien n'est proposé — plutôt qu'un
+     bouton qui échouerait. */
+  passkey_domaine: { env: '', defaut: '' },
   arrivee_active: { env: '', defaut: '0' },
   arrivee_appareils: { env: '', defaut: '' },
   arrivee_absence_min: { env: '', defaut: '30' },
@@ -1409,6 +1413,138 @@ app.post('/api/appareil', (req, res) => {
     const connue = donnees.lirePersonnes().some((p) => p.nom === personne);
     if (!connue) return res.status(400).json({ error: 'Personne inconnue.' });
     res.json(donnees.enrolerAppareil({ jeton, personne, nom }));
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Face ID / Touch ID — POUR L'APP FAMILLE UNIQUEMENT.
+
+   Décision de Rémi le 13/09 : « uniquement pour l'app ». Le back-office garde
+   son code — on y va rarement, depuis un ordinateur — et l'écran mural n'a
+   aucune authentification, puisque c'est un objet posé sur un mur.
+
+   ⚠️ Une passkey est liée au NOM DE DOMAINE qui l'a créée. Créée sur
+   `maison.v-m-p.fr`, elle ne fonctionnera que là — jamais sur `maison.local`,
+   qui est en HTTP et où WebAuthn n'existe de toute façon pas. C'est une règle
+   du navigateur, pas un réglage : les téléphones doivent donc utiliser
+   l'adresse HTTPS. Le réglage `passkey_domaine` dit lequel.
+
+   Le CODE reste en secours, et ce n'est pas un détail : un téléphone qu'on
+   remplace ou qu'on perd doit pouvoir se réenrôler. Face ID seul enfermerait
+   la famille dehors le jour d'une casse.
+   ══════════════════════════════════════════════════════════════════════════ */
+const passkeys = require('./passkeys');
+
+const domainePasskey = () => String(config('passkey_domaine') || '').trim();
+/* Les origines acceptées : le domaine public, et rien d'autre. On les calcule
+   à chaque appel plutôt qu'au démarrage — changer le réglage doit prendre
+   effet sans redémarrer, comme partout ailleurs (§ 2 septies). */
+const originesPasskey = () => {
+  const d = domainePasskey();
+  return d ? [`https://${d}`] : [];
+};
+
+/* La clé du défi : l'appareil s'il est enrôlé, sinon son adresse. Deux
+   téléphones qui se connectent en même temps ne doivent pas se voler leur
+   défi — ce qui arriverait avec une clé unique. */
+const cleDefi = (req) => (req.get('x-jeton') || req.ip || '?');
+
+app.get('/api/passkey/etat', (req, res) => {
+  const d = domainePasskey();
+  const perso = req.appareil && req.appareil.personne;
+  res.json({
+    possible: !!d,
+    domaine: d,
+    /* On dit POURQUOI c'est indisponible : un bouton grisé sans raison ne se
+       diagnostique pas depuis un téléphone. */
+    raison: d ? '' : 'Aucun domaine HTTPS configuré (réglage passkey_domaine).',
+    appareils: perso ? donnees.listerPasskeys(perso) : [],
+  });
+});
+
+/* Défi d'ENREGISTREMENT. Exige un appareil déjà enrôlé : on ajoute Face ID
+   depuis une app dans laquelle on est déjà entré, jamais depuis l'inconnu. */
+app.post('/api/passkey/defi', (req, res) => {
+  try {
+    const d = domainePasskey();
+    if (!d) return res.status(400).json({ error: 'Aucun domaine HTTPS configuré.' });
+    const perso = req.appareil && req.appareil.personne;
+    if (!perso) return res.status(401).json({ error: 'Appareil non enrôlé.' });
+    res.json({
+      defi: passkeys.nouveauDefi('c:' + cleDefi(req)),
+      rpId: d,
+      personne: perso,
+      /* L'identifiant d'utilisateur WebAuthn ne doit pas porter d'information
+         personnelle : on envoie le prénom, qui est déjà connu de l'appareil. */
+      dejaPresents: donnees.listerPasskeys(perso).map((p) => p.id),
+    });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+app.post('/api/passkey/enregistrer', (req, res) => {
+  try {
+    const perso = req.appareil && req.appareil.personne;
+    if (!perso) return res.status(401).json({ error: 'Appareil non enrôlé.' });
+    const defi = passkeys.prendreDefi('c:' + cleDefi(req));
+    if (!defi) return res.status(400).json({ error: 'Défi expiré — recommence.' });
+
+    const v = passkeys.verifierEnregistrement({
+      reponse: req.body, defi, origines: originesPasskey(),
+    });
+    donnees.ajouterPasskey({
+      personne: perso, credentialId: v.id, cle: v.cle, algo: v.algo,
+      appareil: String((req.body && req.body.appareil) || '').slice(0, 60) || null,
+    });
+    res.json({ ok: true, appareils: donnees.listerPasskeys(perso) });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+/* Défi de CONNEXION — ouvert, forcément : on ne sait pas encore qui c'est.
+   C'est sans risque : un défi ne donne aucun accès, il n'a de valeur qu'avec
+   la signature d'une clé privée qui n'a jamais quitté le téléphone. */
+app.post('/api/passkey/defi-connexion', (req, res) => {
+  const d = domainePasskey();
+  if (!d) return res.status(400).json({ error: 'Aucun domaine HTTPS configuré.' });
+  res.json({ defi: passkeys.nouveauDefi('g:' + cleDefi(req)), rpId: d });
+});
+
+app.post('/api/passkey/connexion', (req, res) => {
+  try {
+    const defi = passkeys.prendreDefi('g:' + cleDefi(req));
+    if (!defi) return res.status(400).json({ error: 'Défi expiré — recommence.' });
+
+    const r = passkeys.verifierConnexion({
+      reponse: req.body, defi,
+      rpId: domainePasskey(), origines: originesPasskey(),
+      cherche: (id) => donnees.lirePasskey(id),
+      /* On EXIGE la vérification de l'utilisateur : sans elle, un téléphone
+         déverrouillé posé sur une table suffirait. C'est précisément ce qui
+         distingue Face ID d'un simple « appareil connu ». */
+      exigerUV: true,
+    });
+    donnees.toucherPasskey(req.body.id, r.compteur);
+    const membre = donnees.listeMembres().find((m) => m.nom === r.personne && m.actif);
+    if (!membre) return res.status(401).json({ error: 'Membre inactif.' });
+    res.json({ jeton: donnees.creerSession(r.personne), moi: donnees.profil(membre) });
+  } catch (e) {
+    /* Message volontairement bref côté client : détailler « clé inconnue » ou
+       « signature invalide » renseignerait qui cherche à entrer. La cause
+       exacte part au journal, qui est fait pour ça. */
+    try { donnees.journaliser('avert', 'passkey', messageClair(e)); } catch (_) {}
+    res.status(401).json({ error: 'Face ID refusé.' });
+  }
+});
+
+app.delete('/api/passkey/:id', (req, res) => {
+  try {
+    const perso = req.appareil && req.appareil.personne;
+    const admin = req.moi && req.moi.admin;
+    if (!perso && !admin) return res.status(401).json({ error: 'Non autorisé.' });
+    /* Un enfant ne retire que SES appareils. L'identité vient du jeton, jamais
+       du corps de la requête (§ 2 quater). */
+    const r = donnees.retirerPasskey(req.params.id, admin ? null : perso);
+    if (r.refus) return res.status(403).json({ error: 'Cet appareil n’est pas le vôtre.' });
+    res.json(r);
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
 

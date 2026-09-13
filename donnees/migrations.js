@@ -104,6 +104,26 @@ const TABLES = {
      supprime_le  TEXT,
      maj_le       TEXT
    )`,
+  /* Face ID / Touch ID. UNE TABLE et non une colonne sur `personnes` : une
+     personne a souvent plusieurs appareils (iPhone, iPad), et chacun porte sa
+     propre clé — une colonne unique obligerait à choisir lequel garde l'accès.
+     `credential_id` est UNIQUE : le même appareil ne s'enregistre pas deux fois.
+     ⚠️ Rien ici n'est un secret : une clé PUBLIQUE ne permet pas de se faire
+     passer pour quelqu'un. La partie privée ne quitte jamais le téléphone —
+     c'est tout l'intérêt par rapport à un mot de passe. */
+  passkeys: `CREATE TABLE passkeys (
+     id            INTEGER PRIMARY KEY,
+     personne      TEXT NOT NULL,
+     credential_id TEXT NOT NULL UNIQUE,
+     cle           TEXT NOT NULL,
+     algo          INTEGER NOT NULL DEFAULT -7,
+     compteur      INTEGER NOT NULL DEFAULT 0,
+     appareil      TEXT,
+     cree_le       TEXT NOT NULL DEFAULT (datetime('now')),
+     vu_le         TEXT,
+     supprime_le   TEXT,
+     maj_le        TEXT NOT NULL DEFAULT (datetime('now'))
+   )`,
   abonnements_push: `CREATE TABLE abonnements_push (
      id        INTEGER PRIMARY KEY,
      personne  TEXT NOT NULL,
@@ -128,6 +148,9 @@ const INDEX = {
   i_notif_vivantes: `CREATE INDEX i_notif_vivantes ON notifications(cree_le) WHERE supprime_le IS NULL`,
   i_journal_recent: `CREATE INDEX i_journal_recent ON journal(cree_le DESC)`,
   i_journal_cle: `CREATE UNIQUE INDEX i_journal_cle ON journal(cle) WHERE cle IS NOT NULL`,
+  /* La connexion cherche par credential_id a chaque deverrouillage : sans
+     index, c'est un balayage de table a chaque Face ID. */
+  i_passkeys_cred: `CREATE INDEX i_passkeys_cred ON passkeys(credential_id) WHERE supprime_le IS NULL`,
 };
 
 /* Réglages posés une seule fois, à la création. On n'écrase JAMAIS une valeur

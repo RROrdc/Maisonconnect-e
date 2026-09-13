@@ -320,6 +320,8 @@ select.ch{appearance:none}
   <p>Cette app est verrouillée sur cet appareil.</p>
   <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="Code">
   <div style="height:14px"></div>
+  <button class="btn" id="pinFace" style="width:min(280px,80vw);display:none">🫆 Face ID</button>
+  <div style="height:10px"></div>
   <button class="btn" id="pinOk" style="width:min(280px,80vw)">Déverrouiller</button>
   <p id="pinMsg" style="margin-top:16px;min-height:20px;color:var(--alerte)"></p>
 </div>
@@ -1028,14 +1030,17 @@ RENDU.notifs = ()=>`
 /* ---------- Réglages ---------- */
 RENDU.reglages = ()=>{
   const verrou = localStorage.getItem('maison-verrou') === '1';
+  const faceIdActif = localStorage.getItem('maison-faceid') === '1';
   return `
   <div class="carte"><h3>Cet appareil</h3>
     <div class="li"><div class="t">${e(moi)}<div class="d">enrôlé sur ce téléphone</div></div></div>
     <div style="height:8px"></div>
     <button class="btn doux fin" id="verrou">${verrou?'✅':'⬜'} Demander mon code à l'ouverture</button>
-    <div class="info" style="margin:11px 0 0">Face ID prendra la place du code quand le serveur
-      sera en HTTPS (Mac mini + Tailscale) : la biométrie du navigateur exige un site sécurisé,
-      elle n'est tout simplement pas disponible en HTTP.</div>
+    <div style="height:8px"></div>
+    <button class="btn doux fin" id="faceid">${faceIdActif?'✅':'⬜'} Ouvrir avec Face ID</button>
+    <div class="info" style="margin:11px 0 0" id="faceidInfo">${faceIdPossible()
+      ? 'Ton empreinte ne quitte jamais ce téléphone : le serveur n’en reçoit qu’une clé publique, qui ne permet pas de se faire passer pour toi. Le code reste en secours — indispensable le jour où tu changes de téléphone.'
+      : 'Face ID demande une adresse sécurisée (https). Sur le Wi-Fi de la maison en http, le navigateur ne le propose pas — ce n’est pas un réglage, c’est une règle du navigateur.'}</div>
   </div>
 
   <div class="carte"><h3>Installer l'app</h3>
@@ -1106,6 +1111,24 @@ function brancherEcran(){
 
   if($('#vider')) $('#vider').onclick = async ()=>{
     try{ await api('/api/course/vider','POST'); toast('Liste nettoyée.'); }catch(err){ toast('✗ '+err.message); }
+  };
+
+  if($('#faceid')) $('#faceid').onclick = async ()=>{
+    if(localStorage.getItem('maison-faceid') === '1'){
+      /* On retire d'abord côté serveur : laisser une clé valide derrière soi
+         ferait un accès fantôme après qu'on a cru l'avoir coupé. */
+      try{
+        const etat = await faceIdEtat();
+        for(const a of (etat.appareils||[])) await api('/api/passkey/'+a.id,'DELETE');
+      }catch(_){ /* déjà retiré, ou serveur absent : on désactive quand même ici */ }
+      localStorage.setItem('maison-faceid','0');
+      toast('Face ID retiré de ce téléphone.');
+      dessiner();
+      return;
+    }
+    /* Activer Face ID sans verrou ne servirait à rien : rien ne le déclencherait. */
+    if(localStorage.getItem('maison-verrou') !== '1') localStorage.setItem('maison-verrou','1');
+    await faceIdActiver();
   };
 
   if($('#verrou')) $('#verrou').onclick = ()=>{
@@ -1357,11 +1380,119 @@ async function enroler(nom){
   }catch(err){ toast('✗ '+err.message); jeton=''; }
 }
 
-/* Verrou optionnel : c'est la place que prendra Face ID le jour où HTTPS sera là. */
+/* =====================================================================
+   Face ID / Touch ID
+   Débloqué le 13/09 par le HTTPS du tunnel : `navigator.credentials` n'existe
+   tout simplement pas en HTTP, ce n'était donc pas une question de code.
+
+   ⚠️ Une passkey est liée AU DOMAINE qui l'a créée. Enregistrée sur
+   `maison.v-m-p.fr`, elle ne fonctionnera que là — jamais sur l'adresse locale.
+   On ne propose donc le bouton que si les deux conditions sont réunies, et on
+   dit laquelle manque : un bouton grisé sans explication ne se diagnostique pas
+   depuis un téléphone. */
+const b64u = {
+  vers: (buf)=>btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
+  depuis: (s)=>{
+    const b = atob(String(s).replace(/-/g,'+').replace(/_/g,'/'));
+    const u = new Uint8Array(b.length);
+    for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+    return u.buffer;
+  },
+};
+
+const faceIdPossible = ()=> !!(window.PublicKeyCredential && window.isSecureContext);
+
+async function faceIdEtat(){
+  try{ return await api('/api/passkey/etat'); }
+  catch(_){ return {possible:false, raison:'Serveur injoignable.', appareils:[]}; }
+}
+
+/* Enregistrer CE téléphone. On part d'une app déjà ouverte : on ajoute Face ID,
+   on ne s'authentifie pas avec. */
+async function faceIdActiver(){
+  if(!faceIdPossible()) return toast('✗ Face ID demande une adresse sécurisée (https).');
+  try{
+    const d = await api('/api/passkey/defi','POST',{});
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: b64u.depuis(d.defi),
+      rp: { id: d.rpId, name: 'Maison' },
+      user: { id: new TextEncoder().encode(d.personne), name: d.personne, displayName: d.personne },
+      /* ES256 d'abord — c'est ce que produisent les appareils Apple ; RS256 en
+         second ne coûte rien et couvre le reste. */
+      pubKeyCredParams: [{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection: {
+        /* L'appareil lui-même, pas une clé USB : c'est Face ID qu'on veut. */
+        authenticatorAttachment: 'platform',
+        userVerification: 'required',
+        residentKey: 'preferred',
+      },
+      /* `none` : on ne cherche pas à prouver la marque du téléphone, seulement
+         que c'est bien celui de Martial. Demander une attestation ferait
+         apparaître une alerte de confidentialité pour rien. */
+      attestation: 'none',
+      timeout: 60000,
+    }});
+    if(!cred) throw new Error('Annulé.');
+    const rep = cred.response;
+    const cle = rep.getPublicKey && rep.getPublicKey();
+    if(!cle) throw new Error('Ce navigateur est trop ancien pour Face ID.');
+    await api('/api/passkey/enregistrer','POST',{
+      id: cred.id,
+      cle: b64u.vers(cle),
+      algo: rep.getPublicKeyAlgorithm ? rep.getPublicKeyAlgorithm() : -7,
+      clientDataJSON: b64u.vers(rep.clientDataJSON),
+      appareil: (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows/)||['appareil'])[0],
+    });
+    localStorage.setItem('maison-faceid','1');
+    toast('✅ Face ID activé sur ce téléphone');
+    if(ONGLET==='reglages') dessiner();
+  }catch(err){ toast('✗ '+(err.message||'Face ID refusé')); }
+}
+
+/* Déverrouiller. Rend un jeton de session comme le ferait le code. */
+async function faceIdEntrer(){
+  const d = await api('/api/passkey/defi-connexion','POST',{});
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: b64u.depuis(d.defi),
+    rpId: d.rpId,
+    userVerification: 'required',
+    timeout: 60000,
+  }});
+  if(!a) throw new Error('Annulé.');
+  const r = a.response;
+  return api('/api/passkey/connexion','POST',{
+    id: a.id,
+    clientDataJSON: b64u.vers(r.clientDataJSON),
+    authenticatorData: b64u.vers(r.authenticatorData),
+    signature: b64u.vers(r.signature),
+  });
+}
+
+/* Verrou : Face ID d'abord quand il est possible, le code toujours en secours.
+   🔑 Le code n'est PAS un repli honteux : un téléphone remplacé ou cassé doit
+   pouvoir se réenrôler. Face ID seul enfermerait la famille dehors. */
 function demanderCode(){
   $('#pinTitre').textContent = 'Bonjour ' + moi;
   $('#ecranPin').classList.add('on');
-  $('#pin').focus();
+
+  /* Face ID en PREMIER, et tout seul : arriver sur un clavier alors qu'on a
+     activé Face ID, c'est avoir activé Face ID pour rien. Si l'utilisateur
+     annule ou si ça échoue, le champ code est là, déjà affiché. */
+  const parFace = async ()=>{
+    if(!faceIdPossible() || localStorage.getItem('maison-faceid')!=='1') { $('#pin').focus(); return; }
+    const b = $('#pinFace'); if(b) b.style.display='';
+    try{
+      await faceIdEntrer();
+      $('#ecranPin').classList.remove('on'); DEVERROUILLE = true; lancer();
+    }catch(err){
+      /* On ne crie pas : annuler Face ID est un geste normal, pas une erreur. */
+      $('#pinMsg').textContent = /annul|abort|NotAllowed/i.test(err.message||'') ? '' : (err.message||'');
+      $('#pin').focus();
+    }
+  };
+  if($('#pinFace')) $('#pinFace').onclick = parFace;
+  parFace();
   const tenter = async ()=>{
     try{
       const r = await fetch('/api/session', {method:'POST', headers:{'Content-Type':'application/json'},

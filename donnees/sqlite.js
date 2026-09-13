@@ -566,6 +566,57 @@ function desactiverMembre(id) {
   return { id: sid(id) };
 }
 
+/* ------------------------------------------------------------------ Face ID */
+/* Une clé PUBLIQUE n'est pas un secret : elle ne permet pas de se faire passer
+   pour quelqu'un, seulement de vérifier une signature. La partie privée ne
+   quitte jamais le téléphone — c'est ce qui rend Face ID plus sûr qu'un code. */
+function ajouterPasskey({ personne, credentialId, cle, algo, appareil }) {
+  ecrire(`INSERT INTO passkeys (personne, credential_id, cle, algo, appareil)
+          VALUES (?,?,?,?,?)
+          ON CONFLICT(credential_id) DO UPDATE SET
+            personne = excluded.personne, cle = excluded.cle, algo = excluded.algo,
+            appareil = excluded.appareil, supprime_le = NULL,
+            maj_le = datetime('now')`,
+    personne, credentialId, cle, Number(algo) || -7, appareil || null);
+  return lirePasskey(credentialId);
+}
+
+function lirePasskey(credentialId) {
+  const r = un(`SELECT * FROM passkeys WHERE credential_id = ? AND supprime_le IS NULL`, credentialId);
+  if (!r) return null;
+  return { id: String(r.id), personne: r.personne, cle: r.cle, algo: r.algo,
+           compteur: r.compteur, appareil: r.appareil };
+}
+
+/* `vu_le` sert à reconnaître un appareil dans la liste des réglages — « celui
+   dont je me suis servi hier ». C'est un horodatage d'USAGE, pas un journal :
+   une seule ligne, écrasée, et jamais d'historique (§ 2 vicies). */
+function toucherPasskey(credentialId, compteur) {
+  ecrire(`UPDATE passkeys SET compteur = ?, vu_le = datetime('now'), maj_le = datetime('now')
+          WHERE credential_id = ?`, Number(compteur) || 0, credentialId);
+}
+
+function listerPasskeys(personne) {
+  const lignes = personne
+    ? q(`SELECT * FROM passkeys WHERE personne = ? AND supprime_le IS NULL ORDER BY cree_le`, personne)
+    : q(`SELECT * FROM passkeys WHERE supprime_le IS NULL ORDER BY personne, cree_le`);
+  return lignes.map((r) => ({ id: String(r.id), personne: r.personne,
+    appareil: r.appareil || 'appareil', cree_le: r.cree_le, vu_le: r.vu_le }));
+}
+
+/* Suppression DOUCE, comme partout : on reproduit la corbeille qui a déjà sauvé
+   ce projet. Retirer un appareil perdu doit être immédiat, mais réversible si
+   on se trompe de ligne. */
+function retirerPasskey(id, personne) {
+  const r = un(`SELECT * FROM passkeys WHERE id = ? AND supprime_le IS NULL`, id);
+  if (!r) return { retire: false };
+  /* Un enfant ne retire que SES appareils : l'identité vient du jeton, jamais
+     du corps de la requête (§ 2 quater). */
+  if (personne && r.personne !== personne) return { retire: false, refus: true };
+  ecrire(`UPDATE passkeys SET supprime_le = datetime('now'), maj_le = datetime('now') WHERE id = ?`, id);
+  return { retire: true };
+}
+
 /* ------------------------------------------------------------------ codes & sessions */
 /* scrypt + sel par personne. Le code n'est JAMAIS stocké en clair : on ne peut
    pas le relire, seulement le remplacer. */
@@ -839,6 +890,7 @@ module.exports = {
   listePlats, listePlatsAdmin, nomsPlats, platId, platFiche, enregistrerPlat, fusionnerPlats,
   lignesPlanning, enregistrerCreneau, supprimerCreneau, copierJournee,
   listeMembres, enregistrerMembre, desactiverMembre, definirCode, verifierCode, profil,
+  ajouterPasskey, lirePasskey, toucherPasskey, listerPasskeys, retirerPasskey,
   creerSession, lireSession, supprimerSession, purgerSessions,
   enrolerAppareil, appareil, listeAppareils, revoquerAppareil,
   ajouterNotif, listeNotifs,
