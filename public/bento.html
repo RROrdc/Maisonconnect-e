@@ -486,6 +486,16 @@
   .sv-w .row{display:flex;gap:11px;font-size:16px;color:var(--sv-txt2);padding:4px 0}
   .sv-w .row b{color:var(--sv-txt);font-weight:750;flex:0 0 88px;font-variant-numeric:tabular-nums}
   .saver .hint{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--sv-txt3);font-size:13px}
+  .sv-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+    z-index:0;opacity:0;transition:opacity 1.2s ease}
+  .sv-photo.vu{opacity:1}
+  .sv-photo[hidden]{display:none}
+  .sv-leg{position:absolute;left:0;right:0;bottom:86px;z-index:1;text-align:center;
+    font-size:15px;letter-spacing:.4px;opacity:.72;pointer-events:none}
+  .sv-leg[hidden]{display:none}
+  /* Les widgets repassent AU-DESSUS de la photo, sinon elle les mangerait. */
+  .saver .sv-top,.saver .sv-grid,.saver .sv-news,.saver .hint{position:relative;z-index:2}
+
   /* bandeau actus version veille : même mécanique, palette sombre */
   .sv-news{margin-top:20px;height:44px;border-radius:20px;background:var(--sv-card);
     border:1px solid var(--sv-line);overflow:hidden;display:flex;align-items:center}
@@ -966,6 +976,8 @@
 </div>
 
 <div class="saver" id="saver">
+  <img class="sv-photo" id="svPhoto" alt="" hidden>
+  <div class="sv-leg" id="svLeg" hidden></div>
   <div class="hint">Touchez l'écran pour revenir</div>
   <div class="sv-top">
     <div><div class="sv-time" id="svTime"></div><div class="sv-date" id="svDate"></div><div class="sv-saint" id="svSaint"></div></div>
@@ -2398,8 +2410,65 @@ function renderSaver(){
 
   majNews('svNews','svNewsVp');
 }
-function showSaver(){closeTile();renderSaver();saver.classList.add('on');}
-saver.addEventListener('click',()=>{saver.classList.remove('on');resetIdle();});
+/* ── Diaporama de la veille ────────────────────────────────────────────────
+   Les photos viennent d'un dossier que la famille remplit elle-même (voir
+   photos/dossier.js) : rien n'est publié, rien ne sort de la maison.
+
+   🔑 L'intervalle ne tourne QUE pendant la veille. Le laisser vivre en
+   permanence ferait travailler le Pi pour une image que personne ne regarde —
+   et sur un écran allumé 24 h/24, ce genre de détail finit par se voir. */
+let PHOTOS=[], iPhoto=0, minuterPhoto=null;
+
+/* Mélange de Fisher-Yates : on parcourt la liste entière avant de recommencer.
+   Tirer au hasard à chaque fois redonnerait deux fois la même photo dans la
+   minute, ce qui se remarque tout de suite sur un mur. */
+function melanger(t){for(let i=t.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[t[i],t[j]]=[t[j],t[i]];}return t;}
+
+async function chargerPhotosVeille(){
+  try{
+    const d=await api('/api/veille/photos');
+    PHOTOS=melanger((d.photos||[]).slice()); iPhoto=0;
+  }catch(_){ PHOTOS=[]; }
+}
+
+function photoSuivante(){
+  const img=document.getElementById('svPhoto'), leg=document.getElementById('svLeg');
+  if(!img||!PHOTOS.length){ if(img)img.hidden=true; if(leg)leg.hidden=true; return; }
+  if(iPhoto>=PHOTOS.length){ melanger(PHOTOS); iPhoto=0; }
+  const p=PHOTOS[iPhoto++];
+
+  /* On charge AVANT de montrer : sans ça, le fondu révèle une image à moitié
+     arrivée, et sur un mur ça ressemble à une panne. */
+  const pre=new Image();
+  pre.onload=()=>{
+    img.classList.remove('vu');
+    setTimeout(()=>{
+      img.src=p.url; img.hidden=false;
+      leg.textContent=p.legende||''; leg.hidden=!p.legende;
+      requestAnimationFrame(()=>img.classList.add('vu'));
+    },300);
+  };
+  pre.onerror=()=>{ /* une photo retirée ne doit pas figer le diaporama */ photoSuivante(); };
+  pre.src=p.url;
+}
+
+function lancerDiaporama(){
+  arreterDiaporama();
+  const sec=Number(S.reglages&&S.reglages.veille_photo_secondes)||30;
+  if(!PHOTOS.length) return;
+  photoSuivante();
+  minuterPhoto=setInterval(photoSuivante,Math.max(5,sec)*1000);
+}
+function arreterDiaporama(){
+  if(minuterPhoto){clearInterval(minuterPhoto);minuterPhoto=null;}
+  const img=document.getElementById('svPhoto'), leg=document.getElementById('svLeg');
+  if(img){img.classList.remove('vu');img.hidden=true;}
+  if(leg)leg.hidden=true;
+}
+
+function showSaver(){closeTile();renderSaver();saver.classList.add('on');
+  chargerPhotosVeille().then(lancerDiaporama);}
+saver.addEventListener('click',()=>{saver.classList.remove('on');arreterDiaporama();resetIdle();});
 
 /* Délai de veille réglable depuis /admin/ → Réglages (il était codé en dur à
    25 min, ce qui rendait le champ du back-office décoratif). */

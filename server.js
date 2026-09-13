@@ -69,6 +69,9 @@ const REGLAGES = {
   meteo_lon:        { env: 'METEO_LON', defaut: '3.1746' },
   ville:            { env: 'METEO_VILLE', defaut: 'Roubaix' },
   veille_minutes:   { env: 'VEILLE_MINUTES', defaut: '25' },
+  /* Durée d'une photo dans le diaporama de veille. Trop court fatigue, trop
+     long donne un écran figé qu'on croit en panne. 30 s est le juste milieu. */
+  veille_photo_secondes: { defaut: '30' },
   /* Rayons du magasin, source UNIQUE. Ils étaient codés en dur DEUX fois, avec
      des listes différentes : un article rangé dans « Surgelés » depuis l'app
      n'apparaissait nulle part sur l'écran mural. Rangés dans l'ordre d'un
@@ -674,6 +677,7 @@ async function lireNews() {
    effet jusqu'ici — l'écran mural avait 25 min codés en dur. */
 const reglagesPublics = () => ({
   veille_minutes: Number(config('veille_minutes')) || 25,
+    veille_photo_secondes: Number(config('veille_photo_secondes')) || 30,
   ville: config('ville'),
   /* Réglages de la voix : lus par l'écran mural, qui n'a volontairement aucune
      interface de configuration — tout se règle dans /admin/. */
@@ -1577,6 +1581,35 @@ app.post('/api/vocal', async (req, res) => {
    porte les courses, l'agenda et les devoirs. Ici : le prénom et sa couleur,
    ce que l'écran de la cuisine affiche déjà à quiconque entre dans la pièce.
    L'enrôlement lui-même continue d'exiger le code. */
+/* ── Photos de l'écran de veille ───────────────────────────────────────────
+   La liste seulement — les images sont servies en statique comme les photos de
+   plats. On ne renvoie pas les fichiers ici : l'écran en affiche une toutes les
+   trente secondes, il n'a besoin que de savoir lesquelles existent.
+
+   🔑 Servie SANS identité, comme /api/data à la maison : l'écran mural n'a pas
+   de jeton. Mais la barrière de l'extérieur s'applique — ces photos sont celles
+   de la famille, elles ne sortent pas par le tunnel.
+
+   La légende vient du nom du sous-dossier d'export (« Rhodes 2026 ») : une
+   photo sans contexte perd la moitié de ce qu'elle raconte. */
+const DOSSIER_VEILLE = path.join(__dirname, 'public', 'veille');
+
+app.get('/api/veille/photos', (_req, res) => {
+  try {
+    if (!fs.existsSync(DOSSIER_VEILLE)) return res.json({ photos: [] });
+    const legendes = new Map();
+    try {
+      const idx = JSON.parse(fs.readFileSync(path.join(DOSSIER_VEILLE, 'index.json'), 'utf8'));
+      for (const p of idx.photos || []) legendes.set(p.f, p.album || '');
+    } catch (_) { /* pas d'index : on sert quand même les images */ }
+
+    const photos = fs.readdirSync(DOSSIER_VEILLE)
+      .filter((f) => /\.jpg$/i.test(f))
+      .map((f) => ({ url: '/veille/' + f, legende: legendes.get(f) || '' }));
+    res.json({ photos });
+  } catch (e) { res.status(500).json({ error: messageClair(e) }); }
+});
+
 app.get('/api/personnes', async (_req, res) => {
   try {
     const gens = await donnees.lirePersonnes();
