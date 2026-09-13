@@ -40,6 +40,25 @@ const lien = args.find((a) => !a.startsWith('--'));
 
 const ko = (n) => Math.round(n / 1024) + ' Ko';
 
+/* L'index des légendes, commun aux deux voies (album publié et dossier).
+   On le RELIT avant d'écrire : sinon importer un second album effacerait les
+   légendes du premier — et une photo sans contexte perd la moitié de ce
+   qu'elle raconte. */
+function majIndex(entrees) {
+  const p = path.join(DOSSIER, 'index.json');
+  let connu = [];
+  try { connu = (JSON.parse(fs.readFileSync(p, 'utf8')).photos) || []; } catch (_) { /* premier passage */ }
+  const par = new Map(connu.map((x) => [x.f, x]));
+  for (const e of entrees) par.set(e.f, e);
+  /* On oublie ce qui n'est plus sur le disque : un index qui grossit sans fin
+     finirait par décrire des photos supprimées. */
+  let presents;
+  try { presents = new Set(fs.readdirSync(DOSSIER)); } catch (_) { presents = null; }
+  const photos = [...par.values()].filter((x) => !presents || presents.has(x.f));
+  fs.writeFileSync(p, JSON.stringify({ maj: new Date().toISOString(), photos }, null, 1));
+  return photos.length;
+}
+
 async function essayer(unLien) {
   console.log('');
   const a = await partage.lister(unLien);
@@ -65,7 +84,7 @@ async function telecharger(album, sharp) {
   if (!manquantes.length) return 0;
 
   const urls = await partage.adresses(album.jeton, manquantes.map((p) => p.guid));
-  let pris = 0; let octets = 0;
+  let pris = 0; let octets = 0; const entrees = [];
 
   for (const p of manquantes) {
     const url = urls.get(p.checksum);
@@ -82,10 +101,15 @@ async function telecharger(album, sharp) {
         .jpeg({ quality: QUALITE, mozjpeg: true })
         .toBuffer();
       fs.writeFileSync(path.join(DOSSIER, p.checksum + '.jpg'), img);
+      entrees.push({ f: p.checksum + '.jpg', album: album.titre || '' });
       pris++; octets += img.length;
     } catch (_) { /* une photo qui résiste ne doit pas arrêter l'album */ }
   }
-  console.log(`    ✅ ${pris} photo(s) rangée(s), ${ko(octets)}`);
+  /* Même celles déjà présentes : leur légende doit exister, sinon une photo
+     importée avant ce correctif resterait muette pour toujours. */
+  for (const p of album.photos) entrees.push({ f: p.checksum + '.jpg', album: album.titre || '' });
+  const total = majIndex(entrees);
+  console.log(`    ✅ ${pris} photo(s) rangée(s), ${ko(octets)} · ${total} au total`);
   return pris;
 }
 
@@ -132,8 +156,7 @@ async function depuisDossier(racine, sharp) {
   /* L'index porte la légende de chaque photo. Sans lui, l'écran ne saurait pas
      dire « Rhodes 2026 » sous l'image — et une photo sans contexte perd la
      moitié de ce qu'elle raconte. */
-  fs.writeFileSync(path.join(DOSSIER, 'index.json'),
-    JSON.stringify({ maj: new Date().toISOString(), photos: index }, null, 1));
+  majIndex(index);
 
   console.log('');
   console.log(`    ✅ ${pris} nouvelle(s) · ${index.length} au total · ${ko(octets)} ajoutés`);
