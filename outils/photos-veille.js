@@ -7,7 +7,7 @@
      node outils/photos-veille.js --dossier <chemin> --vraiment  range les photos
      node outils/photos-veille.js <lien iCloud>                  (album publié — voir photos/dossier.js)
      node outils/photos-veille.js --tous               relit les albums configurés
-     node outils/photos-veille.js --tous --vraiment    télécharge et range
+     node outils/photos-veille.js --tous --max 200 --vraiment   échantillon équitable
 
    Conventions du projet : simulation par défaut, `--vraiment` pour écrire.
 
@@ -36,6 +36,8 @@ const iDossier = args.indexOf('--dossier');
 const dossierSource = iDossier >= 0 ? args[iDossier + 1] : '';
 const vraiment = args.includes('--vraiment');
 const tous = args.includes('--tous');
+const iMax = args.indexOf('--max');
+const MAX = iMax >= 0 ? Number(args[iMax + 1]) || 0 : 0;
 const lien = args.find((a) => !a.startsWith('--'));
 
 const ko = (n) => Math.round(n / 1024) + ' Ko';
@@ -164,6 +166,27 @@ async function depuisDossier(racine, sharp) {
   return pris;
 }
 
+function melangerT(t){for(let i=t.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[t[i],t[j]]=[t[j],t[i]];}return t;}
+
+/* Répartition « à tour de rôle » : on pioche une photo dans chaque album, puis
+   on recommence. Les petits albums s'épuisent et rendent leur place aux
+   autres — sans calcul de proportion à faire. */
+function repartir(albums, total) {
+  const restes = albums.map((a) => melangerT(a.photos.slice()));
+  const choix = albums.map(() => []);
+  let pris = 0;
+  let encore = true;
+  while (pris < total && encore) {
+    encore = false;
+    for (let i = 0; i < restes.length && pris < total; i++) {
+      if (!restes[i].length) continue;
+      choix[i].push(restes[i].pop());
+      pris++; encore = true;
+    }
+  }
+  return choix;
+}
+
 async function principal() {
   if (dossierSource) {
     let sharp = null;
@@ -206,13 +229,30 @@ async function principal() {
     if (!liens.length) console.log('  Aucun album configuré (/admin/ → Réglages → veille_albums).');
   }
 
-  let total = 0;
+  const albums = [];
   for (const l of liens) {
-    try {
-      const album = await essayer(l);
-      if (vraiment && sharp) total += await telecharger(album, sharp);
-    } catch (e) {
-      console.log(`  ✗ ${partage.jetonDe(l).slice(0, 12)}… — ${e.message}`);
+    try { albums.push(await essayer(l)); }
+    catch (e) { console.log(`  ✗ ${partage.jetonDe(l).slice(0, 12)}… — ${e.message}`); }
+  }
+
+  if (MAX > 0 && albums.length) {
+    const parts = repartir(albums, MAX);
+    console.log('');
+    console.log(`  Échantillon de ${parts.reduce((t, p) => t + p.length, 0)} photo(s) sur ${albums.reduce((t, a) => t + a.photos.length, 0)} :`);
+    for (let i = 0; i < albums.length; i++) {
+      console.log(`    ${String(parts[i].length).padStart(4)}  ${albums[i].titre || '(sans titre)'}`);
+      albums[i].photos = parts[i];
+    }
+  }
+
+  let total = 0;
+  if (vraiment && sharp) {
+    for (const a of albums) {
+      if (!a.photos.length) continue;
+      console.log('');
+      console.log(`  « ${a.titre || '(sans titre)'} »`);
+      try { total += await telecharger(a, sharp); }
+      catch (e) { console.log(`    ✗ ${e.message}`); }
     }
   }
 
