@@ -312,6 +312,49 @@ app.use((req, _res, suite) => {
   suite();
 });
 
+/* ------------------------------------------------- barrière de l'extérieur
+   🔴 Trouvé le 13/09, quelques heures après avoir ouvert le tunnel : le filtre
+   de Cloudflare ferme /admin/ et /bento.html, mais /api/data répondait 200 à
+   QUICONQUE connaît le nom du domaine — courses, tâches, agenda, et les
+   emplois du temps et devoirs des enfants par /api/ecole. Le code d'accès
+   protégeait l'ÉCRAN de l'app, pas l'API en dessous. C'est exactement l'écart
+   que Rémi avait déjà signalé pour le bento : sécuriser la façade et laisser
+   la porte ouverte.
+
+   Le signal : `CF-Connecting-IP` est posé par Cloudflare sur toute requête
+   venue d'Internet, et il ÉCRASE ce que le client aurait pu envoyer — on ne
+   peut donc pas se faire passer pour le réseau local depuis l'extérieur.
+   À la maison, l'en-tête est absent et rien ne change : l'écran mural n'a pas
+   de jeton et doit continuer de fonctionner.
+
+   Posée en `app.use` AVANT toutes les routes, comme la barrière admin : une
+   route ajoutée plus bas ne peut pas l'oublier (§ 2 quater).
+
+   ⚠️ La liste ouverte est la plus courte possible — uniquement de quoi
+   S'IDENTIFIER. Sans elle, personne ne pourrait jamais se connecter de
+   l'extérieur : ni par code, ni par Face ID. */
+const OUVERT_DEHORS = [
+  '/api/session',            // se connecter avec son code
+  '/api/appareil',           // enrôler un téléphone (exige déjà le code)
+  '/api/passkey/etat',
+  '/api/passkey/defi',
+  '/api/passkey/defi-connexion',
+  '/api/passkey/enregistrer',
+  '/api/passkey/connexion',
+];
+
+app.use('/api', (req, res, suite) => {
+  if (!req.get('CF-Connecting-IP')) return suite();          // à la maison
+  if (req.appareil || req.moi) return suite();               // identifié
+  /* ⚠️ Dans un app.use(chemin), req.path est RELATIF au point de montage :
+     il vaut /session, pas /api/session. Comparer req.path a la liste aurait
+     tout laisse passer — la barriere aurait eu l air posee sans rien fermer. */
+  if (OUVERT_DEHORS.includes(req.baseUrl + req.path)) return suite();
+  /* 401 et non 404 : l'app doit pouvoir distinguer « pas connecté » — et
+     proposer Face ID — de « cette route n'existe pas ». */
+  return res.status(401).json({ error: 'Connecte-toi pour accéder à la maison.' });
+});
+
 /* Qui agit ? Le jeton d'abord — il ne se falsifie pas depuis le corps de la requête. */
 const qui = (req) =>
   (req.appareil && req.appareil.personne)
