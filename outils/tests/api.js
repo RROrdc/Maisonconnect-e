@@ -97,6 +97,38 @@ module.exports = async function (muet) {
   const apres = await A.api('/api/data');
   t.dire(!apres.j.courses.some((c) => c.article === nom), 'ligne d’essai bien retirée');
 
+  /* ── La barrière de l'extérieur ─────────────────────────────────────────
+     🔴 Posée le 13/09, après avoir constaté que /api/data répondait 200 à
+     quiconque connaît le domaine du tunnel — courses, agenda, et les devoirs
+     des enfants par /api/ecole. Le code d'accès protégeait l'écran de l'app,
+     pas l'API en dessous.
+
+     On simule une requête venue d'Internet : Cloudflare pose CF-Connecting-IP
+     sur toute requête qu'il relaie, et ÉCRASE ce que le client aurait pu
+     envoyer — on ne peut donc pas se faire passer pour le réseau local.
+     ⚠️ Ce contrôle vaut surtout pour l'avenir : la barrière est invisible à
+     l'usage, et rien d'autre ne signalerait qu'elle a été défaite. */
+  t.titre('Barrière de l’extérieur');
+  const DEHORS = { 'CF-Connecting-IP': '203.0.113.9' };
+  for (const chemin of ['/api/data', '/api/ecole', '/api/maison', '/api/health']) {
+    const r = await A.api(chemin, 'GET', null, DEHORS);
+    t.dire(r.statut === 401, `${chemin} est fermé sans identité depuis Internet`, 'statut ' + r.statut);
+  }
+  /* Et ce qui doit RESTER ouvert : sans ça, personne ne pourrait jamais se
+     connecter de l'extérieur — ni par code, ni par Face ID. */
+  for (const chemin of ['/api/personnes', '/api/passkey/etat']) {
+    const r = await A.api(chemin, 'GET', null, DEHORS);
+    t.dire(r.statut === 200, `${chemin} reste ouvert — il sert à s’identifier`, 'statut ' + r.statut);
+  }
+  /* La liste des prénoms ne doit rien porter de plus : elle est ouverte. */
+  const gens = await A.api('/api/personnes', 'GET', null, DEHORS);
+  const champs = new Set(Object.keys((gens.j.personnes || [])[0] || {}));
+  t.dire([...champs].every((c) => ['nom', 'couleur', 'collectif'].includes(c)),
+    '🔑 /api/personnes ne rend que le prénom et sa couleur', [...champs].join(', ') || 'vide');
+  /* À la maison, rien ne change : l'écran mural n'a pas de jeton. */
+  const chezNous = await A.api('/api/data');
+  t.dire(chezNous.statut === 200, 'à la maison, l’écran mural accède sans jeton', 'statut ' + chezNous.statut);
+
   t.titre('Session et back-office');
   const s = await A.session('Rémi');
   t.dire(!!s.moi && s.moi.admin === true, 'Rémi est administrateur');

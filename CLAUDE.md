@@ -7838,8 +7838,48 @@ bord ne demande aucun débit.
   16 mA quand un ventilateur en tire 100 à 200). Un service surveille la
   température ; le seuil de bridage du Pi est 80 °C.
 
+### 🔴 L'API était ouverte à Internet — la faille du jour, et c'est moi qui l'ai ouverte
+Contrôle de fin de journée, route par route depuis l'extérieur : le filtre du
+tunnel fermait bien `/admin/` et `/bento.html`… mais **`/api/data` répondait
+200 à quiconque connaît le nom du domaine**. Courses, tâches, agenda, présence —
+et par `/api/ecole`, les emplois du temps et les devoirs des trois enfants.
+`/api/health` donnait en prime la topologie du réseau interne.
+
+🔑 **Le code d'accès protégeait l'ÉCRAN de l'app, pas l'API en dessous.** Rémi
+croyait avoir « des codes pour tous » ; les données étaient en accès libre. C'est
+exactement l'écart qu'il m'avait signalé le matin même pour le bento — sécuriser
+la façade et laisser la porte ouverte —, reproduit une couche plus bas.
+
+- **Barrière posée en `app.use` AVANT toutes les routes**, comme la barrière
+  admin : une route ajoutée plus bas ne peut pas l'oublier (§ 2 quater). Toute
+  requête portant `CF-Connecting-IP` — donc relayée par Cloudflare — doit
+  présenter un appareil enrôlé ou une session.
+- 🔑 **Cloudflare ÉCRASE cet en-tête** s'il est envoyé par le client : on ne peut
+  pas se faire passer pour le réseau local depuis l'extérieur. À la maison il est
+  absent, et l'écran mural — qui n'a pas de jeton — continue de fonctionner.
+- 🐞 **Piège Express évité de justesse** : dans un `app.use('/api', …)`,
+  `req.path` est **relatif au point de montage** — il vaut `/session`, pas
+  `/api/session`. Comparer `req.path` à la liste aurait tout laissé passer :
+  la barrière aurait eu l'air posée sans rien fermer.
+- 🐞 **Et elle a cassé l'enrôlement à distance**, trouvé en relisant le parcours
+  d'un téléphone neuf : l'écran « qui es-tu ? » lisait `/api/data` pour afficher
+  les prénoms. Hors de la maison il ne voyait plus que « Serveur injoignable » —
+  le cas exact d'Enora et Martial. D'où **`/api/personnes`** : le prénom et sa
+  couleur, rien d'autre — ce que l'écran de la cuisine montre déjà à qui entre
+  dans la pièce. L'enrôlement continue d'exiger le code.
+- ✅ **Huit contrôles verrouillent la barrière**, dont « à la maison, l'écran
+  mural accède sans jeton » et « `/api/personnes` ne rend que le prénom ». Sans
+  eux, rien ne signalerait qu'elle a été défaite : une barrière est invisible à
+  l'usage, et son absence ne se voit qu'en la cherchant.
+
+⚠️ **Leçon de méthode** : le tunnel a été vérifié le matin sur les PAGES
+(`/app/`, `/bento.html`, `/admin/`) et jugé bon. Les pages n'étaient que la
+moitié du sujet — une app est faite de pages ET d'API. Vérifier une ouverture
+vers Internet, c'est parcourir **toutes** les routes, pas celles qu'on a en tête.
+
+
 ### Vérifié
-**404 tests, 0 échec**, joués contre le Mac. Face ID et notifications éprouvés
+**412 tests, 0 échec**, joués contre le Mac. Face ID et notifications éprouvés
 en vrai sur deux iPhone. Tunnel vérifié depuis l'extérieur, page par page.
 - ⏭ Reste : Face ID et notifications sur les téléphones d'Enora et Martial ·
   Pronote toujours en pause (QR à regénérer) · Augustin et Clovis n'ont pas
