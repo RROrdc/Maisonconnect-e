@@ -1,0 +1,17 @@
+[Unit]
+# Savoir si le ventilateur sert vraiment — voir l'en-tête du script.
+Description=Surveillance de la température du Raspberry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/surveiller-temperature.sh
+Restart=always
+RestartSec=20
+# Le service ne fait que lire un fichier système et poster une notification :
+# il n'a besoin d'aucun privilège.
+User=remi
+
+[Install]
+WantedBy=multi-user.target
