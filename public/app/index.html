@@ -1463,7 +1463,7 @@ async function pushActiver(){
       endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
     });
     toast('✅ Notifications activées');
-    if(ONGLET==='reglages') dessiner();
+    if(ECRAN==='reglages') dessiner();
   }catch(err){ toast('✗ '+(err.message||'Abonnement refusé')); }
 }
 
@@ -1478,7 +1478,7 @@ async function pushDesactiver(){
       await ab.unsubscribe();
     }
     toast('Notifications désactivées.');
-    if(ONGLET==='reglages') dessiner();
+    if(ECRAN==='reglages') dessiner();
   }catch(err){ toast('✗ '+(err.message||'')); }
 }
 
@@ -1525,7 +1525,7 @@ async function faceIdActiver(){
     });
     localStorage.setItem('maison-faceid','1');
     toast('✅ Face ID activé sur ce téléphone');
-    if(ONGLET==='reglages') dessiner();
+    if(ECRAN==='reglages') dessiner();
   }catch(err){ toast('✗ '+(err.message||'Face ID refusé')); }
 }
 
