@@ -335,6 +335,7 @@ app.use((req, _res, suite) => {
    l'extérieur : ni par code, ni par Face ID. */
 const OUVERT_DEHORS = [
   '/api/session',            // se connecter avec son code
+  '/api/personnes',          // les prénoms seuls, pour l'écran « qui es-tu ? »
   '/api/appareil',           // enrôler un téléphone (exige déjà le code)
   '/api/passkey/etat',
   '/api/passkey/defi',
@@ -1569,6 +1570,20 @@ app.post('/api/vocal', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ appareils & sessions */
+/* Les prénoms, et RIEN d'autre — pour l'écran « qui es-tu ? ».
+   Il lisait /api/data, fermé à l'extérieur depuis la barrière : un téléphone
+   neuf ne pouvait donc plus s'enrôler ailleurs qu'à la maison, ce qui est
+   précisément le cas des enfants. On n'ouvre pas /api/data pour autant — il
+   porte les courses, l'agenda et les devoirs. Ici : le prénom et sa couleur,
+   ce que l'écran de la cuisine affiche déjà à quiconque entre dans la pièce.
+   L'enrôlement lui-même continue d'exiger le code. */
+app.get('/api/personnes', async (_req, res) => {
+  try {
+    const gens = await donnees.lirePersonnes();
+    res.json({ personnes: gens.map((p) => ({ nom: p.nom, couleur: p.couleur, collectif: !!p.collectif })) });
+  } catch (e) { res.status(500).json({ error: messageClair(e) }); }
+});
+
 app.post('/api/appareil', (req, res) => {
   try {
     const { jeton, personne, nom } = req.body || {};

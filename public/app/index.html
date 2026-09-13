@@ -1432,13 +1432,12 @@ function changerMenu(m){
    ===================================================================== */
 async function proposerQui(){
   try{
-    const d = await (await fetch('/api/data')).json();
-    S = d;
+    const d = await (await fetch('/api/personnes')).json();
     $('#gens').innerHTML = (d.personnes||[]).filter((p)=>!p.collectif).map((p)=>
       `<button data-nom="${e(p.nom)}"><span class="rond" style="background:${e(p.couleur||'#9aa7bd')}">
         ${e(init(p.nom))}</span><span>${e(p.nom)}</span></button>`).join('');
     $$('#gens button').forEach((b)=>b.onclick = ()=>enroler(b.dataset.nom));
-  }catch(_){ $('#gens').innerHTML = '<p style="color:var(--alerte)">Serveur injoignable.</p>'; }
+  }catch(_){ $('#gens').innerHTML = '<p style="color:var(--alerte)">Impossible de joindre la maison.</p>'; }
   $('#ecranQui').classList.add('on');
 }
 
