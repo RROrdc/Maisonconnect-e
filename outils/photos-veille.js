@@ -3,7 +3,9 @@
    Album partagé → photos de l'écran de veille.
 
    Usage :
-     node outils/photos-veille.js <lien ou jeton>      essaie un album, n'écrit rien
+     node outils/photos-veille.js --dossier <chemin>            regarde, n'écrit rien
+     node outils/photos-veille.js --dossier <chemin> --vraiment  range les photos
+     node outils/photos-veille.js <lien iCloud>                  (album publié — voir photos/dossier.js)
      node outils/photos-veille.js --tous               relit les albums configurés
      node outils/photos-veille.js --tous --vraiment    télécharge et range
 
@@ -30,6 +32,8 @@ const HAUTEUR = 1920;
 const QUALITE = 78;
 
 const args = process.argv.slice(2);
+const iDossier = args.indexOf('--dossier');
+const dossierSource = iDossier >= 0 ? args[iDossier + 1] : '';
 const vraiment = args.includes('--vraiment');
 const tous = args.includes('--tous');
 const lien = args.find((a) => !a.startsWith('--'));
@@ -85,13 +89,81 @@ async function telecharger(album, sharp) {
   return pris;
 }
 
+/* ── Import depuis un dossier ──────────────────────────────────────────────
+   Même traitement que pour un album publié : on redimensionne à la dalle et
+   on range sous une empreinte du CONTENU. Deux exports successifs du même
+   fichier ne le stockent donc qu'une fois — on peut relancer sans compter. */
+async function depuisDossier(racine, sharp) {
+  const { lister } = require('../photos/dossier');
+  const { photos, albums } = lister(racine);
+
+  console.log('');
+  console.log(`  ${photos.length} photo(s) trouvée(s) dans ${racine}`);
+  for (const [nom, n] of [...albums].sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+    console.log(`    ${String(n).padStart(5)}  ${nom}`);
+  }
+  const poids = photos.reduce((t, p) => t + p.octets, 0);
+  console.log(`    poids à la source : ${Math.round(poids / 1024 / 1024)} Mo`);
+  console.log(`    après redimensionnement (estimé) : ~${Math.round(photos.length * 0.2)} Mo`);
+
+  if (!vraiment) return 0;
+
+  fs.mkdirSync(DOSSIER, { recursive: true });
+  const dejaLa = new Set(fs.readdirSync(DOSSIER));
+  const index = [];
+  let pris = 0; let octets = 0; let refuses = 0;
+
+  for (const p of photos) {
+    try {
+      const brut = fs.readFileSync(p.chemin);
+      const nom = crypto.createHash('sha1').update(brut).digest('hex').slice(0, 16) + '.jpg';
+      if (dejaLa.has(nom)) { index.push({ f: nom, album: p.album }); continue; }
+      const img = await sharp(brut)
+        .rotate()
+        .resize({ width: LARGEUR, height: HAUTEUR, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: QUALITE, mozjpeg: true })
+        .toBuffer();
+      fs.writeFileSync(path.join(DOSSIER, nom), img);
+      index.push({ f: nom, album: p.album });
+      pris++; octets += img.length;
+    } catch (_) { refuses++; /* un HEIC illisible ne doit pas arrêter l'import */ }
+  }
+
+  /* L'index porte la légende de chaque photo. Sans lui, l'écran ne saurait pas
+     dire « Rhodes 2026 » sous l'image — et une photo sans contexte perd la
+     moitié de ce qu'elle raconte. */
+  fs.writeFileSync(path.join(DOSSIER, 'index.json'),
+    JSON.stringify({ maj: new Date().toISOString(), photos: index }, null, 1));
+
+  console.log('');
+  console.log(`    ✅ ${pris} nouvelle(s) · ${index.length} au total · ${ko(octets)} ajoutés`);
+  if (refuses) console.log(`    ⚠️  ${refuses} fichier(s) illisible(s) (HEIC non pris en charge ?)`);
+  return pris;
+}
+
 async function principal() {
+  if (dossierSource) {
+    let sharp = null;
+    if (vraiment) {
+      try { sharp = require('sharp'); }
+      catch (_) { console.log('sharp est absent (npm install sharp).'); process.exit(1); }
+    }
+    const n = await depuisDossier(dossierSource, sharp);
+    console.log('');
+    if (!vraiment) console.log('  Simulation. Ajoute --vraiment pour ranger les photos.');
+    else console.log(`  ${n} photo(s) ajoutée(s) à l'écran de veille.`);
+    console.log('');
+    return;
+  }
+
   if (!lien && !tous) {
     console.log('');
-    console.log('  Donne un lien d’album partagé, ou --tous pour ceux déjà configurés.');
+    console.log('  Donne un dossier de photos :');
+    console.log('    node outils/photos-veille.js --dossier ~/Photos-veille');
     console.log('');
-    console.log('  Pour obtenir le lien, dans Photos sur le Mac ou l’iPhone :');
-    console.log('    l’album partagé → Personnes → activer « Site web public » → copier le lien');
+    console.log('  Pour le remplir, dans Photos sur le Mac :');
+    console.log('    sélectionne les photos → Fichier → Exporter → Exporter les photos…');
+    console.log('    → dans un dossier par album. Rien ne sort de la maison.');
     console.log('');
     return;
   }
