@@ -55,6 +55,17 @@
   const CHIFFRES = '1 2 3 4 5 6 7 8 9 0'.split(' ');
 
   let cible = null, majuscule = false, chiffres = false, zone = null;
+  /* 🔴 Le défaut du 13/09, signalé par Rémi sur le menu : « je tape un plat, il
+     n'est pas pris en compte et ne s'affiche plus ».
+     La cause n'est ni le serveur (vérifié : l'écriture passe et se relit), ni la
+     navigation de semaine. C'est une règle du navigateur : une valeur posée PAR
+     SCRIPT ne marque pas le champ comme modifié, et `change` n'est donc JAMAIS
+     émis à la sortie du champ — il ne l'est que pour une frappe physique.
+     Appuyer sur ✓ marchait (on émet `change` nous-mêmes) ; toucher ailleurs
+     perdait la saisie sans un mot.
+     On retient donc la valeur d'arrivée, et on émet `change` à la fermeture si
+     elle a bougé — exactement ce qu'un vrai clavier aurait fait. */
+  let valeurInitiale = '', dejaValide = false;
 
   const estChamp = (el) => el && (
     (el.tagName === 'INPUT' && /^(text|search|email|tel|url|number|password)$/i.test(el.type || 'text'))
@@ -138,6 +149,7 @@
   function valider() {
     if (!cible) return;
     const c = cible;
+    dejaValide = true;
     c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     c.dispatchEvent(new Event('change', { bubbles: true }));
     fermer();
@@ -174,6 +186,8 @@
   function ouvrir(el) {
     style();
     cible = el;
+    valeurInitiale = el.value || '';
+    dejaValide = false;
     /* Amener le champ dans la moitié haute : le clavier occupe le bas, et taper
        sans voir ce qu'on écrit ne sert à rien. Fait APRÈS le rendu du clavier,
        sinon la hauteur disponible n'est pas encore la bonne. */
@@ -186,6 +200,13 @@
   }
 
   function fermer() {
+    /* Le filet : si la valeur a bougé et que personne n'a validé, on emet
+       `change` avant de lacher le champ. Sans ca, toucher ailleurs efface la
+       saisie en silence (13/09). */
+    if (cible && !dejaValide && (cible.value || '') !== valeurInitiale) {
+      try { cible.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) { /* champ deja retire */ }
+    }
+    dejaValide = false;
     if (zone) zone.style.display = 'none';
     document.body.classList.remove('clv-ouvert');
     cible = null;
