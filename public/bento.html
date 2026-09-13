@@ -510,6 +510,25 @@
     .sv-photo.vu.respire{animation:none}
   }
   .sv-photo[hidden]{display:none}
+  /* Voile en dégradé : sombre en haut et en bas, où vivent l'heure et les
+     widgets — clair au milieu, où se trouve le sujet de la photo. */
+  .sv-voile{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;
+    transition:opacity 1.4s ease;
+    background:linear-gradient(to bottom,
+      color-mix(in srgb,var(--sv-bg) 86%,transparent) 0%,
+      color-mix(in srgb,var(--sv-bg) 30%,transparent) 26%,
+      color-mix(in srgb,var(--sv-bg) 18%,transparent) 50%,
+      color-mix(in srgb,var(--sv-bg) 72%,transparent) 78%,
+      color-mix(in srgb,var(--sv-bg) 92%,transparent) 100%)}
+  .saver.avec-photo .sv-voile{opacity:1}
+  .sv-voile[hidden]{display:none}
+
+  /* Les cartes reprennent du corps : sur une photo, un fond à 5 % ne tient pas. */
+  .saver.avec-photo .sv-w{background:color-mix(in srgb,var(--sv-bg) 74%,transparent);
+    border-color:color-mix(in srgb,var(--sv-txt) 16%,transparent)}
+  .saver.avec-photo .sv-time,.saver.avec-photo .sv-date,.saver.avec-photo .sv-saint{
+    text-shadow:0 2px 14px var(--sv-bg)}
+
   .sv-leg{position:absolute;left:0;right:0;bottom:86px;z-index:1;text-align:center;
     font-size:15px;letter-spacing:.4px;opacity:.72;pointer-events:none}
   .sv-leg[hidden]{display:none}
@@ -997,6 +1016,7 @@
 
 <div class="saver" id="saver">
   <img class="sv-photo" id="svPhoto" alt="" hidden>
+  <div class="sv-voile" id="svVoile" hidden></div>
   <div class="sv-leg" id="svLeg" hidden></div>
   <div class="hint">Touchez l'écran pour revenir</div>
   <div class="sv-top">
@@ -2473,6 +2493,8 @@ function photoSuivante(){
       img.classList.remove(...EFFETS);
       img.classList.add(e);
       img.src=p.url; img.hidden=false;
+      const v=document.getElementById('svVoile');
+      if(v){v.hidden=false;} saver.classList.add('avec-photo');
       leg.textContent=p.legende||''; leg.hidden=!p.legende;
       /* Deux images imbriquées : la première pose l'état de départ, la seconde
          déclenche la transition. Sans ce délai d'un rendu, le navigateur
@@ -2498,6 +2520,8 @@ function arreterDiaporama(){
   if(minuterPhoto){clearInterval(minuterPhoto);minuterPhoto=null;}
   const img=document.getElementById('svPhoto'), leg=document.getElementById('svLeg');
   if(img){img.classList.remove('vu','respire',...EFFETS);img.hidden=true;}
+  const v=document.getElementById('svVoile'); if(v)v.hidden=true;
+  saver.classList.remove('avec-photo');
   if(leg)leg.hidden=true;
 }
 
