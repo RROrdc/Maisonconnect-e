@@ -62,6 +62,11 @@ const MOTIFS = [
      crie au loup sur sa propre notice finit par être ignoré. Une vraie URL
      fuitée porte toujours un domaine. */
   ['calendrier iCloud publié', /webcal:\/\/[\w.-]+\.[a-z]{2,}|p\d{2,3}-caldav\.icloud\.com/i],
+  /* Un lien d album partagé DONNE ACCÈS a l album : quiconque l a voit les
+     photos de la famille. Il vit en base, comme l URL du calendrier, jamais
+     dans le depot — et le jeton fait 70 caracteres, donc reconnaissable
+     seulement par l adresse qui le precede. */
+  ['album partage iCloud', new RegExp('icloud[.]com/sharedalbum|sharedstreams[.]icloud[.]com/[A-Za-z0-9_-]{20,}', 'i')],
   ['jeton d’appareil EcoleDirecte', /"c[nv]"\s*:\s*"[^"]{20,}"/],
   ['identifiants Pronote', /"(?:password|token_login)"\s*:\s*"[^"]{12,}"/],
   ['clé privée', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
