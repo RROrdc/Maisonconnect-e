@@ -272,6 +272,110 @@ function creerRappels({ donnees, diffuser, config }) {
     return { neuves: neuves.length };
   }
 
+  /* ── Changements d'emploi du temps et messages de l'établissement ─────────
+     Demandé par Rémi le 13/09, et c'est LA valeur des espaces scolaires :
+     afficher un emploi du temps, on sait faire ; dire qu'un cours saute, non.
+     Un cours annulé appris la veille au soir, c'est une matinée récupérée.
+
+     Même patron que la vie scolaire, et pour les mêmes raisons : on ne signale
+     que le NOUVEAU, et le tout premier passage mémorise sans alerter — sinon
+     l'historique entier partirait d'un coup.
+
+     ⚠️ On ne signale QUE les annulations. Un changement de salle ou de
+     professeur fait du bruit pour rien : l'enfant le verra sur place, et une
+     notification par modification mineure ferait ignorer les vraies. */
+  async function passerEcoleNouveautes({ force = false, lireCours = null, lireMessages = null } = {}) {
+    const bilan = { annules: 0, messages: 0 };
+
+    if (typeof lireCours === 'function') {
+      try {
+        const cours = (await lireCours()) || [];
+        let vus;
+        try { vus = JSON.parse(donnees.reglage('cours_annules_vus', '[]')); } catch { vus = []; }
+        const deja = new Set(Array.isArray(vus) ? vus : []);
+        const amorcage = !deja.size;
+
+        const annules = cours.filter((c) => c.annule && c.jour >= aujourdhui());
+        for (const c of annules) {
+          const cle = [c.eleve, c.jour, c.debut, c.matiere].join('|');
+          if (deja.has(cle)) continue;
+          deja.add(cle);
+          if (amorcage || force === 'muet') continue;
+          bilan.annules++;
+          await donnees.ajouterNotif({
+            titre: `🚫 ${c.eleve} — cours annulé`,
+            message: [c.matiere, c.jour, c.debut && ('à ' + c.debut)].filter(Boolean).join(' · '),
+            /* Tout le monde : c'est souvent un parent qui doit s'organiser. */
+            pour: null, de: 'École', niveau: 'alerte',
+          });
+        }
+        donnees.ecrireReglages({ cours_annules_vus: JSON.stringify([...deja].slice(-MAX_VUES)) });
+        if (amorcage && annules.length) {
+          donnees.journaliser('info', 'rappels',
+            `Cours annulés : ${annules.length} mémorisé(s) sans alerter (premier passage).`);
+        }
+      } catch (e) {
+        donnees.journaliser('avert', 'rappels', 'Cours illisibles : ' + e.message);
+      }
+    }
+
+    if (typeof lireMessages === 'function') {
+      try {
+        const messages = (await lireMessages()) || [];
+        let vus;
+        try { vus = JSON.parse(donnees.reglage('messages_ecole_vus', '[]')); } catch { vus = []; }
+        const deja = new Set(Array.isArray(vus) ? vus : []);
+        const amorcage = !deja.size;
+
+        for (const m of messages) {
+          const cle = String(m.id || (m.date + '|' + m.sujet));
+          if (deja.has(cle)) continue;
+          deja.add(cle);
+          if (amorcage || force === 'muet') continue;
+          bilan.messages++;
+          await donnees.ajouterNotif({
+            titre: `✉️ ${m.eleve ? m.eleve + ' — ' : ''}message de l’établissement`,
+            /* Le sujet suffit : le corps peut faire deux pages, et une
+               notification qu'on ne peut pas lire d'un coup d'œil est ratée. */
+            message: String(m.sujet || '').slice(0, 120) || 'Voir l’espace scolaire.',
+            pour: null, de: 'École', niveau: 'info',
+          });
+        }
+        donnees.ecrireReglages({ messages_ecole_vus: JSON.stringify([...deja].slice(-MAX_VUES)) });
+        if (amorcage && messages.length) {
+          donnees.journaliser('info', 'rappels',
+            `Messages : ${messages.length} mémorisé(s) sans alerter (premier passage).`);
+        }
+      } catch (e) {
+        donnees.journaliser('avert', 'rappels', 'Messages illisibles : ' + e.message);
+      }
+    }
+    return bilan;
+  }
+
+  /* ── Le repas du soir n'est pas décidé ────────────────────────────────────
+     Une seule fois, en fin d'après-midi. Le but n'est pas de faire la morale :
+     c'est le dernier moment où l'on peut encore passer prendre quelque chose. */
+  async function passerMenu({ force = false } = {}) {
+    const jour = aujourdhui();
+    if (!force && donnees.reglage('dernier_rappel_menu', '') === jour) return { saute: 'déjà passé' };
+    const heure = Number(config('menu_rappel_heure'));
+    if (!force && Number.isFinite(heure) && new Date().getHours() < heure) return { saute: 'trop tôt' };
+
+    donnees.ecrireReglages({ dernier_rappel_menu: jour });
+    const m = (donnees.lireMenu() || []).find((x) => x.date === jour);
+    /* Rien à dire si c'est déjà décidé — y compris « restaurant » ou « restes »,
+       qui sont des décisions. */
+    if (!m || (m.soir && String(m.soir).trim())) return { rien: true };
+
+    await donnees.ajouterNotif({
+      titre: '🍽️ Ce soir, rien n’est prévu',
+      message: 'Le repas du soir n’est pas renseigné. Encore temps d’y penser.',
+      pour: null, de: 'Écran', niveau: 'info',
+    });
+    return { envoye: true };
+  }
+
   /* Vérifié au démarrage puis toutes les 15 min : c'est l'heure qui décide, pas
      le minuteur. Un intervalle plus court ne changerait rien, un plus long
      raterait la fenêtre sur un poste éteint tôt. */
@@ -281,6 +385,8 @@ function creerRappels({ donnees, diffuser, config }) {
       /* Deux passes, deux heures, un seul minuteur. */
       passerDevoirs(options).catch(() => { /* déjà journalisé */ });
       passerVie(options).catch(() => { /* déjà journalisé */ });
+      passerEcoleNouveautes(options).catch(() => { /* déjà journalisé */ });
+      passerMenu(options).catch(() => { /* déjà journalisé */ });
     };
     setTimeout(tenter, 20000).unref?.();
     const t = setInterval(tenter, 15 * 60 * 1000);
@@ -288,7 +394,8 @@ function creerRappels({ donnees, diffuser, config }) {
     return t;
   }
 
-  return { passer, passerDevoirs, passerVie, planifier, anniversaires, echeances, devoirs };
+  return { passer, passerDevoirs, passerVie, passerEcoleNouveautes, passerMenu,
+           planifier, anniversaires, echeances, devoirs };
 }
 
 module.exports = { creerRappels };

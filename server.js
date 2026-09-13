@@ -114,6 +114,13 @@ const REGLAGES = {
   /* Adresse de contact exigée par les services de push : c'est à elle
      qu'Apple ou Google écrirait en cas d'abus. */
   push_contact: { env: '', defaut: '' },
+  /* Notifications immédiates (tâche assignée, post-it). À 0, seuls les
+     rappels aux heures dites partent encore. */
+  notif_immediate: { env: '', defaut: '1' },
+  /* Heure du rappel « rien n'est prévu ce soir ». 17 h : assez tôt pour
+     passer prendre quelque chose, assez tard pour que la journée ait eu
+     le temps de se décider. */
+  menu_rappel_heure: { env: '', defaut: '17' },
   arrivee_active: { env: '', defaut: '0' },
   arrivee_appareils: { env: '', defaut: '' },
   arrivee_absence_min: { env: '', defaut: '30' },
@@ -1299,6 +1306,16 @@ app.post('/api/todo', async (req, res) => {
   try {
     const t = await donnees.ajouterTache(req.body);
     majFaite('todo', req);
+    /* Une tâche assignée sonne TOUT DE SUITE chez la personne concernée :
+       attendre le rappel de 8 h le lendemain, c'est trop tard pour « vider le
+       lave-vaisselle ». Sans destinataire, on ne pousse rien — sinon chaque
+       article ajouté réveillerait tout le monde. */
+    const auteur = qui(req);
+    if (t.who && t.who !== auteur) {
+      const quand = t.due ? ' — pour le ' + t.due : '';
+      pousserVers(t.who, '✅ ' + auteur + ' te demande', t.tache + quand)
+        .catch(() => { /* déjà journalisé */ });
+    }
     res.json(t);
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
@@ -1316,6 +1333,11 @@ app.post('/api/postit', async (req, res) => {
   try {
     const p = await donnees.ajouterPostit({ ...req.body, who: req.body.who || qui(req) });
     majFaite('postit', req);
+    /* Un post-it s'adresse au foyer : on prévient tout le monde, sauf celui qui
+       vient de l'écrire. C'est le remplaçant du papier sur le frigo — et un mot
+       que personne ne voit ne sert à rien. */
+    pousserVers(null, '📝 Mot de ' + (p.who || 'la maison'), p.message || '', p.who)
+      .catch(() => { /* déjà journalisé */ });
     res.json(p);
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
@@ -1391,6 +1413,32 @@ async function pousser(notif) {
       try { donnees.journaliser('avert', 'push', messageClair(e)); } catch (_) {}
     }
   }));
+}
+
+/* Pousser SANS enregistrer. Demandé par Rémi le 13/09 : « les notifs des choses
+   à faire quand on demande de vider le lave-vaisselle, ou un post-it ».
+   🔑 Pourquoi sans enregistrer : ces événements sont fréquents, et la tâche est
+   déjà visible dans « À faire ». Les inscrire doublerait l'information et
+   remplirait l'onglet Notifications de la famille — c'est exactement le
+   raisonnement tenu pour l'écho vocal (§ 2 septies), où `ajouterNotif` et
+   `diffuser` ont été séparés pour cette raison.
+   `saufLui` évite de se notifier soi-même : être prévenu de ce qu'on vient
+   d'écrire donne l'impression que l'app bavarde. */
+async function pousserVers(pour, titre, message, saufLui) {
+  try {
+    if (config('notif_immediate') === '0') return;
+    let abos = donnees.lireAbonnementsPush(pour || null);
+    if (saufLui) abos = abos.filter((a) => a.personne !== saufLui);
+    if (!abos.length) return;
+    const charge = JSON.stringify({ titre, message: message || '', de: saufLui || '', niveau: 'info' });
+    const sujet = 'mailto:' + (config('push_contact') || 'maison@localhost');
+    await Promise.all(abos.map(async (a) => {
+      const r = await push.envoyer(a, charge, { sujet });
+      if (r.perime) donnees.retirerAbonnementPush(a.endpoint);
+    }));
+  } catch (e) {
+    try { donnees.journaliser('avert', 'push', messageClair(e)); } catch (_) {}
+  }
 }
 
 app.post('/api/notif', (req, res) => {
@@ -2153,6 +2201,28 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
           prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
         });
         return charge.vie || [];
+      },
+      /* Même inversion pour les cours et les messages. `Ecole.tout()` partage
+         une seule lecture entre les appelants simultanés (§ 2 duovicies) : ces
+         trois sources ne déclenchent donc pas trois connexions. */
+      lireCours: async () => {
+        const charge = await ecole.tout({
+          jours: Number(config('ecole_jours')) || 7,
+          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
+        });
+        /* ⚠️ La charge porte les cours À PLAT, pas imbriqués dans les élèves :
+           les lire au mauvais endroit aurait donné zéro notification, sans la
+           moindre erreur pour le signaler. Chaque cours porte déjà son `eleve`. */
+        return charge.cours || [];
+      },
+      lireMessages: async () => {
+        const charge = await ecole.tout({
+          jours: Number(config('ecole_jours')) || 7,
+          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
+        });
+        return charge.messages || [];
       },
     });
 
