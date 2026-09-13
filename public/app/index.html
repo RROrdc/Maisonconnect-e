@@ -722,12 +722,60 @@ RENDU.devoirs = ()=>{
 /* ---------- Menu de la semaine ---------- */
 const platDe = (id)=>(S.plats||[]).find((p)=>p.id===id);
 
+/* Semaine affichée. Vide = celle du jour, servie par /api/data et tenue à jour
+   toute seule par le flux temps réel. Une autre semaine est chargée à part.
+   🔑 Signalé par Rémi le 13/09 : l'app ne montrait QUE la semaine en cours, on
+   ne pouvait donc rien préparer à l'avance — alors que le serveur sait répondre
+   pour n'importe quelle semaine depuis le début. C'était un manque de l'app,
+   pas une limite du système. */
+let SEM = '', SEM_DATA = null;
+
+const lignesMenu = ()=> SEM_DATA || S.menu || [];
+
+async function allerSemaine(pas){
+  if(pas===0){ SEM=''; SEM_DATA=null; return dessiner(); }
+  const ref = (SEM_DATA && SEM_DATA[0] && SEM_DATA[0].date) || (S.menu && S.menu[0] && S.menu[0].date);
+  if(!ref) return;
+  const d = new Date(ref+'T12:00'); d.setDate(d.getDate()+7*pas);
+  const iso = d.toISOString().slice(0,10);
+  try{
+    const r = await api('/api/menu?semaine='+iso);
+    SEM = iso; SEM_DATA = r.menu;
+    /* Revenu sur la semaine du jour : on repasse sur les données de /api/data,
+       qui se rafraîchissent seules. Sinon l'écran resterait figé sur une copie. */
+    if(S.menu && S.menu[0] && r.menu[0] && r.menu[0].date === S.menu[0].date){ SEM=''; SEM_DATA=null; }
+    dessiner();
+  }catch(err){ toast('✗ '+err.message); }
+}
+
+/* Après une écriture : si on regarde une AUTRE semaine, recharger /api/data ne
+   suffit pas — il ne rapporte que la semaine du jour, et le plat qu'on vient de
+   saisir paraîtrait perdu. */
+async function apresMenuApp(){
+  if(!SEM) return charger();
+  try{ SEM_DATA = (await api('/api/menu?semaine='+SEM)).menu; }catch(_){ /* on garde l'affichage */ }
+  await charger();
+}
+
 RENDU.menu = ()=>{
   const jr = JOURS[(new Date().getDay()+6)%7];
+  const l = lignesMenu();
+  const du = l[0] && l[0].date, au = l[6] && l[6].date;
+  const joli = (iso)=>{ if(!iso) return ''; const x=new Date(iso+'T12:00');
+    return x.toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); };
   return `<div class="info">Touche un jour pour changer le plat, ou la photo pour ouvrir
     la recette. Un plat écrit librement rejoint la bibliothèque et sera proposé les
     semaines suivantes.</div>
-  <div class="carte">${(S.menu||[]).map((m)=>{
+  <div class="carte" style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+    <button class="btn doux fin" id="semAv" style="flex:0 0 auto;padding:8px 14px">‹</button>
+    <div style="text-align:center;font-weight:700;font-size:14px">
+      ${SEM?'':'Cette semaine'}${SEM?e(joli(du)+' → '+joli(au)):''}
+      ${SEM?'<div class="d" style="font-weight:500">semaine à venir</div>':''}
+    </div>
+    <button class="btn doux fin" id="semAp" style="flex:0 0 auto;padding:8px 14px">›</button>
+  </div>
+  ${SEM?'<div style="height:8px"></div><button class="btn doux fin" id="semAuj">Revenir à cette semaine</button>':''}
+  <div class="carte">${l.map((m)=>{
     const auj = String(m.jour||'').startsWith(jr.slice(0,3));
     const f = platDe(m.soirId);
     const ouvrable = f && f.recette;
@@ -1088,7 +1136,10 @@ function brancherEcran(){
     try{ await api('/api/'+genre+'/'+id,'DELETE'); toast('Supprimé.'); }catch(err){ toast('✗ '+err.message); }
   });
 
-  $$('[data-menu]').forEach((n)=>n.onclick = ()=>changerMenu((S.menu||[]).find((m)=>m.id===n.dataset.menu)));
+  $$('[data-menu]').forEach((n)=>n.onclick = ()=>changerMenu(lignesMenu().find((m)=>m.id===n.dataset.menu)));
+  if($('#semAv')) $('#semAv').onclick = ()=>allerSemaine(-1);
+  if($('#semAp')) $('#semAp').onclick = ()=>allerSemaine(1);
+  if($('#semAuj')) $('#semAuj').onclick = ()=>allerSemaine(0);
   /* La photo et l'étiquette « Recette » ouvrent la fiche ; le reste de la ligne change
      le plat. Deux gestes distincts sur la même ligne, d'où le stopPropagation. */
   $$('[data-recette]').forEach((n)=>n.onclick = (ev)=>{
@@ -1359,6 +1410,9 @@ function changerMenu(m){
       else if(v.startsWith('!')){ v = v.slice(1); special = true; }
       await api('/api/menu/'+m.id,'PATCH',
         { [moment]:v, special, [moment+'Couverts']: Number(d.querySelector('#a_cvt').value) });
+      /* Recharge la semaine AFFICHÉE, pas seulement celle du jour : sans ça, un
+         plat saisi pour la semaine prochaine paraîtrait perdu. */
+      await apresMenuApp();
       toast('Menu mis à jour.');
     });
   /* Le champ libre n'apparaît que si on choisit « Autre » : sinon il encombre. */
