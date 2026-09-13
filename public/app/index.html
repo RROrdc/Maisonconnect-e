@@ -1038,6 +1038,9 @@ RENDU.reglages = ()=>{
     <button class="btn doux fin" id="verrou">${verrou?'✅':'⬜'} Demander mon code à l'ouverture</button>
     <div style="height:8px"></div>
     <button class="btn doux fin" id="faceid">${faceIdActif?'✅':'⬜'} Ouvrir avec Face ID</button>
+    <div style="height:8px"></div>
+    <button class="btn doux fin" id="push">🔔 Notifications sur ce téléphone</button>
+    <div class="info" style="margin:8px 0 0" id="pushInfo">…</div>
     <div class="info" style="margin:11px 0 0" id="faceidInfo">${faceIdPossible()
       ? 'Ton empreinte ne quitte jamais ce téléphone : le serveur n’en reçoit qu’une clé publique, qui ne permet pas de se faire passer pour toi. Le code reste en secours — indispensable le jour où tu changes de téléphone.'
       : 'Face ID demande une adresse sécurisée (https). Sur le Wi-Fi de la maison en http, le navigateur ne le propose pas — ce n’est pas un réglage, c’est une règle du navigateur.'}</div>
@@ -1112,6 +1115,21 @@ function brancherEcran(){
   if($('#vider')) $('#vider').onclick = async ()=>{
     try{ await api('/api/course/vider','POST'); toast('Liste nettoyée.'); }catch(err){ toast('✗ '+err.message); }
   };
+
+  /* L'état du push demande le service worker, donc une réponse asynchrone :
+     on peint d'abord, on complète ensuite. Afficher « désactivé » par défaut
+     ferait croire à un échec pendant une demi-seconde. */
+  if($('#push')){
+    pushEtat().then((e)=>{
+      const b = $('#push'), info = $('#pushInfo');
+      if(!b) return;
+      b.textContent = (e.actif?'✅':'⬜') + ' Notifications sur ce téléphone';
+      if(info) info.textContent = e.possible
+        ? 'Elles arrivent même app fermée et même loin de la maison : c’est Apple qui les transmet, pas notre serveur. Rien de ce qu’elles contiennent n’est lisible par lui.'
+        : e.raison;
+      b.onclick = ()=> e.actif ? pushDesactiver() : pushActiver();
+    });
+  }
 
   if($('#faceid')) $('#faceid').onclick = async ()=>{
     if(localStorage.getItem('maison-faceid') === '1'){
@@ -1402,6 +1420,67 @@ const b64u = {
 };
 
 const faceIdPossible = ()=> !!(window.PublicKeyCredential && window.isSecureContext);
+
+/* =====================================================================
+   Notifications push
+   ⚠️ Sur iPhone, l'abonnement n'est possible QUE si l'app a été ajoutée à
+   l'écran d'accueil. Dans un onglet Safari ordinaire, la permission est
+   refusée sans explication — d'où le message qui le dit franchement plutôt
+   qu'un bouton qui échoue.
+   ===================================================================== */
+const surEcranAccueil = ()=> window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true;
+
+const pushPossible = ()=> !!(window.isSecureContext && 'serviceWorker' in navigator
+  && 'PushManager' in window && 'Notification' in window);
+
+async function pushEtat(){
+  if(!pushPossible()) return {possible:false, raison:'Ce navigateur ne sait pas recevoir de notifications.'};
+  if(!surEcranAccueil()) return {possible:false, actif:false,
+    raison:'Ajoute d’abord l’app à ton écran d’accueil (Partager → Sur l’écran d’accueil). iOS refuse les notifications depuis un onglet.'};
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const ab = await reg.pushManager.getSubscription();
+    return {possible:true, actif:!!ab, permission:Notification.permission};
+  }catch(_){ return {possible:false, raison:'Service worker indisponible.'}; }
+}
+
+async function pushActiver(){
+  const e = await pushEtat();
+  if(!e.possible) return toast('✗ '+e.raison);
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted') return toast('✗ Notifications refusées dans les réglages du téléphone.');
+    const {cle} = await api('/api/push/cle');
+    const reg = await navigator.serviceWorker.ready;
+    const ab = await reg.pushManager.subscribe({
+      /* Obligatoire sur iOS et Chrome : un push silencieux n'est pas autorisé. */
+      userVisibleOnly: true,
+      applicationServerKey: b64u.depuis(cle),
+    });
+    const j = ab.toJSON();
+    await api('/api/push/abonner','POST',{
+      endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+    });
+    toast('✅ Notifications activées');
+    if(ONGLET==='reglages') dessiner();
+  }catch(err){ toast('✗ '+(err.message||'Abonnement refusé')); }
+}
+
+async function pushDesactiver(){
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const ab = await reg.pushManager.getSubscription();
+    if(ab){
+      /* Le serveur d'abord : une désinscription locale qui laisserait
+         l'abonnement en base ferait envoyer dans le vide indéfiniment. */
+      await api('/api/push/desabonner','POST',{endpoint: ab.endpoint}).catch(()=>{});
+      await ab.unsubscribe();
+    }
+    toast('Notifications désactivées.');
+    if(ONGLET==='reglages') dessiner();
+  }catch(err){ toast('✗ '+(err.message||'')); }
+}
 
 async function faceIdEtat(){
   try{ return await api('/api/passkey/etat'); }

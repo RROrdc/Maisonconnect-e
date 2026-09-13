@@ -111,6 +111,9 @@ const REGLAGES = {
      domaine qui l'a créée : sans lui, rien n'est proposé — plutôt qu'un
      bouton qui échouerait. */
   passkey_domaine: { env: '', defaut: '' },
+  /* Adresse de contact exigée par les services de push : c'est à elle
+     qu'Apple ou Google écrirait en cas d'abus. */
+  push_contact: { env: '', defaut: '' },
   arrivee_active: { env: '', defaut: '0' },
   arrivee_appareils: { env: '', defaut: '' },
   arrivee_absence_min: { env: '', defaut: '30' },
@@ -1326,11 +1329,79 @@ app.get('/api/notif', (req, res) => {
   } catch (e) { res.status(500).json({ error: messageClair(e) }); }
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Notifications push — le téléphone dans la poche, écran éteint.
+
+   Ce que le SSE ne sait pas faire : il n'atteint qu'une app OUVERTE. Le push
+   passe par Apple, qui réveille le téléphone. Conséquence heureuse : une fois
+   abonné, **le téléphone n'a plus besoin de joindre la maison** — c'est notre
+   serveur qui parle à Apple, et Apple qui parle au téléphone. Les notifications
+   arrivent donc partout, y compris hors de toute connexion à la maison.
+
+   ⚠️ Sur iOS, l'abonnement n'est possible QUE si l'app a été ajoutée à l'écran
+   d'accueil. Safari refuse dans un onglet ordinaire, et ne dit pas pourquoi.
+   ══════════════════════════════════════════════════════════════════════════ */
+const push = require('./push');
+
+app.get('/api/push/cle', (_req, res) => {
+  try { res.json({ cle: push.clePublique() }); }
+  catch (e) { res.status(500).json({ error: messageClair(e) }); }
+});
+
+app.post('/api/push/abonner', (req, res) => {
+  try {
+    const perso = req.appareil && req.appareil.personne;
+    if (!perso) return res.status(401).json({ error: 'Appareil non enrôlé.' });
+    const { endpoint, p256dh, auth } = req.body || {};
+    if (!endpoint || !p256dh || !auth) return res.status(400).json({ error: 'Abonnement incomplet.' });
+    donnees.ajouterAbonnementPush({ personne: perso, endpoint, p256dh, auth });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+app.post('/api/push/desabonner', (req, res) => {
+  try { res.json(donnees.retirerAbonnementPush((req.body || {}).endpoint || '')); }
+  catch (e) { res.status(400).json({ error: messageClair(e) }); }
+});
+
+/* Envoi réel. Appelé après `ajouterNotif` : on écrit d'abord, on pousse ensuite.
+   Séparer les deux permet à un téléphone éteint de rattraper l'historique
+   (§ 2 quater) — et une panne de push ne doit pas faire perdre le message. */
+async function pousser(notif) {
+  let abonnements;
+  try { abonnements = donnees.lireAbonnementsPush(notif.pour || null); }
+  catch (_) { return; }
+  if (!abonnements.length) return;
+
+  const charge = JSON.stringify({
+    titre: notif.titre, message: notif.message || '',
+    de: notif.de || '', niveau: notif.niveau || 'info',
+  });
+  const sujet = 'mailto:' + (config('push_contact') || 'maison@localhost');
+
+  /* En parallèle : dix téléphones ne doivent pas faire dix attentes en file. */
+  await Promise.all(abonnements.map(async (a) => {
+    try {
+      const r = await push.envoyer(a, charge, { sujet });
+      /* Un abonnement mort est retiré TOUT DE SUITE. Sans ça la table se
+         remplit d'appareils disparus qu'on réessaie à chaque notification. */
+      if (r.perime) donnees.retirerAbonnementPush(a.endpoint);
+      else if (!r.ok) donnees.journaliser('avert', 'push', `${r.statut || '?'} ${r.raison || ''}`.trim());
+    } catch (e) {
+      try { donnees.journaliser('avert', 'push', messageClair(e)); } catch (_) {}
+    }
+  }));
+}
+
 app.post('/api/notif', (req, res) => {
   try {
     const n = donnees.ajouterNotif({ ...req.body, de: req.body.de || qui(req) });
     /* Écrit en base PUIS diffusé : un téléphone éteint retrouvera l'historique. */
     diffuser('notif', n);
+    /* Et poussé vers les téléphones fermés. Sans `await` : l'appelant ne doit
+       pas attendre Apple, et un service de push lent ne doit pas retarder
+       l'affichage sur l'écran mural, qui est déjà fait. */
+    pousser(n).catch(() => { /* déjà journalisé */ });
     majFaite('notif', req);
     res.json({ notif: n });
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }

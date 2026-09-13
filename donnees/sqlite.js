@@ -706,6 +706,37 @@ const revoquerAppareil = (id) => {
 /* ------------------------------------------------------------------ notifications */
 /* On écrit en base PUIS on diffuse (la diffusion est faite par le serveur).
    Séparer les deux permet à un téléphone éteint de rattraper l'historique. */
+/* ------------------------------------------------------------------ push */
+/* Un abonnement = un APPAREIL, pas une personne : chacun peut en avoir
+   plusieurs, et `endpoint` est déjà UNIQUE dans le schéma. Un ré-abonnement du
+   même téléphone met donc à jour au lieu de dupliquer — sinon on enverrait deux
+   fois la même notification au même écran. */
+function ajouterAbonnementPush({ personne, endpoint, p256dh, auth }) {
+  ecrire(`INSERT INTO abonnements_push (personne, endpoint, p256dh, auth)
+          VALUES (?,?,?,?)
+          ON CONFLICT(endpoint) DO UPDATE SET
+            personne = excluded.personne, p256dh = excluded.p256dh, auth = excluded.auth`,
+    personne, endpoint, p256dh || null, auth || null);
+  return { ok: true };
+}
+
+/* `pour` vide = tout le monde. C'est la règle déjà posée pour les rappels : une
+   tâche sans destinataire concerne le foyer (§ 2 nonies). */
+const lireAbonnementsPush = (pour) =>
+  (pour
+    ? q(`SELECT * FROM abonnements_push WHERE personne = ?`, pour)
+    : q(`SELECT * FROM abonnements_push`))
+    .map((a) => ({ id: sid(a.id), personne: a.personne, endpoint: a.endpoint,
+      p256dh: a.p256dh, auth: a.auth }));
+
+/* Retiré POUR DE BON, contrairement au reste du projet : un abonnement que le
+   service déclare mort (404/410) ne se restaure pas — l'app a été désinstallée
+   ou la permission retirée. Le garder ferait réessayer indéfiniment. */
+function retirerAbonnementPush(endpoint) {
+  const r = ecrire(`DELETE FROM abonnements_push WHERE endpoint = ?`, endpoint);
+  return { retires: Number(r.changes || 0) };
+}
+
 function ajouterNotif({ titre, message, pour, de, niveau }) {
   const r = ecrire(`INSERT INTO notifications (titre, message, pour, de, niveau, maj_le)
                     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
@@ -899,6 +930,7 @@ module.exports = {
   creerSession, lireSession, supprimerSession, purgerSessions,
   enrolerAppareil, appareil, listeAppareils, revoquerAppareil,
   ajouterNotif, listeNotifs,
+  ajouterAbonnementPush, lireAbonnementsPush, retirerAbonnementPush,
   lireReglages, ecrireReglages, poserReglagesSiAbsents, reglage, couvertsDefaut,
   journaliser, lireJournal, viderJournal, marquerJournalVu, journalNonVu,
   lireAnniversaires, anniversairesDans, ageAtteint, enregistrerAnniversaire, supprimerAnniversaire,

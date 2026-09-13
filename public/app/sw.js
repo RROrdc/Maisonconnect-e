@@ -57,3 +57,42 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+
+/* ── Notifications push ─────────────────────────────────────────────────────
+   Ajouté le 13/09, une fois le HTTPS en place. Le service worker est le SEUL
+   endroit où une notification peut être affichée quand l'app est fermée —
+   c'est même sa raison d'être ici.
+
+   ⚠️ `event.waitUntil` n'est pas une précaution : sans lui, le système peut
+   arrêter le service worker avant que la notification soit affichée, et rien
+   n'apparaît. */
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (_) { d = { titre: event.data && event.data.text() }; }
+  const titre = d.titre || 'Maison';
+  event.waitUntil(self.registration.showNotification(titre, {
+    body: d.message || '',
+    icon: './icones/icone-192.png',
+    badge: './icones/icone-192.png',
+    /* Même `tag` = la nouvelle REMPLACE l'ancienne au lieu de s'empiler. Trois
+       rappels de devoirs d'affilée, c'est trois fois plus de chances d'être
+       ignorés (§ 2 nonies). */
+    tag: d.niveau === 'alerte' ? 'maison-alerte' : 'maison',
+    renotify: d.niveau === 'alerte',
+    data: { url: './' },
+  }));
+});
+
+/* Toucher la notification doit RAMENER dans l'app déjà ouverte, pas en ouvrir
+   une deuxième : se retrouver avec deux exemplaires de la liste de courses est
+   le meilleur moyen de cocher dans la mauvaise. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const fenetres = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const f of fenetres) {
+      if (f.url.includes('/app/') && 'focus' in f) return f.focus();
+    }
+    if (self.clients.openWindow) return self.clients.openWindow('./');
+  })());
+});
