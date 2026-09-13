@@ -72,6 +72,9 @@ const REGLAGES = {
   /* Durée d'une photo dans le diaporama de veille. Trop court fatigue, trop
      long donne un écran figé qu'on croit en panne. 30 s est le juste milieu. */
   veille_photo_secondes: { defaut: '30' },
+  /* Les liens d album partage : un par ligne. Ce sont des SECRETS — un lien
+     donne acces a l album — d ou leur place en base et jamais dans le depot. */
+  veille_albums: { defaut: '' },
   /* Rayons du magasin, source UNIQUE. Ils étaient codés en dur DEUX fois, avec
      des listes différentes : un article rangé dans « Surgelés » depuis l'app
      n'apparaissait nulle part sur l'écran mural. Rangés dans l'ordre d'un

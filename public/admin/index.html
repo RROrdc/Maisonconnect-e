@@ -1484,6 +1484,13 @@ const REGLAGES_CONNUS = [
   ['meteo_lon', 'Longitude (météo)', 'texte', 'Roubaix = 3.1746.'],
   ['veille_minutes', 'Mise en veille après (minutes)', 'nombre',
    "Écran mural. Une notification réveille l'écran quoi qu'il arrive."],
+  ['veille_photo_secondes', 'Diaporama de veille — durée d’une photo (secondes)', 'nombre',
+   "Écran mural. Trop court fatigue, trop long donne un écran figé qu'on croit en panne."],
+  ['veille_albums', 'Diaporama de veille — albums partagés iCloud', 'zone',
+   "Un lien par ligne. Dans Photos : l'album partagé → Personnes → « Site web public » → copier le lien. "
+   + "⚠️ Un lien publié rend l'album visible à QUICONQUE l'a — n'y mettre que ce qu'on accepte de partager. "
+   + "Les photos sont téléchargées et redimensionnées EN LOCAL : l'écran les garde même sans Internet. "
+   + "Import : node outils/photos-veille.js --tous --max 200 --vraiment"],
   ['agenda_ics', 'Agenda personnel — lien .ics', 'texte',
    "⚠️ JAMAIS l'agenda pro. Lien d'abonnement iCloud ou Google, en lecture seule. Vide = tuile Agenda vide."],
   ['news_rss', 'Bandeau actualités — flux RSS', 'texte',
