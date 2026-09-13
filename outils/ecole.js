@@ -83,11 +83,11 @@ async function apercu(e) {
   titre(`${e.prenom} (${e.compte}) — ce que le compte rend`);
   const du = jour(new Date()), au = jour(dansNJours(7));
   for (const [nom, appel] of [
-    ['emploi du temps (7 j)', () => e._client.emploiDuTemps(e.id, du, au)],
-    ['cahier de textes', () => e._client.devoirs(e.id)],
-    ['notes', () => e._client.notes(e.id)],
-    ['vie scolaire', () => e._client.vieScolaire(e.id)],
-    ['messages', () => e._client.messages(e.via === 'famille' ? { familleId: e.familleId } : { eleveId: e.id })],
+    ['emploi du temps (7 j)', () => ecole.emploiDuTemps(e.prenom, { jours: 7 })],
+    ['cahier de textes', () => ecole.devoirs(e.prenom, { jours: 7 })],
+    ['notes', () => ecole.notes(e.prenom)],
+    ['vie scolaire', () => ecole.vieScolaire(e.prenom)],
+    ['messages', () => ecole.messages(e.prenom)],
   ]) {
     try {
       const d = await appel();
@@ -100,13 +100,7 @@ async function apercu(e) {
          l'endroit exact où il n'y en a pas — une demi-heure perdue.
          On compte désormais le CONTENU, et on dit « répond, vide » plutôt que
          d'inventer un nombre. */
-      const contenu = (x) => {
-        if (Array.isArray(x)) return x.length;
-        if (!x || typeof x !== 'object') return 0;
-        /* Un objet enveloppe : on additionne ce que portent ses tableaux. */
-        return Object.values(x).reduce((t, v) => t + (Array.isArray(v) ? v.length : 0), 0);
-      };
-      const n = contenu(d);
+      const n = Array.isArray(d) ? d.length : 0;
       /* On compte plutôt qu'on ne coche : un module vide n'est pas une panne,
          l'établissement peut simplement ne pas s'en servir. */
       console.log(`  ✓ ${nom.padEnd(24)} ${n ? n + ' entrée(s)' : 'répond, mais vide'}`);
