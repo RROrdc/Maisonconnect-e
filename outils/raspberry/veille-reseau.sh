@@ -25,12 +25,21 @@
 set -u
 
 INTERVALLE="${INTERVALLE:-30}"          # secondes entre deux contrôles
-AVANT_RENOUVELLEMENT="${AVANT_RENOUVELLEMENT:-3}"   # échecs avant de redemander une IP
+AVANT_REASSOCIATION="${AVANT_REASSOCIATION:-2}"    # échecs avant de se raccrocher
+AVANT_RENOUVELLEMENT="${AVANT_RENOUVELLEMENT:-4}"  # échecs avant de redemander une IP
 AVANT_RADIO="${AVANT_RADIO:-8}"         # échecs avant de couper/rallumer la radio
 AVANT_REBOOT="${AVANT_REBOOT:-40}"      # échecs avant de redémarrer (~20 min)
 MARQUE_REBOOT="/tmp/veille-reseau-dernier-reboot"
 
 journal() { logger -t veille-reseau "$*"; echo "$(date '+%F %T') $*"; }
+
+# 🔑 Ce que la panne du 12/09 a révélé : le signal AU MOMENT de la perte. Sans
+# lui, on cherche une cause logicielle à un problème de portée — on a perdu une
+# matinée là-dessus. Mesuré à −74 dBm, l'instabilité commençant vers −70.
+signal() {
+  local s; s="$(iw dev "$(iface)" link 2>/dev/null | awk '/signal:/{print $2" dBm"}')"
+  [ -n "$s" ] && echo "$s" || echo "signal inconnu"
+}
 
 cible() {
   # La passerelle par défaut. Recalculée à chaque fois : elle change avec le
@@ -61,15 +70,35 @@ while true; do
     echecs=0
   else
     echecs=$((echecs + 1))
-    journal "passerelle injoignable ($echecs)"
+    [ "$echecs" -eq 1 ] && journal "passerelle injoignable (1) — $(signal)"
+    [ "$echecs" -ne 1 ] && journal "passerelle injoignable ($echecs)"
 
-    if [ "$echecs" -eq "$AVANT_RENOUVELLEMENT" ]; then
+    # 🔴 LE DÉFAUT DU 12/09 : chaque action n'était tentée QU'UNE FOIS, avec un
+    # `-eq`. Après le palier des quatre minutes, plus rien ne se passait jusqu'à
+    # la vingtième — seize minutes où le chien de garde comptait sans agir.
+    # C'est exactement la durée de la coupure observée ce jour-là.
+    # Les actions douces sont donc REJOUÉES tant que le réseau manque : une
+    # réassociation qui échoue à la deuxième minute peut réussir à la sixième,
+    # la borne ayant eu le temps de revenir.
+    if [ "$echecs" -ge "$AVANT_REASSOCIATION" ] \
+       && [ $(( (echecs - AVANT_REASSOCIATION) % 4 )) -eq 0 ] \
+       && [ "$echecs" -lt "$AVANT_RADIO" ]; then
+      journal "on se raccroche au réseau"
+      # `connection up` réassocie SANS couper la radio : c'est le geste le plus
+      # doux qui répare le cas le plus fréquent — l'association perdue alors que
+      # la borne est là.
+      nmcli --wait 15 connection up "$(nmcli -t -f NAME,TYPE connection show --active \
+        | awk -F: '/wifi/{print $1; exit}')" >/dev/null 2>&1 \
+        || nmcli device reapply "$(iface)" >/dev/null 2>&1
+
+    elif [ "$echecs" -eq "$AVANT_RENOUVELLEMENT" ]; then
       journal "on redemande une adresse"
       nmcli device reapply "$(iface)" >/dev/null 2>&1 \
         || nmcli networking off >/dev/null 2>&1 && sleep 2 && nmcli networking on >/dev/null 2>&1
 
-    elif [ "$echecs" -eq "$AVANT_RADIO" ]; then
-      journal "on coupe et rallume la radio Wi-Fi"
+    elif [ "$echecs" -ge "$AVANT_RADIO" ] && [ "$echecs" -lt "$AVANT_REBOOT" ] \
+         && [ $(( (echecs - AVANT_RADIO) % 8 )) -eq 0 ]; then
+      journal "on coupe et rallume la radio Wi-Fi ($(signal))"
       nmcli radio wifi off >/dev/null 2>&1; sleep 5; nmcli radio wifi on >/dev/null 2>&1
 
     elif [ "$echecs" -ge "$AVANT_REBOOT" ]; then
