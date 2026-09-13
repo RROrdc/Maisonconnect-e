@@ -53,6 +53,77 @@ module.exports = async function (muet) {
     });
     t.dire(bon, `${rel} — syntaxe des scripts`, souci || `${scripts.length} script(s)`);
 
+    /* 🔴 Les VARIABLES inventées, trouvé le 13/09 : en ajoutant Face ID j'ai
+       écrit `ONGLET` alors que la variable s'appelle `ECRAN`. Une variable
+       inexistante tue le script à partir de cette ligne, et l'app ne s'ouvre
+       plus — exactement comme un `$('#absent')`, que ce banc attrapait déjà.
+       La convention du projet met les états globaux en MAJUSCULES : on peut donc
+       repérer ceux qui sont lus sans avoir jamais été déclarés.
+
+       ⚠️ On analyse le CODE seul. Sans retirer commentaires et chaînes, le
+       contrôle remontait « AVANT », « POUR », « HTTPS »… lus dans les
+       commentaires — soixante faux positifs, donc un test qu'on aurait
+       désactivé le lendemain.
+       ⚠️ Et la liste blanche ne contient que des globales du langage ou du
+       navigateur : y ajouter un nom du projet reviendrait à désamorcer le
+       contrôle pour se débarrasser d'un échec. */
+    const CONNUES = new Set(['JSON', 'Math', 'Date', 'URL', 'URLSearchParams', 'Notification',
+      'PublicKeyCredential', 'PushManager', 'Intl', 'Promise', 'Object', 'Array', 'String',
+      'Number', 'Boolean', 'Set', 'Map', 'RegExp', 'Error', 'TextEncoder', 'TextDecoder',
+      'Event', 'KeyboardEvent', 'CustomEvent', 'Audio', 'Image', 'FormData', 'Blob', 'File',
+      'FileReader', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'AbortController',
+      'Uint8Array', 'ArrayBuffer', 'DataView', 'BigInt', 'Symbol', 'Proxy', 'Reflect',
+      'GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS', 'HEAD', 'NaN', 'Infinity']);
+
+    const BLOC = String.fromCharCode(47, 42);      // ouverture de commentaire
+    const FINB = String.fromCharCode(42, 47);      // fermeture
+    const LIGNE = String.fromCharCode(47, 47);     // commentaire de ligne
+    const BT = String.fromCharCode(96);            // accent grave
+    const AP = String.fromCharCode(39);            // apostrophe
+    const GU = String.fromCharCode(34);            // guillemet
+
+    /* Construites par `new RegExp` : écrites en littéral, elles contiendraient
+       les délimiteurs de commentaire eux-mêmes, que le lecteur de code
+       interprète avant nous. */
+    const ech = (s) => s.replace(/./g, (c) => '\\' + c);
+    const sansCommentairesNiChaines = (code) => code
+      .replace(new RegExp(ech(BLOC) + '[\\s\\S]*?' + ech(FINB), 'g'), ' ')
+      .replace(new RegExp('(^|[^:])' + ech(LIGNE) + '[^\\n]*', 'g'), '$1 ')
+      .replace(new RegExp(BT + '(?:\\\\[\\s\\S]|[^' + BT + '\\\\])*' + BT, 'g'), BT + BT)
+      .replace(new RegExp(AP + '(?:\\\\.|[^' + AP + '\\\\\\n])*' + AP, 'g'), AP + AP)
+      .replace(new RegExp(GU + '(?:\\\\.|[^' + GU + '\\\\\\n])*' + GU, 'g'), GU + GU);
+
+    const tout = sansCommentairesNiChaines(scripts.join('\n'));
+    /* 🔑 Les DÉCLARATIONS se cherchent dans le code BRUT, les USAGES dans le
+       code nettoyé. Les gabarits de /admin/ s'imbriquent : le nettoyage y perd
+       des lignes entières, et ICONE_NIVEAU — pourtant déclaré — était signalé
+       comme inventé. Rater une déclaration ne coûte au pire qu'un bug non vu ;
+       en inventer une fabrique un échec qu'on finirait par désactiver. */
+    const brut = scripts.join(String.fromCharCode(10));
+    const declarees = new Set();
+    for (const m of brut.matchAll(/\b(?:let|const|var|function|class)\s+([A-Z][A-Z_0-9]+)\b/g))
+      declarees.add(m[1]);
+    /* Déclarées autrement — paramètre, destructuration, propriété, affectation.
+       On ne refait pas un analyseur : le but est d'attraper une faute de frappe.
+       🔑 `=(?!=)` et non `=` : sans cette précision, `ONGLET===` comptait comme
+       une affectation, le nom se déclarait donc LUI-MÊME, et le contrôle ne
+       pouvait plus rien trouver. Vérifié en réintroduisant le vrai bug. */
+    for (const m of brut.matchAll(/([A-Z][A-Z_0-9]+)\s*(?:=(?!=)|[:,)])/g)) declarees.add(m[1]);
+
+    /* On ne retient que les usages SYNTAXIQUES : le nom doit être suivi, sans
+       espace, d'un caractère de code. Ainsi `ONGLET===` est signalé, mais pas
+       « HTTP sur le réseau » ni « à la JARVIS » — du texte français qu'un
+       gabarit imbriqué a laissé passer. Le nettoyage des chaînes ne suffit pas
+       ici : les gabarits de /admin/ s'imbriquent, et aucune expression
+       régulière ne les découpe vraiment. Plutôt qu'un test bruyant qu'on
+       finirait par désactiver, on vise moins large et on ne se trompe pas. */
+    const inventees = new Set();
+    for (const m of tout.matchAll(/\b([A-Z][A-Z_0-9]{2,})(?=[.[(=!&|?;,)\]])/g)) {
+      if (!declarees.has(m[1]) && !CONNUES.has(m[1])) inventees.add(m[1]);
+    }
+    t.dire(!inventees.size, `${rel} — aucune variable inventée`,
+      inventees.size ? [...inventees].join(', ') : 'toutes déclarées');
+
     /* Un gestionnaire posé sur un élément absent lève une exception et tue le
        reste du script, silencieusement pour l'utilisateur. */
     const vises = [...html.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]);
@@ -88,6 +159,30 @@ module.exports = async function (muet) {
     const styles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
     const ouv = (styles.match(/\{/g) || []).length, fer = (styles.match(/\}/g) || []).length;
     t.dire(ouv === fer, `${rel} — accolades CSS équilibrées`, `${ouv}/${fer}`);
+    /* 🔴 Les VARIABLES CSS inventées, trouvé le 13/09 : en fondant la
+       navigation de semaine dans la carte du menu, j'ai écrit
+       `var(--bord)` — qui n'existe pas ici, la variable s'appelle `--line`.
+       Une variable CSS absente ne lève AUCUNE erreur : la propriété est
+       simplement ignorée, et la bordure ne s'affiche jamais. C'est le frère
+       exact de la variable JS inventée, mais côté style — donc invisible pour
+       tous les contrôles précédents, et visible seulement à l'œil.
+       ⚠️ On ne tient compte que des variables définies dans LA MÊME page : ce
+       projet n'a pas de feuille commune, chaque page porte sa palette.
+       ⚠️ Et on cherche les définitions dans TOUT le HTML, pas seulement dans
+       les blocs <style> : plusieurs sont posées en attribut \n       depuis le script — les chercher ailleurs fabriquait quatre faux
+       positifs, donc un test qu'on aurait désactivé. */
+    const definies = new Set();
+    for (const m of html.matchAll(/(--[a-z0-9-]+)\s*:/gi)) definies.add(m[1]);
+    const cssInventees = new Set();
+    /* Un var(--x, repli) porte sa propre valeur de secours : il fonctionne
+       meme si la variable manque. Le signaler serait reprocher une precaution.
+       D ou le ) exige juste apres le nom. */
+    for (const m of html.matchAll(/var\(\s*(--[a-z0-9-]+)\s*\)/gi)) {
+      if (!definies.has(m[1])) cssInventees.add(m[1]);
+    }
+    t.dire(!cssInventees.size, `${rel} — aucune variable CSS inventée`,
+      cssInventees.size ? [...cssInventees].join(', ') : definies.size + ' définies');
+
 
     /* 🐞 Angle mort trouvé le 06/09 en éprouvant le déploiement automatique : le
        contrôle ci-dessus n'extrait que les blocs COMPLETS. Un `<style>` jamais
