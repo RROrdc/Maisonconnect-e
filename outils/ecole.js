@@ -91,10 +91,25 @@ async function apercu(e) {
   ]) {
     try {
       const d = await appel();
-      const n = Array.isArray(d) ? d.length : Object.keys(d || {}).length;
+      /* 🐞 Corrigé le 13/09 : on comptait `Object.keys(d)` quand la réponse
+         est un OBJET — or notes et vie scolaire en rendent un, avec des
+         périodes et du paramétrage autour d'un tableau souvent vide. Le
+         diagnostic annonçait donc « ✓ notes 4 entrée(s) » deux semaines après
+         la rentrée, alors qu'il n'y avait aucune note. Un outil qui dit « ça
+         marche et c'est rempli » quand c'est vide envoie chercher la panne à
+         l'endroit exact où il n'y en a pas — une demi-heure perdue.
+         On compte désormais le CONTENU, et on dit « répond, vide » plutôt que
+         d'inventer un nombre. */
+      const contenu = (x) => {
+        if (Array.isArray(x)) return x.length;
+        if (!x || typeof x !== 'object') return 0;
+        /* Un objet enveloppe : on additionne ce que portent ses tableaux. */
+        return Object.values(x).reduce((t, v) => t + (Array.isArray(v) ? v.length : 0), 0);
+      };
+      const n = contenu(d);
       /* On compte plutôt qu'on ne coche : un module vide n'est pas une panne,
          l'établissement peut simplement ne pas s'en servir. */
-      console.log(`  ✓ ${nom.padEnd(24)} ${n} entrée(s)`);
+      console.log(`  ✓ ${nom.padEnd(24)} ${n ? n + ' entrée(s)' : 'répond, mais vide'}`);
     } catch (err) {
       console.log(`  ✗ ${nom.padEnd(24)} ${err.message}`);
     }
