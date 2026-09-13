@@ -1505,7 +1505,20 @@ app.post('/api/passkey/enregistrer', (req, res) => {
 app.post('/api/passkey/defi-connexion', (req, res) => {
   const d = domainePasskey();
   if (!d) return res.status(400).json({ error: 'Aucun domaine HTTPS configuré.' });
-  res.json({ defi: passkeys.nouveauDefi('g:' + cleDefi(req)), rpId: d });
+  /* On DIT au téléphone quelles clés acceptent ce compte (`allowCredentials`).
+     Sans cette liste, le navigateur choisit seul parmi les passkeys du trousseau
+     — et il peut en présenter une que le serveur ne connaît pas, ce qui donne un
+     « appareil inconnu » incompréhensible pour l'utilisateur.
+     Le prénom vient de l'appareil déjà enrôlé ; s'il est absent on ne renvoie
+     rien, et le navigateur reprend son choix libre. Les identifiants ne sont pas
+     des secrets : sans la clé privée, ils n'ouvrent rien. */
+  const perso = (req.appareil && req.appareil.personne)
+    || String((req.body && req.body.personne) || '').trim();
+  const connue = perso && donnees.lirePersonnes().some((p) => p.nom === perso);
+  const ids = connue
+    ? donnees.listerPasskeys(perso).map((p) => p.credentialId).filter(Boolean)
+    : [];
+  res.json({ defi: passkeys.nouveauDefi('g:' + cleDefi(req)), rpId: d, ids });
 });
 
 app.post('/api/passkey/connexion', (req, res) => {

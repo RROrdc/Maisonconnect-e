@@ -127,7 +127,12 @@ function verifierSignature({ cleSpkiB64, algo, authenticatorData, clientDataJSON
 function verifierConnexion({ reponse, defi, rpId, origines, cherche, exigerUV = true }) {
   if (!reponse || !reponse.id) throw new Error('réponse vide');
   const enregistre = cherche(reponse.id);
-  if (!enregistre) throw new Error('appareil inconnu');
+  /* L'identifiant est DIT dans l'erreur : sans lui, « appareil inconnu » oblige
+     à deviner s'il s'agit d'une clé jamais enregistrée, d'un encodage qui
+     diffère, ou d'un téléphone qui a proposé autre chose. Il part au journal du
+     serveur, jamais au client. Ce n'est pas un secret : un credential_id est un
+     identifiant public, sans valeur sans la clé privée. */
+  if (!enregistre) throw new Error('appareil inconnu (id reçu : ' + String(reponse.id).slice(0, 40) + ')');
 
   const clientDataJSON = deB64url(reponse.clientDataJSON);
   const authData = deB64url(reponse.authenticatorData);

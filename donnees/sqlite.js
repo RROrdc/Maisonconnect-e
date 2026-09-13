@@ -600,7 +600,12 @@ function listerPasskeys(personne) {
   const lignes = personne
     ? q(`SELECT * FROM passkeys WHERE personne = ? AND supprime_le IS NULL ORDER BY cree_le`, personne)
     : q(`SELECT * FROM passkeys WHERE supprime_le IS NULL ORDER BY personne, cree_le`);
+  /* `credentialId` voyage aussi : c'est lui que le téléphone doit recevoir dans
+     `allowCredentials`, sans quoi le navigateur choisit seul et peut présenter
+     une clé que le serveur ne connaît pas. Ce n'est pas un secret — sans la clé
+     privée, il n'ouvre rien. */
   return lignes.map((r) => ({ id: String(r.id), personne: r.personne,
+    credentialId: r.credential_id,
     appareil: r.appareil || 'appareil', cree_le: r.cree_le, vu_le: r.vu_le }));
 }
 

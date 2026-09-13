@@ -1452,13 +1452,24 @@ async function faceIdActiver(){
 
 /* Déverrouiller. Rend un jeton de session comme le ferait le code. */
 async function faceIdEntrer(){
-  const d = await api('/api/passkey/defi-connexion','POST',{});
-  const a = await navigator.credentials.get({ publicKey: {
+  /* On envoie le prénom mémorisé : le serveur répond avec LES CLÉS DE CETTE
+     PERSONNE, qu'on passe en `allowCredentials`.
+     🐞 Sans cette liste (13/09), le navigateur choisissait seul dans le
+     trousseau et présentait parfois une clé que le serveur ne connaissait pas —
+     « appareil inconnu », incompréhensible côté téléphone. */
+  const d = await api('/api/passkey/defi-connexion','POST',{personne: moi || ''});
+  const opt = {
     challenge: b64u.depuis(d.defi),
     rpId: d.rpId,
     userVerification: 'required',
     timeout: 60000,
-  }});
+  };
+  if(d.ids && d.ids.length){
+    opt.allowCredentials = d.ids.map((id)=>({type:'public-key', id: b64u.depuis(id),
+      /* `internal` : la puce de CE téléphone, pas une clé USB. */
+      transports:['internal','hybrid']}));
+  }
+  const a = await navigator.credentials.get({ publicKey: opt });
   if(!a) throw new Error('Annulé.');
   const r = a.response;
   return api('/api/passkey/connexion','POST',{
