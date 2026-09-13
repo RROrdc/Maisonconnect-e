@@ -7636,6 +7636,219 @@ dalle à six reprises — c'est ce qui a révélé la moitié des défauts ci-de
   promet l'un OU l'autre, jamais le silence. Même confusion qu'au § 2 untricies
   entre ce que le code garantit et ce que la famille a saisi.
 
+## 2 quatervicies bis. 🔐 L'APP EN LIGNE, FACE ID ET NOTIFICATIONS (12-13/09/2026)
+Trois blocages posés le 18/08 tombent le même jour — ils ne dépendaient que du
+HTTPS : accès hors maison, Face ID, notifications téléphone verrouillé.
+
+### 🌐 Cloudflare Tunnel — et le choix du domaine n'était pas libre
+Rémi : « j'ai déjà un nom de domaine, on pourrait l'utiliser ? comme ça on met
+l'app sur nos 4 téléphones avec chacun ses accès ».
+🔑 **Un tunnel Cloudflare exige la zone ENTIÈRE** — déléguer un seul
+sous-domaine est réservé aux offres Entreprise (vérifié, pas supposé). Passer
+`rommelard.fr` chez Cloudflare aurait déplacé les MX de la messagerie familiale
+pour un tableau de courses. D'où **`v-m-p.fr`**, libre de tout service.
+- **Gratuit** : le tunnel, le certificat et le DNS le sont ; seul le domaine se
+  renouvelle.
+- **Aucun port ouvert sur la box** : c'est le Mac qui sort vers Cloudflare. Rien
+  n'est joignable depuis Internet, même en cas d'erreur de pare-feu.
+- `fr.maison.cloudflared.plist` en LaunchDaemon, comme le serveur : après une
+  coupure, personne n'ouvre de session (§ 2 tricies).
+
+### 🔴 « Le bento est en ligne depuis l'extérieur, ça devait être l'app »
+Signalé par Rémi, et il avait raison : mon premier `ingress` exposait TOUT —
+l'écran mural et le back-office compris, c'est-à-dire la configuration de la
+maison et les emplois du temps des enfants, en accès libre.
+⇒ Règles **ordonnées, refus d'abord** : `/admin/`, `/bento.html`, `/api/admin/*`
+et `/vocal.html` tombent en 404 avant d'atteindre la liste blanche. Le moteur
+d'expressions de Go n'a pas de « sauf » — l'ordre EST la règle, et il se relit.
+✅ Vérifié depuis l'extérieur : `/app/` → 200, les quatre autres → 404.
+⚠️ **Leçon** : j'avais écrit « l'app uniquement » dans le guide et ouvert le
+reste. Le même écart que « ça fait surveillance » (§ 2 undecies) — un principe
+écrit ne vaut que si on relit la configuration à sa lumière.
+
+### 🙂 « J'ai l'impression que tu en fais trop »
+J'étais parti sur Cloudflare Access (portail d'entreprise, jetons, politiques
+par e-mail). Rémi a coupé court : « une app, accès en ligne avec Face ID et
+compte sécurisé ». Il avait raison sur toute la ligne — Access aurait ajouté un
+deuxième écran de connexion **avant** le nôtre, pour une famille de six.
+⇒ Abandonné, et remplacé par Face ID dans l'app. Moins de pièces, et c'est la
+demande d'origine du 18/08.
+
+### 👤 `passkeys.js` — WebAuthn sans aucune dépendance
+💡 **La découverte qui rend ça possible** : vérifier une signature WebAuthn
+demande normalement de décoder du CBOR, ce qui justifie une bibliothèque. Or le
+NAVIGATEUR expose `getPublicKey()` depuis 2021, qui rend la clé **déjà au format
+SPKI** — celui que Node lit nativement. Plus de CBOR, donc plus de dépendance.
+- ⚠️ **Et une affirmation de ce fichier était fausse depuis un mois** : « la
+  colonne `passkey` attend déjà en base » (§ 2 quater). Elle n'existait pas.
+  Rien n'était prêt. Une phrase recopiée finit par passer pour un fait — même
+  leçon qu'avec « captures Pronote » (§ 2 vicies).
+- 🐞 **`dsaEncoding` : deux valeurs opposées dans le même projet.** WebAuthn
+  signe en **DER** (`'der'` pour vérifier), un JWT VAPID exige **64 octets
+  bruts** (`'ieee-p1363'` pour signer). Se tromper donne, dans un cas une
+  signature toujours invalide, dans l'autre un 401 qui n'explique rien.
+- 🐞 **« Appareil inconnu » alors que la clé venait d'être enregistrée** :
+  `get()` sans `allowCredentials` laisse le navigateur proposer n'importe quelle
+  passkey du trousseau — souvent celle d'un autre site. Le serveur renvoie donc
+  la liste des identifiants connus. Second défaut au même endroit :
+  `listerPasskeys` ne rendait pas `credentialId`, donc la liste était vide.
+- 🔑 **L'identifiant reçu est DIT dans l'erreur** (journal serveur, jamais au
+  client) : sans lui, « appareil inconnu » oblige à deviner entre une clé jamais
+  enregistrée, un encodage qui diffère et un téléphone qui propose autre chose.
+  Un `credential_id` est public — il ne vaut rien sans la clé privée.
+- ⚠️ **Une passkey est liée au DOMAINE qui l'a créée** : celles enregistrées sur
+  `v-m-p.fr` ne fonctionneront jamais en local. C'est voulu (c'est ce qui rend
+  l'hameçonnage impossible), mais il faut le savoir avant de chercher la panne.
+
+### 🔔 `push.js` — notifications, sans bibliothèque non plus
+- 🔑 **Le téléphone n'a JAMAIS besoin de joindre la maison.** Il s'abonne une
+  fois, puis c'est le serveur qui pousse **vers Apple**, qui livre. Donc pas de
+  VPN, pas de Tailscale sur les téléphones des enfants — la question de départ
+  de Rémi.
+- **Chiffré POUR l'appareil** (RFC 8291) avec des clés qu'il a lui-même
+  générées : ni Apple ni Google ne peuvent lire « Enora est rentrée ». C'est ce
+  qui rend acceptable d'y faire passer la vie de la famille.
+- ⚠️ **Une erreur de chiffrement est SILENCIEUSE** : le service accepte (201),
+  le téléphone reçoit, ne parvient pas à lire, et jette. Rien nulle part. D'où
+  un banc qui **joue le rôle du navigateur** : il génère une paire, demande au
+  serveur de chiffrer, et déchiffre — écrit à part, sans réutiliser le code du
+  serveur, sinon il ne prouverait rien. 14 contrôles.
+- ⚠️ **iOS n'abonne que si l'app est SUR L'ÉCRAN D'ACCUEIL.** Un onglet Safari
+  ordinaire est refusé, sans message utile.
+- 🔴 **Les clés VAPID ne doivent JAMAIS être regénérées** : la clé publique est
+  enregistrée dans chaque abonnement. En changer invaliderait tous les
+  téléphones d'un coup, **sans erreur** — ils cesseraient simplement de recevoir.
+  `push-vapid.json` est hors dépôt, en 600, et un test vérifie qu'elle ne bouge
+  pas d'un appel à l'autre.
+- 404/410 = abonnement mort (app désinstallée, permission retirée) ⇒ retiré
+  aussitôt, sinon la table se remplit de fantômes qu'on réessaie indéfiniment.
+
+### 🎯 À quoi servent vraiment les notifications
+Rémi : « le but c'est de rappeler des tâches ou autres, intéressant de
+l'application », puis « vois aussi les notifs des choses à faire quand on
+demande de vider le lave-vaisselle, ou les post-it ».
+- **Une tâche assignée sonne TOUT DE SUITE** chez la personne concernée :
+  attendre le rappel de 8 h le lendemain, c'est trop tard pour « vider le
+  lave-vaisselle ».
+- **Sans destinataire, on ne pousse rien.** Sinon chaque article de courses
+  réveillerait toute la maison — le meilleur moyen de faire couper les
+  notifications.
+- **On ne se notifie jamais soi-même** (`saufLui`) : c'est ce qui a fait croire
+  un moment à une panne, avant de voir que l'auteur et le destinataire
+  coïncidaient.
+- 🐞 Le jour du branchement, une tâche pour Amandine n'a rien déclenché : elle
+  avait été créée **dans la minute du redémarrage**, donc avant que le code ne
+  soit en place. Reproduit ensuite de bout en bout — reçu. ⚠️ Ne pas conclure à
+  un bug tant qu'on n'a pas comparé l'heure de l'événement à celle du
+  déploiement ; ici `datetime('now')` de SQLite est en **UTC**, deux heures de
+  moins que l'horloge du Mac — de quoi accuser le code à tort.
+
+### 🔢 Codes d'accès + frein anti-force-brute
+« Oui, mets des codes pour tous » — puis « juste pour l'app ». Réglage
+`acces_code_obligatoire` : l'écran mural et le back-office ne sont pas touchés.
+- Frein par personne : au-delà de quelques essais ratés, attente croissante. Il
+  ne compte que les ÉCHECS, et un bon code le remet à zéro.
+- ⚠️ **Effet de bord sur l'outillage** : la suite de tests ouvre une session —
+  elle exige donc `MAISON_CODE` désormais. Le message d'échec le dit et rappelle
+  où le trouver ; sans ça, cinq séries tombent sur « session refusée » sans
+  qu'on comprenne. Et une rafale de tentatives déclenche le frein contre
+  soi-même : c'est la preuve qu'il fonctionne, mais il faut le savoir.
+
+### 🤵 L'accueil ne doit pas CHARGER
+Rémi, sur « Bonjour Amandine, il reste 13 articles sur la liste de course » :
+« cette phrase n'est pas hyper positive et met aussi de la charge mentale ».
+🔑 **C'est une règle de conception, pas un réglage** : on accueille, on ne
+charge pas. Les compteurs de courses et de devoirs sont sortis des salutations ;
+il reste des **touches légères** (« tu as des devoirs pour demain »), sans
+chiffre, et occasionnelles.
+- Ajouté à sa demande : des compliments pour Amandine, et « Madame » de temps en
+  temps — l'appellation alterne au lieu d'être systématique.
+- 🐞 Trois défauts trouvés **en lisant les phrases à voix haute**, jamais en
+  relisant le code : « cours **de** Espagnol » (élision), une majuscule au milieu
+  d'une phrase, et surtout — **un contexte disponible SUPPRIMAIT la variation**
+  au lieu de l'enrichir : Martial aurait entendu la même phrase chaque soir.
+
+### 📅 La semaine suivante dans l'app
+« Sur l'app on voit que la semaine en cours, on ne peut pas programmer la
+semaine suivante. » `GET /api/menu?semaine=<iso>` + flèches. Le retour à la
+semaine du jour est **automatique** : dès qu'on retombe dessus, on repasse sur
+les données de `/api/data`, qui se rafraîchissent seules — sinon l'écran
+resterait figé sur une copie.
+- 🐞 Puis : « cette semaine et semaine suivante sont trop larges, pas à la
+  largeur du menu ». La navigation formait **deux cartes de plus** empilées
+  au-dessus. Fondue en en-tête de la carte du menu, elle en épouse la largeur
+  par construction — il n'y a plus rien à accorder. Les flèches deviennent
+  carrées : un bouton qui ne porte qu'un chevron n'a aucune raison de s'étirer.
+
+### 🧪 Deux gardes nées des bugs du jour
+| ce qui a été écrit | ce que ça donne |
+|---|---|
+| `ONGLET` au lieu de `ECRAN` | exception, **le script meurt à partir de cette ligne** — l'app ne s'ouvre plus |
+| `var(--bord)` au lieu de `var(--line)` | **aucune erreur** : la propriété est ignorée, la bordure ne s'affiche jamais |
+
+- 🔴 **Et le premier test, écrit pour ça, ne trouvait rien.** Sa détection des
+  déclarations prenait `ONGLET===` pour une affectation — le nom se déclarait
+  donc **lui-même**. Corrigé par `=(?!=)`, et **vérifié en réintroduisant le vrai
+  bug** : il tombe, puis repasse une fois remis. Un test qui n'a jamais échoué ne
+  prouve rien.
+- 🔑 **Les déclarations se cherchent dans le code BRUT, les usages dans le code
+  nettoyé** : les gabarits de /admin/ s'imbriquent, le nettoyage y perd des
+  lignes entières, et `ICONE_NIVEAU` — pourtant déclaré — était signalé. Rater
+  une déclaration ne coûte qu'un bug non vu ; en inventer une fabrique un échec
+  qu'on finirait par désactiver.
+- Pour le CSS, deux affinages venus des vraies pages : les variables posées en
+  attribut `style="--c:…"` depuis le script comptent comme définies, et un
+  `var(--x, repli)` n'est pas un oubli — c'est une précaution qui fonctionne.
+  Sans ces deux règles, quatre faux positifs.
+- Il a trouvé le même défaut **préexistant** dans le bento : la consigne de
+  chauffage d'une pièce n'avait aucune couleur (`--maison` non définie sans
+  repli). Corrigé en `--temp`, la couleur du module.
+- 🐞 Au passage : le banc `pages` ne lisait que les scripts **embarqués**.
+  `clavier.js` et `voix.js` sont des fichiers à part — donc jamais vérifiés,
+  alors qu'un backtick dans un commentaire y avait déjà tout cassé. Un fichier
+  servi est un fichier à contrôler.
+
+### ⌨️ La dalle ne savait pas écrire
+Ni clavier ni souris en cuisine : aucun champ texte n'était utilisable — pas même
+le code d'accès de /admin/. `squeekboard` installé et Chromium relancé avec
+`--enable-wayland-ime` : **essayé, le clavier ne monte pas**.
+⇒ `public/clavier.js`, AZERTY dans la page, avec accents et pavé numérique.
+- 🐞 **`pointer: coarse` ne marche pas** : Chromium sous Linux se déclare
+  « souris » même sur une dalle tactile. C'est le **kiosque** qui l'annonce
+  (`?clavier=1`) — lui seul le sait. Le drapeau est ajouté par le script, pas par
+  `kiosque.conf` : sinon corriger l'adresse du serveur ferait perdre le clavier
+  sans qu'on comprenne.
+- 🐞 **Clic fantôme du tactile** : le clavier rétractait le panneau, et le clic
+  que le navigateur envoie ~300 ms après le doigt tombait sur l'arrière-plan, qui
+  fermait la fenêtre. Corrigé à la cause (`touchstart` annulé) ET au symptôme.
+- 🐞 **Un champ rempli par le navigateur ne déclenche jamais `change`** : seule
+  la frappe physique le fait. Le clavier émet donc l'événement en se fermant.
+
+### 📶 Le Pi perdait le réseau
+428 déconnexions en six heures. Passage forcé en **2,4 GHz** (`802-11-wireless.band bg`)
+⇒ **0 en quinze minutes** : la portée l'emportait sur le débit, et un tableau de
+bord ne demande aucun débit.
+- 🐞 Le chien de garde essayait chaque action **une seule fois** (`-eq`), laissant
+  seize minutes d'inaction. Actions rejouées, étape de réassociation ajoutée.
+- 🔑 **Et la page ne se soignait pas** : le réseau revenait, le bento restait
+  figé. Il se recharge désormais seul si les données datent de plus de 7 min ET
+  que le serveur répond — au plus une fois par quart d'heure, pour ne jamais
+  boucler.
+- ⚠️ Ventilateur : sur les broches **4 et 6**, jamais sur la 3 (GPIO2, limitée à
+  16 mA quand un ventilateur en tire 100 à 200). Un service surveille la
+  température ; le seuil de bridage du Pi est 80 °C.
+
+### Vérifié
+**404 tests, 0 échec**, joués contre le Mac. Face ID et notifications éprouvés
+en vrai sur deux iPhone. Tunnel vérifié depuis l'extérieur, page par page.
+- ⏭ Reste : Face ID et notifications sur les téléphones d'Enora et Martial ·
+  Pronote toujours en pause (QR à regénérer) · Augustin et Clovis n'ont pas
+  d'adresse e-mail en base.
+- 🔴 **À changer, montrés en clair dans la conversation** : le mot de passe du Pi
+  et du Mac, celui d'EcoleDirecte, les identifiants Netatmo, la clé Anthropic,
+  le mot de passe VNC et les six codes de la famille.
+
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -7655,7 +7868,12 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (150 vérifications, ~8 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (404 vérifications, ~20 s) — serveur allumé, données réelles, tout est nettoyé.
+  ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
+  `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
+  Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.
+  Une rafale de tentatives ratées déclenche le frein anti-force-brute contre soi-même : c’est
+  qu’il fonctionne, il suffit d’attendre une minute.
 
 ## 3 bis. Mise en route initiale — ✅ TERMINÉE (13/08/2026)
 L'app est **fonctionnelle et connectée à Notion**, en lecture comme en écriture. Node portable ✅, `npm install` ✅, token ✅, partage Notion ✅, écritures validées ✅.
