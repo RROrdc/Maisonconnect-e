@@ -487,8 +487,28 @@
   .sv-w .row b{color:var(--sv-txt);font-weight:750;flex:0 0 88px;font-variant-numeric:tabular-nums}
   .saver .hint{position:absolute;top:22px;left:0;right:0;text-align:center;color:var(--sv-txt3);font-size:13px}
   .sv-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
-    z-index:0;opacity:0;transition:opacity 1.2s ease}
-  .sv-photo.vu{opacity:1}
+    z-index:0;opacity:0;will-change:opacity,transform;
+    transition:opacity 1.4s ease,transform 1.4s cubic-bezier(.22,.61,.36,1)}
+  .sv-photo.vu{opacity:1;transform:none}
+
+  /* Quatre entrées, tirées au sort à chaque photo. Toujours DISCRÈTES : sur un
+     mur de cuisine, un effet qu'on remarque devient vite agaçant — c'est la
+     photo qu'on doit regarder, pas la transition. */
+  .sv-photo.t-fondu{transform:none}
+  .sv-photo.t-zoom{transform:scale(1.06)}
+  .sv-photo.t-recul{transform:scale(.94)}
+  .sv-photo.t-glisse{transform:translateX(3.5%)}
+
+  /* Respiration lente pendant l'affichage : le fameux effet « Ken Burns ».
+     Sans lui, une photo fixe trente secondes donne l'impression d'un écran
+     figé — et sur un mur, un écran figé passe pour une panne. */
+  @keyframes svRespire{from{transform:scale(1)}to{transform:scale(1.045)}}
+  .sv-photo.vu.respire{animation:svRespire 32s ease-out forwards}
+
+  @media (prefers-reduced-motion:reduce){
+    .sv-photo{transition:opacity .8s ease}
+    .sv-photo.vu.respire{animation:none}
+  }
   .sv-photo[hidden]{display:none}
   .sv-leg{position:absolute;left:0;right:0;bottom:86px;z-index:1;text-align:center;
     font-size:15px;letter-spacing:.4px;opacity:.72;pointer-events:none}
@@ -2418,6 +2438,8 @@ function renderSaver(){
    permanence ferait travailler le Pi pour une image que personne ne regarde —
    et sur un écran allumé 24 h/24, ce genre de détail finit par se voir. */
 let PHOTOS=[], iPhoto=0, minuterPhoto=null;
+const EFFETS=['t-fondu','t-zoom','t-recul','t-glisse'];
+let dernierEffet='';
 
 /* Mélange de Fisher-Yates : on parcourt la liste entière avant de recommencer.
    Tirer au hasard à chaque fois redonnerait deux fois la même photo dans la
@@ -2441,12 +2463,25 @@ function photoSuivante(){
      arrivée, et sur un mur ça ressemble à une panne. */
   const pre=new Image();
   pre.onload=()=>{
-    img.classList.remove('vu');
+    img.classList.remove('vu','respire');
     setTimeout(()=>{
+      /* L'effet est tiré au sort, mais jamais DEUX FOIS DE SUITE le même :
+         deux zooms d'affilée se lisent comme une répétition, alors qu'un
+         tirage vraiment aléatoire en produit une fois sur quatre. */
+      let e; do{ e=EFFETS[Math.floor(Math.random()*EFFETS.length)]; }while(EFFETS.length>1&&e===dernierEffet);
+      dernierEffet=e;
+      img.classList.remove(...EFFETS);
+      img.classList.add(e);
       img.src=p.url; img.hidden=false;
       leg.textContent=p.legende||''; leg.hidden=!p.legende;
-      requestAnimationFrame(()=>img.classList.add('vu'));
-    },300);
+      /* Deux images imbriquées : la première pose l'état de départ, la seconde
+         déclenche la transition. Sans ce délai d'un rendu, le navigateur
+         regroupe les deux et l'effet ne se voit pas du tout. */
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        img.classList.add('vu');
+        setTimeout(()=>img.classList.add('respire'),1400);
+      }));
+    },320);
   };
   pre.onerror=()=>{ /* une photo retirée ne doit pas figer le diaporama */ photoSuivante(); };
   pre.src=p.url;
@@ -2462,7 +2497,7 @@ function lancerDiaporama(){
 function arreterDiaporama(){
   if(minuterPhoto){clearInterval(minuterPhoto);minuterPhoto=null;}
   const img=document.getElementById('svPhoto'), leg=document.getElementById('svLeg');
-  if(img){img.classList.remove('vu');img.hidden=true;}
+  if(img){img.classList.remove('vu','respire',...EFFETS);img.hidden=true;}
   if(leg)leg.hidden=true;
 }
 
