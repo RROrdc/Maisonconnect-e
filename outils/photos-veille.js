@@ -201,7 +201,7 @@ async function principal() {
   if (lien) liens.push(lien);
   if (tous) {
     const donnees = require('../donnees');
-    const brut = await donnees.config('veille_albums');
+    const brut = await donnees.reglage('veille_albums');
     for (const l of String(brut || '').split(/[\s,;]+/).filter(Boolean)) liens.push(l);
     if (!liens.length) console.log('  Aucun album configuré (/admin/ → Réglages → veille_albums).');
   }
