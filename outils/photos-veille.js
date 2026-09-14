@@ -87,7 +87,13 @@ async function telecharger(album, sharp) {
      contrôle fournie par iCloud, stable d'un passage à l'autre. */
   const manquantes = album.photos.filter((p) => !dejaLa.has(p.checksum + '.jpg'));
   console.log(`    ${album.photos.length - manquantes.length} déjà là · ${manquantes.length} à prendre`);
-  if (!manquantes.length) return 0;
+  /* 🐞 Même quand il n'y a RIEN de neuf, l'index doit être écrit : sinon un
+     album entièrement déjà présent reste sans légende, pour toujours. Trouvé
+     sur le premier album importé avant que l'index n'existe. */
+  if (!manquantes.length) {
+    majIndex(album.photos.map((p) => ({ f: p.checksum + '.jpg', album: album.titre || '' })));
+    return 0;
+  }
 
   const urls = await partage.adresses(album.jeton, manquantes.map((p) => p.guid));
   let pris = 0; let octets = 0; const entrees = [];
