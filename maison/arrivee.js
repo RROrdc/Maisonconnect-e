@@ -186,6 +186,12 @@ async function tour({ reglages = {}, annoncer, journaliser }) {
   await new Promise((r) => setTimeout(r, 900));
   const arp = await tableArp();
 
+  /* Une adresse qu'on ne suit plus doit sortir de la mémoire : sinon l'ancienne
+     adresse d'un téléphone corrigé reste affichée dans le back-office, sans
+     prénom, et l'on se demande à qui elle appartient. */
+  const suivies = new Set(liste.map((a) => a.mac));
+  for (const mac of [...vus.keys()]) if (!suivies.has(mac)) vus.delete(mac);
+
   const arrives = [];
   for (const a of liste) {
     const la = arp.has(a.mac);
