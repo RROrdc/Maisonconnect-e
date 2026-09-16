@@ -1032,8 +1032,15 @@ app.get('/api/admin/arrivee/reseau', async (_req, res) => {
     const parIp = new Map([...t.entries()].map(([mac, ip]) => [ip, mac]));
     const absents = [...connus.entries()].filter(([mac]) => !t.has(mac)).map(([mac, qui]) => {
       const ip = vusDepuis.get(qui);
-      const propose = ip && parIp.get(ip);
-      return { mac, qui, propose: propose && propose !== mac ? propose : '', ip: propose ? ip : '' };
+      const trouve = ip && parIp.get(ip);
+      /* 🔑 On ne propose QUE si l'adresse trouvée ressemble à celle d'un
+         iPhone — administrée localement, 2e chiffre 2, 6, a ou e. Sans cette
+         règle, l'app ouverte depuis un ordinateur proposerait l'adresse de cet
+         ordinateur, et le détecteur se mettrait à guetter le mauvais appareil.
+         Le cas s'est présenté tout de suite : la suite de tests, lancée depuis
+         le PC, enrôle un appareil au nom d'un membre de la famille. */
+      const bon = trouve && trouve !== mac && /^.[26ae]:/i.test(trouve);
+      return { mac, qui, propose: bon ? trouve : '', ip: bon ? ip : '' };
     });
     /* Pourquoi il n'y a peut-être aucune proposition — c'est cette phrase-là
        qui manquait : « aucune piste » sans raison envoie chercher la panne du
