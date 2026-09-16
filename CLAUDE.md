@@ -8049,6 +8049,62 @@ détecteur ne travaille que sur l'adresse **matérielle**, et relit la
 correspondance dans la table du réseau à chaque tour. C'est l'adresse matérielle
 qui, elle, ne doit plus tourner.
 
+### 🗣️ « La voix ressemble trop à un GPS » — Piper branché (16/09, fin de soirée)
+Rémi, en écoutant les premières salutations. Et il ajoute, de mémoire : « on
+avait d'ailleurs travaillé sur ce sujet avant d'avoir le Mac ». **Exact** — la
+réponse était écrite au § 2 quaterdecies depuis le 19/08.
+
+**Vérifié plutôt que supposé** : sur ce Mac, `say` n'a que les voix
+**compactes** de macOS, et **Thomas est la plus ancienne du lot** — un moteur à
+concaténation. Aucune voix « Enhanced » ni « Premium » n'est téléchargée
+(`/Library/Speech/Voices/` vide), et celles-là ne s'installent qu'à la main
+depuis Réglages système : il n'existe aucune commande pour les poser.
+
+⇒ **Piper** — synthèse neuronale, locale, gratuite. Mesuré sur le M4 :
+**3,5 s d'audio produites en 1,3 s**, chargement du modèle compris, puis
+**0,6 à 0,7 s** par phrase une fois chaud. Aucune attente perceptible.
+| | |
+|---|---|
+| binaire | `~/Library/Python/3.13/bin/piper` (`pip install --user piper-tts`) |
+| modèles | `~/piper-voix/` — **hors du dépôt**, ~200 Mo |
+| voix | `fr_FR-tom-medium` et `fr_FR-upmc-medium` (masculines), `fr_FR-siwis-medium` |
+
+- ⚠️ **Licence** : Piper est passé en **GPL-3.0** en octobre 2025 (§ 2 sexvicies).
+  On l'invoque comme un **PROGRAMME**, jamais comme une bibliothèque liée —
+  exactement le montage du pont Python de Pronote (§ 2 duovicies). On paie un
+  lancement de processus pour ne rien contaminer, ce qui protège la piste
+  commerciale du § 5 quater.
+- 🔑 **`say` reste le repli**, et c'est délibéré : Piper absent, modèle manquant
+  ou synthèse en échec, l'écran parle quand même. Une voix moins belle vaut
+  mieux qu'un silence qu'on ne s'explique pas. Le serveur ignore lequel des deux
+  a répondu — même principe que `donnees/` et `recettes/`.
+- 🔑 **Le débit gouverne les DEUX moteurs** : les mots/minute de `say` sont
+  convertis en `length-scale`. Sans ça, changer de voix changerait aussi la
+  vitesse, et personne ne comprendrait pourquoi.
+- Le texte passe par un **fichier**, jamais par la ligne de commande : les
+  arguments d'un processus sont visibles de toute la machine, et une salutation
+  contient un prénom.
+- `POST /api/admin/voix/essai-parole` — banc d'écoute : même phrase, voix
+  différentes, **même débit**. Comparer deux voix à deux vitesses ne compare
+  rien. Même raison que le banc du ton (§ 2 quaterdecies) : on choisit une voix
+  en l'écoutant, jamais en lisant son nom.
+
+### ✅ Les quatre téléphones sont réparés
+Martial fait le passage en dernier (son téléphone était en charge) :
+`82:1c:d0:7f:d1:7f` → **`ae:a4:34:fa:63:52`**. Les quatre sont désormais vus par
+le détecteur, et les quatre adresses privées sont **figées** côté iOS.
+
+| | ancienne | nouvelle |
+|---|---|---|
+| Rémi | `12:2f:0f:7a:8b:7d` | `62:9b:15:43:63:49` |
+| Enora | `02:97:79:8d:f8:59` | `ae:bd:e3:9c:73:b0` |
+| Martial | `82:1c:d0:7f:d1:7f` | `ae:a4:34:fa:63:52` |
+| Amandine | `26:44:c1:5e:ca:73` | inchangée |
+
+💡 **Trois sur quatre avaient tourné** — c'est-à-dire que l'accueil était mort
+pour trois personnes sur quatre, sans rien pour le dire. C'est le genre de panne
+qui ne se voit pas : l'écran ne se tait pas *en annonçant* qu'il se tait.
+
 ### 🧪 Les contrôles ont trouvé mes propres fautes
 - 🐞 **Un antislash mangé par un heredoc** (piège déjà documenté au § 2
   quatervicies bis) a coupé un script entier du back-office. Attrapé par
