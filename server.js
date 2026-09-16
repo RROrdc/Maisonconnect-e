@@ -1044,6 +1044,26 @@ app.post('/api/admin/accueil/essai', async (req, res) => {
   } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
 });
 
+/* Banc d'écoute des voix — même raison que le banc du ton (§ 2 quaterdecies) :
+   on choisit une voix en l'écoutant, jamais en lisant son nom. La phrase et la
+   voix sont libres, rien n'est enregistré : on essaie, puis on garde.
+   ⚠️ Le débit vient du réglage, pas de la requête : comparer deux voix à deux
+   vitesses différentes ne compare rien. */
+app.post('/api/admin/voix/essai-parole', async (req, res) => {
+  try {
+    const texte = String((req.body && req.body.texte) || '').trim();
+    if (!texte) return res.status(400).json({ ok: false, raison: 'phrase vide' });
+    const r = await Maison.parole.dire(texte, {
+      voix: (req.body && req.body.voix) || config('voix_say') || undefined,
+      debit: Number(config('voix_say_debit')) || undefined,
+    });
+    /* Même si la synthèse échoue, l'écran affiche le texte : une panne muette
+       ne s'explique pas. */
+    diffuser('parler', { url: r.ok ? r.url : null, texte });
+    res.json(r);
+  } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
+});
+
 app.get('/api/admin/arrivee', (_req, res) => {
   try {
     res.json({
