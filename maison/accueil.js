@@ -64,6 +64,19 @@ function conjuguer(modele, tutoie) {
     .replace('{est}', 'est');
 }
 
+/* Mélange sans rien perdre. Reproductible quand une graine est donnée — sinon
+   aucun test ne pourrait affirmer quoi que ce soit sur le résultat. */
+function melange(liste, graine) {
+  const a = [...liste];
+  let g = graine === undefined ? Math.floor(Math.random() * 100000) : Math.abs(graine) + 1;
+  for (let i = a.length - 1; i > 0; i--) {
+    g = (g * 1103515245 + 12345) & 0x7fffffff;      // suite congruentielle, sans dépendance
+    const j = g % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /* Choisit dans une liste en évitant ce qui vient d'être dit à cette personne.
    `graine` rend le choix reproductible pour les tests — sans elle on ne pourrait
    affirmer aucun comportement. */
@@ -158,16 +171,29 @@ function phrase(ctx = {}) {
   }
 
   const nom = qui[0];
-  const tutoie = ctx.role === 'enfant';
-  const appel = ctx.appellation || nom;
 
   /* « Et des fois bonjour Madame » (Rémi, 12/09). Une appellation employée à
      CHAQUE fois finit par sonner comme un automate ; alternée avec le prénom,
      elle redevient une marque d'égard. L'assistant vocal, lui, n'alterne pas :
-     là on répond à une question, ici on accueille quelqu'un. */
-  const nommer = ctx.appellation
-    ? choisir([ctx.appellation, nom], 'n:' + nom, ctx.graine)
-    : appel;
+     là on répond à une question, ici on accueille quelqu'un.
+
+     16/09 — Rémi en veut PLUSIEURS par personne : « moi monsieur, monseigneur,
+     grand maître incontesté ». Elles tournent donc comme le reste, et le prénom
+     reste dans la rotation : quatre formes d'adresse valent mieux qu'une, et
+     c'est gratuit. */
+  const titres = [].concat(ctx.appellations || ctx.appellation || [])
+    .filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
+  const nommer = titres.length ? choisir([...titres, nom], 'n:' + nom, ctx.graine) : nom;
+
+  /* 🔑 LE REGISTRE SUIT LA FORME D'ADRESSE, et c'est là que la plaisanterie
+     fonctionne : « Bonjour Mademoiselle, vous êtes en beauté aujourd'hui » —
+     la phrase exacte que Rémi voulait pour Enora — puis, la fois suivante,
+     « Bonjour Enora, tu as passé une bonne journée ? ».
+     Un enfant est tutoyé quand on l'appelle par son prénom, et vouvoyé quand on
+     lui donne du « Mademoiselle » : le décalage est volontaire, c'est lui qui
+     fait rire. Mélanger les deux dans la même phrase, en revanche, sonnerait
+     simplement faux. */
+  const tutoie = ctx.role === 'enfant' && nommer === nom;
   const debut = `${choisir(tutoie ? ACCUEIL : ACCUEIL_VOUS, 'd:' + nom, ctx.graine)} ${nommer}`;
 
   /* 🐞 Premier jet : « le contexte s'il existe, sinon le générique ». Résultat,
@@ -187,7 +213,29 @@ function phrase(ctx = {}) {
      faux — exactement le bug d'Amandine appelée « Monsieur » (§ 2 quaterdecies).
      Ils sont pris tels quels, sans conjugaison : c'est du texte écrit à la main
      dans /admin/, et personne n'a envie qu'un automate retouche un compliment. */
-  const flat = [].concat(ctx.compliments || []).filter((x) => typeof x === 'string' && x.trim());
+  /* 16/09 — Rémi élargit : « des phrases sympas, rigolotes, sarcastiques aussi,
+     changeantes et aléatoires », différentes selon la personne — et « Amandine
+     toujours ultra positif ». Le mécanisme est donc le même que les
+     compliments : du texte écrit à la main, par personne, pris tel quel. C'est
+     le contenu qui porte le ton, pas le code — et c'est pour ça qu'on peut
+     être taquin avec Enora et franchement gentil avec Amandine sans une seule
+     ligne de conditionnel.
+     🔑 Elles ne rejoignent le tirage que si l'on VOUVOIE : elles sont écrites
+     en vouvoiement (« vous êtes en beauté »), donc les poser derrière un prénom
+     tutoyé donnerait « Bonjour Enora, vous êtes en beauté ». Pour un adulte
+     `tutoie` est toujours faux, donc rien ne change pour Amandine ; pour un
+     enfant, elles arrivent avec le « Mademoiselle », ce qui est exactement la
+     plaisanterie voulue. */
+  const ecrites = [].concat(ctx.phrases || ctx.compliments || [])
+    .filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
+  /* Plafonnées à SIX par tirage : la variété vient de la LISTE, qui peut être
+     longue, pas du poids. Sans plafond, quinze taquineries écraseraient la
+     touche de contexte — or c'est elle qui prouve que l'écran suit la maison
+     (règle n° 4).
+     Six et non quatre : à quatre, une seule salutation sur douze en portait une
+     — lu noir sur blanc le 16/09 avant de faire parler l'écran. Rémi en veut
+     « pour mettre de la vie », pas pour la collection. */
+  const flat = tutoie ? [] : melange(ecrites, ctx.graine).slice(0, 6);
 
   /* Le contexte pèse TROIS fois, mais ne monopolise pas : avec deux génériques
      seulement, retirer les devoirs a fait tomber Martial à trois formules — une

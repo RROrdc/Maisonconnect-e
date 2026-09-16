@@ -138,6 +138,17 @@ const REGLAGES = {
   arrivee_absence_min: { env: '', defaut: '30' },
   arrivee_silence_de: { env: '', defaut: '22' },
   arrivee_silence_a: { env: '', defaut: '7' },
+  /* Les formes d'adresse de l'ACCUEIL, par personne et au pluriel : « moi
+     monsieur, monseigneur, grand maître incontesté » (Rémi, 16/09). Séparées de
+     `voix_appellation_pour`, qui sert l'assistant vocal : on répond à une
+     question d'un ton sobre, on accueille quelqu'un d'un ton plus libre.
+     Vide pour quelqu'un = son prénom, comme avant. */
+  accueil_appellations: { env: '', defaut: '' },
+  /* Les phrases écrites à la main, par personne. C'est le CONTENU qui porte le
+     ton : taquin pour les uns, franchement gentil pour les autres, sans une
+     ligne de conditionnel. Remplace `accueil_compliments`, repris au premier
+     démarrage. */
+  accueil_phrases: { env: '', defaut: '' },
   /* Compliments à l'arrivée. Vides par défaut, et réservés aux prénoms listés :
      un compliment adressé à quelqu'un qui ne l'a pas demandé met mal à l'aise,
      et devant des invités plus encore. Une phrase par ligne. */
@@ -753,6 +764,38 @@ function appellationDe(personne) {
   return '';
 }
 
+/* Lit un réglage « Prénom | valeur », une ligne par entrée — la convention déjà
+   employée par les téléphones suivis et les périodes de vacances. Rend TOUTES
+   les valeurs d'une personne : un prénom peut revenir sur plusieurs lignes.
+   « Enora, Martial | … » vaut pour les deux, parce que recopier la même phrase
+   deux fois est le meilleur moyen de n'en corriger qu'une. */
+const clefNom = (x) => String(x || '').normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  .toLowerCase().trim();
+
+function lignesPour(cle, personne) {
+  const cible = clefNom(personne);
+  if (!cible) return [];
+  const out = [];
+  for (const ligne of String(config(cle) || '').split('\n')) {
+    const i = ligne.indexOf('|');
+    if (i < 0) continue;
+    const noms = ligne.slice(0, i).split(',').map(clefNom).filter(Boolean);
+    const valeur = ligne.slice(i + 1).trim();
+    if (valeur && noms.includes(cible)) out.push(valeur);
+  }
+  return out;
+}
+
+/* Les formes d'adresse de l'accueil. Repli sur celle de l'assistant vocal :
+   tant que rien n'est écrit ici, rien ne change pour personne. */
+function appellationsAccueil(personne) {
+  const l = lignesPour('accueil_appellations', personne)
+    .flatMap((v) => v.split(',').map((x) => x.trim()).filter(Boolean));
+  if (l.length) return l;
+  const une = appellationDe(personne);
+  return une ? [une] : [];
+}
+
 function styleVocal(personne) {
   const membre = donnees.listeMembres().find((m) => m.nom === personne);
   const role = (membre && membre.role)
@@ -941,13 +984,22 @@ function contexteAccueil(qui) {
       }
     }
   } catch { /* pas d'anniversaire connu : sans objet */ }
-  /* Compliments — réservés aux personnes désignées, jamais génériques. */
+  /* Les formes d'adresse, au pluriel et par personne. */
+  try { ctx.appellations = appellationsAccueil(qui); } catch { /* sans objet */ }
+  /* Les phrases écrites à la main — compliments d'hier, taquineries d'aujourd'hui :
+     c'est le même mécanisme, seul le texte change. Réservées aux personnes
+     désignées, jamais génériques : « vous êtes superbe » lâché à quelqu'un qui
+     ne l'a pas demandé sonne exactement aussi faux qu'Amandine appelée
+     « Monsieur » (§ 2 quaterdecies). */
   try {
-    if (enListe('accueil_compliments_pour', qui)) {
-      ctx.compliments = String(config('accueil_compliments') || '')
-        .split('\n').map((s) => s.trim()).filter(Boolean);
+    ctx.phrases = lignesPour('accueil_phrases', qui);
+    /* Repli sur l'ancien réglage tant qu'il sert : une reprise ratée ne doit pas
+       faire disparaître en silence les compliments d'Amandine. */
+    if (!ctx.phrases.length && enListe('accueil_compliments_pour', qui)) {
+      ctx.phrases = String(config('accueil_compliments') || '')
+        .split('\n').map((x) => x.trim()).filter(Boolean);
     }
-  } catch { /* aucun compliment configuré */ }
+  } catch { /* aucune phrase configurée */ }
   return ctx;
 }
 

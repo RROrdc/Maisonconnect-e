@@ -1452,7 +1452,27 @@ const REGLAGES_CONNUS = [
    "L'écran se tait la nuit. 22 = plus rien à partir de vingt-deux heures."],
   ['arrivee_silence_a', 'Silence jusqu’à (heure)', 'texte',
    "7 = la parole revient à sept heures."],
-  ['accueil_compliments_pour', 'Compliments à l’arrivée — pour qui', 'texte',
+  ['accueil_appellations', 'Comment l’écran appelle chacun, à l’arrivée', 'zone',
+   "Une ligne par personne : prénom, une barre verticale, puis les formes d’adresse "
+   + "séparées par des virgules. Exemple : « Rémi | Monsieur, Monseigneur, Grand maître "
+   + "incontesté ». Elles tournent, et le PRÉNOM reste dans la rotation — une appellation "
+   + "servie à chaque fois redevient un automate.\n"
+   + "🔑 Pour un enfant, donner une appellation fait passer la phrase au vouvoiement : "
+   + "« Bonjour Mademoiselle, vous êtes en beauté » un jour, « Bonjour Enora, tu as passé "
+   + "une bonne journée ? » le lendemain. Le décalage est volontaire, c’est lui qui amuse.\n"
+   + "Vide pour quelqu’un = son prénom, comme avant. Sans effet sur l’assistant vocal, "
+   + "qui garde son appellation sobre (réglée plus haut)."],
+  ['accueil_phrases', 'Ce que l’écran dit en plus, par personne', 'zone',
+   "Une ligne par phrase : prénom, une barre verticale, la phrase. "
+   + "« Enora, Martial | … » vaut pour les deux. Écris-les au VOUVOIEMENT "
+   + "(« vous êtes en beauté aujourd’hui ») : elles ne sortent qu’avec l’appellation.\n"
+   + "C’est le TEXTE qui porte le ton — taquin pour les uns, franchement gentil pour les "
+   + "autres — donc rien n’est reformulé, et personne ne reçoit une phrase écrite pour un "
+   + "autre. Quatre au plus sont tirées à chaque fois : la variété vient de la longueur de "
+   + "la liste, pas du poids, sinon elles écraseraient ce que l’écran sait vraiment "
+   + "(le cours qui vient de finir, le repas du soir).\n"
+   + "Remplace l’ancien champ « Compliments », repris automatiquement."],
+  ['accueil_compliments_pour', 'Compliments à l’arrivée — pour qui (ancien)', 'texte',
    "Prénoms séparés par une virgule. Vide = personne, et c'est le défaut. "
    + "Un compliment n'a de sens que pour qui l'a demandé : « vous êtes superbe » adressé "
    + "à un enfant, ou lâché devant des invités, met tout le monde mal à l'aise. "

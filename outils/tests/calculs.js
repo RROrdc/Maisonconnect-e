@@ -155,6 +155,88 @@ function testAccueil(t) {
   const enfant = A.phrase({ qui: ['Martial'], role: 'enfant', heure: 17, graine: 0 });
   t.dire(!/vous/i.test(enfant), 'un enfant est TUTOYE', enfant);
 
+  /* ── Appellations multiples et registre ───────────────────────────────
+     Rémi, 16/09 : « amandine madame, enora mademoisel, martial jeun homme
+     monsieur, moi monsieur monseigneur grand maitre incostesté ».
+     🔑 Le registre SUIT la forme d'adresse : c'est ce decalage qui fait rire.
+     Melanger les deux dans la meme phrase sonnerait simplement faux. */
+  /* ⚠️ Les marqueurs se cherchent entoures d'espace ou de ponctuation, JAMAIS
+     avec « \b ». En JavaScript, une lettre accentuee n'est pas un caractere
+     de mot : « \bte\b » attrape donc le « te » de « prete. » — mon premier
+     test criait au melange des registres sur une phrase parfaitement correcte.
+     C'est la meme famille que les rayons de courses et les pictogrammes : on
+     compare des MOTS, pas des fragments. */
+  const TUTOIE = /(^|[ ,])(te|tu|ton|tes)([ ,.?!]|$)/i;
+  const VOUVOIE = /(^|[ ,])(vous|votre|vos)([ ,.?!]|$)/i;
+
+  A.oublier();
+  let melange = 0, avecTitre = 0, avecPrenom = 0;
+  for (let i = 0; i < 20; i++) {
+    const t = A.phrase({ qui: ['Enora'], role: 'enfant', heure: 18, graine: i,
+      appellations: ['Mademoiselle'] });
+    if (/Mademoiselle/.test(t)) { avecTitre++; if (TUTOIE.test(t)) melange++; }
+    else { avecPrenom++; if (VOUVOIE.test(t)) melange++; }
+  }
+  t.dire(avecTitre > 0 && avecPrenom > 0, 'l’appellation ALTERNE avec le prenom',
+    `${avecTitre} fois « Mademoiselle », ${avecPrenom} fois « Enora »`);
+  t.dire(melange === 0,
+    '🔑 jamais « Mademoiselle » et « tu » dans la meme phrase',
+    'le registre suit la forme d’adresse, sinon la plaisanterie tombe');
+
+  /* Sans graine : c'est le tirage de la maison. Avec une graine on parcourt la
+     liste au lieu de la tirer, et l'un des titres peut ne jamais sortir — ce
+     qui ne dit rien du comportement reel. */
+  A.oublier();
+  const troisTitres = new Set();
+  for (let i = 0; i < 200; i++) {
+    const t = A.phrase({ qui: ['Rémi'], role: 'parent', heure: 18,
+      appellations: ['Monsieur', 'Monseigneur', 'Grand maître incontesté'] });
+    for (const x of ['Monsieur', 'Monseigneur', 'Grand maître', 'Rémi'])
+      if (t.includes(x)) troisTitres.add(x);
+  }
+  t.dire(troisTitres.size === 4, 'les trois titres ET le prenom tournent',
+    [...troisTitres].join(' · '));
+
+  /* ── Phrases ecrites a la main ────────────────────────────────────────
+     Elles sont ecrites au vouvoiement : les poser derriere un prenom tutoye
+     donnerait « Bonjour Enora, vous etes en beaute ». */
+  A.oublier();
+  const ECRITE = 'vous êtes en beauté aujourd’hui';
+  let fautes = 0, sorties = 0;
+  for (let i = 0; i < 40; i++) {
+    const t = A.phrase({ qui: ['Enora'], role: 'enfant', heure: 18, graine: i,
+      appellations: ['Mademoiselle'], phrases: [ECRITE] });
+    if (t.includes(ECRITE)) { sorties++; if (!/Mademoiselle/.test(t)) fautes++; }
+  }
+  t.dire(sorties > 0, 'une phrase ecrite sort bien', `${sorties} fois sur 40`);
+  t.dire(fautes === 0,
+    '🔑 une phrase au vouvoiement n’arrive JAMAIS derriere le prenom tutoye',
+    'sinon « Bonjour Enora, vous etes en beaute »');
+
+  /* Elles sont prises TELLES QUELLES : personne n'a envie qu'un automate
+     retouche un compliment ecrit a la main dans /admin/. */
+  A.oublier();
+  let brute = '';
+  for (let i = 0; i < 40 && !brute; i++) {
+    const t = A.phrase({ qui: ['Amandine'], role: 'parent', heure: 18, graine: i,
+      phrases: ['vous gérez tout d’une main de maître'] });
+    if (t.includes('main de maître')) brute = t;
+  }
+  t.dire(/vous gérez tout d’une main de maître/.test(brute),
+    'le texte ecrit a la main n’est pas reformule', brute);
+
+  /* Un enfant SANS appellation n'entend aucune phrase ecrite : le mecanisme
+     ne doit pas s'activer tout seul chez quelqu'un qui n'a rien demande. */
+  A.oublier();
+  let fuite = false;
+  for (let i = 0; i < 30; i++) {
+    const t = A.phrase({ qui: ['Clovis'], role: 'enfant', heure: 18, graine: i,
+      phrases: [ECRITE] });
+    if (t.includes(ECRITE)) fuite = true;
+  }
+  t.dire(!fuite, 'sans appellation, un enfant ne recoit aucune phrase ecrite',
+    'le tutoiement seul ne peut pas porter du vouvoiement');
+
   /* L'elision : « cours de Espagnol » trahit une phrase fabriquee des la
      premiere ecoute. */
   A.oublier();
