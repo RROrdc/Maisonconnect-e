@@ -127,7 +127,16 @@ module.exports = async function (muet) {
     /* Un gestionnaire posé sur un élément absent lève une exception et tue le
        reste du script, silencieusement pour l'utilisateur. */
     const vises = [...html.matchAll(/\$\('#([\w-]+)'\)/g)].map((m) => m[1]);
-    const manquants = [...new Set(vises)].filter((id) => !html.includes(`id="${id}"`));
+    /* Les champs de la carte Réglages n'existent pas en toutes lettres : ils
+       sont FABRIQUÉS depuis `REGLAGES_CONNUS` (`id="r_${cle}"`). On ne relâche
+       pas le contrôle pour autant — on vérifie que la clé visée est bien dans
+       cette liste. Une faute de frappe y serait donc toujours attrapée. */
+    const fabriques = new Set();
+    if (/id="r_\$\{cle\}"/.test(html)) {
+      for (const m of html.matchAll(/\[\s*'([a-z0-9_]+)'\s*,\s*'/gi)) fabriques.add('r_' + m[1]);
+    }
+    const manquants = [...new Set(vises)]
+      .filter((id) => !html.includes(`id="${id}"`) && !fabriques.has(id));
     t.dire(!manquants.length, `${rel} — identifiants visés existants`,
       manquants.length ? 'ORPHELINS : ' + manquants.join(', ') : `${new Set(vises).size} vérifiés`);
 

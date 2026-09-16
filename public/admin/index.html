@@ -2189,9 +2189,19 @@ function brancherMicro(){
       const manque = (r.absents||[]).length
         ? `<div class="info" style="margin:0 0 10px;border-left:4px solid var(--alerte)">
              <b>Enregistrés mais introuvables sur le réseau :</b><br>`
-          + (r.absents||[]).map((a)=>`${e(a.qui)} — <code>${e(a.mac)}</code>`).join('<br>')
-          + `<br>Soit le téléphone est absent, soit iOS a changé son adresse privée :
-             relis-la sur l'iPhone et corrige la ligne ci-dessous.</div>`
+          + (r.absents||[]).map((a)=>`${e(a.qui)} — <code>${e(a.mac)}</code>`
+              + (a.propose
+                  /* L'adresse retrouvée en croisant l'IP d'où son téléphone a
+                     ouvert l'app. On PROPOSE, on ne réécrit pas tout seul. */
+                  ? ` → nouvelle adresse probable <code>${e(a.propose)}</code>
+                      <span style="color:var(--faint)">(vu à ${e(a.ip)})</span>
+                      <button class="btn doux" style="padding:3px 9px;font-size:12px"
+                        data-remplace="${e(a.mac)}|${e(a.propose)}">Corriger</button>`
+                  : '')).join('<br>')
+          + `<br>Soit le téléphone est absent, soit iOS a changé son adresse privée.
+             Pour qu'elle soit retrouvée toute seule, il suffit d'ouvrir l'app une
+             fois sur le téléphone <b>depuis la maison</b>, puis de relancer cette
+             recherche.</div>`
         : '';
       const lignes = (r.appareils||[]).slice().sort((x,y)=>(y.prive?1:0)-(x.prive?1:0))
         .map((a)=>`<div style="display:flex;gap:9px;align-items:center;padding:5px 0;border-bottom:1px solid var(--bord)">
@@ -2201,6 +2211,16 @@ function brancherMicro(){
             ${a.qui?`<b style="margin-left:auto">${e(a.qui)}</b>`:'<span style="margin-left:auto;color:var(--faint)">non suivi</span>'}
           </div>`).join('') || '<div class="info" style="margin:0">Rien vu.</div>';
       $('#res_liste').innerHTML = manque + lignes;
+      /* Corriger remplace l'adresse DANS le champ, sans enregistrer : on relit
+         avant de valider, comme partout ailleurs. */
+      $$('[data-remplace]').forEach((b)=>b.onclick = ()=>{
+        const [vieux, neuf] = b.dataset.remplace.split('|');
+        const z = $('#r_arrivee_appareils'); if(!z) return;
+        z.value = z.value.split('\n').map((l)=>l.includes(vieux) ? l.replace(vieux, neuf) : l).join('\n');
+        b.textContent = '✓ mis dans le champ — pense à Enregistrer';
+        b.disabled = true;
+        z.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
     }catch(err){ $('#res_liste').innerHTML = `<div class="info" style="margin:0">✗ ${e(err.message)}</div>`; }
     b.disabled = false; b.textContent = '🔎 Chercher les téléphones (quelques secondes)';
   };

@@ -314,12 +314,28 @@ app.use(express.static(path.join(__dirname, 'public'), {
    Deux jetons distincts, volontairement :
    - `x-jeton`   : l'APPAREIL enrôlé une fois (iPhone de la famille) ;
    - `x-session` : la SESSION du back-office, ouverte par code, valable 12 h. */
+/* Dernière adresse connue de chaque téléphone enrôlé. Rien de plus, rien
+   d'horodaté, et ça meurt avec le serveur. */
+const vusDepuis = new Map();
+
 app.use((req, _res, suite) => {
   try {
     const j = req.get('x-jeton');
     if (j) req.appareil = donnees.appareil(j);
     const s = req.get('x-session');
     if (s) req.moi = donnees.lireSession(s);
+    /* 🔑 Au passage, on note à QUELLE ADRESSE ce téléphone vient d'être vu.
+       C'est ce qui permettra de retrouver son adresse matérielle quand iOS aura
+       fait tourner son adresse Wi-Fi privée — sinon il faut aller la relire sur
+       chaque iPhone, et recommencer à la rotation suivante.
+       ⚠️ Seulement depuis la MAISON : derrière le tunnel, l'adresse vue est
+       celle de Cloudflare, et on inscrirait le monde entier.
+       ⚠️ En mémoire, jamais en base : une adresse horodatée par personne, c'est
+       le journal de présence que ce projet refuse de fabriquer. */
+    if (req.appareil && req.appareil.personne && !req.get('CF-Connecting-IP')) {
+      const ip = String(req.ip || '').replace(/^::ffff:/, '');
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) vusDepuis.set(req.appareil.personne, ip);
+    }
   } catch (_) { /* une base momentanément verrouillée ne doit pas tuer la requête */ }
   suite();
 });
@@ -997,8 +1013,17 @@ app.get('/api/admin/arrivee/reseau', async (_req, res) => {
       prive: /^.[26ae]:/i.test(mac),
     }));
     /* Les enregistrés qu'on n'a PAS trouvés : c'est la panne elle-même, et elle
-       ne se voit nulle part ailleurs. */
-    const absents = [...connus.entries()].filter(([mac]) => !t.has(mac)).map(([mac, qui]) => ({ mac, qui }));
+       ne se voit nulle part ailleurs.
+       Et pour chacun, l'adresse RETROUVÉE si son téléphone a ouvert l'app depuis
+       la maison : on croise l'adresse IP vue à ce moment-là avec la table du
+       réseau. C'est une PROPOSITION — on ne réécrit jamais le réglage tout seul
+       (même règle que les recettes et les courses depuis le menu). */
+    const parIp = new Map([...t.entries()].map(([mac, ip]) => [ip, mac]));
+    const absents = [...connus.entries()].filter(([mac]) => !t.has(mac)).map(([mac, qui]) => {
+      const ip = vusDepuis.get(qui);
+      const propose = ip && parIp.get(ip);
+      return { mac, qui, propose: propose && propose !== mac ? propose : '', ip: propose ? ip : '' };
+    });
     res.json({ appareils, absents });
   } catch (e) { res.status(400).json({ appareils: [], absents: [], raison: messageClair(e) }); }
 });
