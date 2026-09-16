@@ -140,6 +140,35 @@ module.exports = async function (muet) {
     t.dire(!manquants.length, `${rel} — identifiants visés existants`,
       manquants.length ? 'ORPHELINS : ' + manquants.join(', ') : `${new Set(vises).size} vérifiés`);
 
+    /* 🐞 Trouvé le 16/09, et par Rémi, pas par un test : « dans voix c'est
+       vide ». J'avais écrit `api(url, 'GET')` dans /admin/ — où `api()` prend
+       la MÉTHODE en premier. `fetch(undefined, { method: '/api/...' })` échoue,
+       la liste reste vide, et RIEN ne le signale : les identifiants existent,
+       la syntaxe est valide, le `catch` avale l'erreur. Le bouton « Chercher
+       les téléphones » était cassé pareil depuis deux heures sans qu'on le voie.
+
+       🔴 Et la CAUSE est là : les trois pages n'ont pas la même signature.
+          bento.html      api(url, methode, corps)
+          app/index.html  api(url, methode, corps)
+          admin/index.html  api(METHODE, url, corps)   ← l'inverse
+       Passer de l'une à l'autre en gardant l'habitude de la précédente est un
+       piège qui ne prévient pas. ⚠️ Dette assumée : unifier les trois toucherait
+       une soixantaine d'appels pour aucun gain visible ; on vérifie donc que
+       chaque page respecte SA convention, lue dans sa propre définition. */
+    const sign = html.match(/(?:async\s+)?function\s+api\s*\(\s*(\w+)/);
+    if (sign) {
+      const methodeDabord = /^(methode|method)$/i.test(sign[1]);
+      const VERBES = /^(GET|POST|PUT|PATCH|DELETE)$/;
+      const premiers = [...html.matchAll(/\bapi\s*\(\s*(['"`])([^'"`\n]*?)\1/g)].map((m) => m[2]);
+      const fautifs = premiers.filter((x) => methodeDabord
+        ? x.startsWith('/')          // une URL là où on attend un verbe
+        : VERBES.test(x));           // un verbe là où on attend une URL
+      t.dire(!fautifs.length,
+        `${rel} — api() appelé dans l'ordre de SA signature (${sign[1]} d'abord)`,
+        fautifs.length ? 'INVERSÉS : ' + [...new Set(fautifs)].join(', ')
+          : `${premiers.length} appel(s) vérifié(s)`);
+    }
+
     /* 🐞 Trouvé le 10/09 : le catalogue de recettes s'affichait, et aucun bouton
        ne s'ouvrait. `JSON.stringify` rend des guillemets DOUBLES ; posés dans un
        `onclick="…"`, ils referment l'attribut et le gestionnaire devient inerte

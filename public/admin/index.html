@@ -2103,7 +2103,7 @@ function brancherVoix(){
     $('#w_debit').value = REGLAGES.voix_say_debit || '170';
     let liste = [];
     try{
-      const r = await api('/api/admin/voix-systeme');
+      const r = await api('GET','/api/admin/voix-systeme');
       liste = r.voix || [];
     }catch(err){ note.textContent = '✗ ' + err.message; }
     /* Une voix Piper porte le nom de son modèle : « fr_FR-tom-medium ». C'est
@@ -2121,7 +2121,7 @@ function brancherVoix(){
     const ecouter = async (v)=>{
       $('#w_etat').innerHTML = '⏳ ' + e(v) + '…';
       try{
-        const r = await api('/api/admin/voix/essai-parole','POST',
+        const r = await api('POST','/api/admin/voix/essai-parole',
           { texte: $('#w_texte').value, voix: v });
         $('#w_etat').innerHTML = r.ok
           ? `🔊 <b>${e(v)}</b> — ${e(r.moteur || 'macOS')}${r.cache ? ' (déjà en cache)' : ''}`
@@ -2141,7 +2141,7 @@ function brancherVoix(){
 
     $('#w_garder').onclick = async ()=>{
       try{
-        await api('/api/admin/reglages','POST',
+        await api('POST','/api/admin/reglages',
           { voix_say: sel.value, voix_say_debit: String($('#w_debit').value || 170) });
         REGLAGES.voix_say = sel.value;
         $('#w_etat').innerHTML = '✅ <b>' + e(sel.value) + '</b> est maintenant la voix de la maison.';
@@ -2290,7 +2290,7 @@ function brancherMicro(){
   if($('#res_voir')) $('#res_voir').onclick = async ()=>{
     const b = $('#res_voir'); b.disabled = true; b.textContent = '⏳ Balayage…';
     try{
-      const r = await api('/api/admin/arrivee/reseau');
+      const r = await api('GET','/api/admin/arrivee/reseau');
       const manque = (r.absents||[]).length
         ? `<div class="info" style="margin:0 0 10px;border-left:4px solid var(--alerte)">
              <b>Enregistrés mais introuvables sur le réseau :</b><br>`
