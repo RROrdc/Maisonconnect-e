@@ -1563,7 +1563,9 @@ VUES.reglages = ()=>`
       ⚠️ À ne pas confondre avec la carte juste en dessous, « Voix de l'assistant », qui règle
       la voix de <b>Jarvis dans le navigateur</b> — deux moteurs différents, deux réglages.<br>
       💡 Les voix <b>neuronales</b> (Piper) sont en tête de liste : elles sont locales, gratuites,
-      et sans commune mesure avec les voix « compactes » de macOS, qui sonnent comme un vieux GPS de voiture.</div>
+      et sans commune mesure avec les voix « compactes » de macOS, qui sonnent comme un vieux GPS de voiture.<br>
+      🔊 « Écouter » joue le son <b>ici même</b>, sur l'appareil où tu lis cette page, <b>et</b> l'envoie
+      à l'écran mural — utile quand on règle depuis un ordinateur, sans effet quand c'est déjà le mur.</div>
 
     <div class="form">
       <div class="ch large"><label class="ch">Voix</label>
@@ -1575,7 +1577,7 @@ VUES.reglages = ()=>`
         <input id="w_texte" value="Bonjour Monsieur. La maison est en ordre, comme il se doit."></div>
     </div>
     <div class="actions" style="justify-content:flex-start;margin-top:12px">
-      <button class="btn doux" id="w_ecouter">▶︎ Écouter sur l'écran de la cuisine</button>
+      <button class="btn doux" id="w_ecouter">▶︎ Écouter</button>
       <button class="btn doux" id="w_toutes">🎧 Les écouter toutes, à la suite</button>
       <button class="btn" id="w_garder">Utiliser cette voix</button>
     </div>
@@ -2110,22 +2112,44 @@ function brancherVoix(){
        ce qui permet de la distinguer sans tenir une liste en double. */
     const neuronale = (v)=>/^fr_[A-Z]{2}-/.test(v);
     const actuelle = REGLAGES.voix_say || '';
-    sel.innerHTML = liste.map((v)=>
-      `<option ${v===actuelle?'selected':''}>${e(v)}</option>`).join('')
-      || '<option>—</option>';
-    const dire = ()=>{ note.innerHTML = neuronale(sel.value)
+    /* 🔑 Si la voix enregistrée n'est plus proposée — renommée par macOS,
+       modèle Piper retiré — on l'ajoute quand même, marquée. Sans ça le menu
+       affiche la PREMIÈRE voix de la liste, on croit que c'est la sienne, et
+       « Utiliser cette voix » la remplace sans qu'on l'ait voulu. */
+    const manquante = actuelle && !liste.includes(actuelle);
+    sel.innerHTML = (manquante
+      ? [`<option selected>${e(actuelle)}</option>`] : [])
+      .concat(liste.map((v)=>`<option ${v===actuelle?'selected':''}>${e(v)}</option>`))
+      .join('') || '<option>—</option>';
+    const dire = ()=>{ note.innerHTML = (neuronale(sel.value)
       ? '🟢 <b>Voix neuronale</b> (Piper) — fabriquée sur le Mac, en local.'
-      : '⚪️ Voix <b>compacte</b> de macOS — c’est le grain « GPS ».'; };
+      : '⚪️ Voix <b>compacte</b> de macOS — c’est le grain « GPS ».')
+      + (sel.value === actuelle ? ' · <b>c’est la voix enregistrée</b>' : '')
+      + (manquante && sel.value === actuelle
+          ? ' ⚠️ mais elle n’est plus proposée par le Mac : choisis-en une autre.' : ''); };
     sel.onchange = dire; dire();
 
+    /* 🐞 Le 16/09 : « quand je fais écouter sur l'écran ça marche pas ». Et pour
+       cause — la dalle de la cuisine affichait /admin/, pas le bento. Le son
+       partait bien, vers une page qui n'était pas à l'écran.
+       Le réflexe juste est celui-ci : on clique « Écouter », on entend, ICI.
+       La diffusion vers le mur reste, pour le cas où l'on règle depuis un
+       ordinateur — mais elle ne peut plus être le seul chemin. */
+    let ECHO = null;
     const ecouter = async (v)=>{
       $('#w_etat').innerHTML = '⏳ ' + e(v) + '…';
       try{
         const r = await api('POST','/api/admin/voix/essai-parole',
           { texte: $('#w_texte').value, voix: v });
-        $('#w_etat').innerHTML = r.ok
-          ? `🔊 <b>${e(v)}</b> — ${e(r.moteur || 'macOS')}${r.cache ? ' (déjà en cache)' : ''}`
-          : '✗ ' + e(r.raison || 'échec');
+        if(!r.ok) { $('#w_etat').innerHTML = '✗ ' + e(r.raison || 'échec'); return; }
+        let ici = '';
+        try{
+          if(ECHO){ ECHO.pause(); }
+          ECHO = new Audio(r.url);
+          await ECHO.play();
+        }catch(_){ ici = ' · <b>son refusé par ce navigateur</b>, mais envoyé au mur'; }
+        $('#w_etat').innerHTML =
+          `🔊 <b>${e(v)}</b> — ${e(r.moteur || 'macOS')}${r.cache ? ' (déjà en cache)' : ''}${ici}`;
       }catch(err){ $('#w_etat').innerHTML = '✗ ' + e(err.message); }
     };
     $('#w_ecouter').onclick = ()=>ecouter(sel.value);
