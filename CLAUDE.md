@@ -8001,6 +8001,54 @@ Raccourci et un balayage distants de 45 s saluent deux fois.
 ⚠️ Le verrou vit **en mémoire**, comme le reste du module : ce projet ne
 fabrique pas un journal de présence des enfants (garde-fou n° 1).
 
+### ✅ Les adresses ont été réparées le soir même — et deux faits établis sur preuve
+Le mécanisme a été éprouvé en direct, téléphone par téléphone :
+
+| | adresse enregistrée le 13/09 | retrouvée le 16/09 |
+|---|---|---|
+| **Rémi** | `12:2f:0f:7a:8b:7d` | **`62:9b:15:43:63:49`** (vu en `.117`) |
+| **Enora** | `02:97:79:8d:f8:59` | **`ae:bd:e3:9c:73:b0`** (vu en `.116`) |
+| **Amandine** | `26:44:c1:5e:ca:73` | **inchangée** — la seule qui n'avait pas tourné |
+| **Martial** | `82:1c:d0:7f:d1:7f` | ⏭ à faire (téléphone en charge) |
+
+🔑 **Ce que le diagnostic a révélé, et qu'on n'aurait pas deviné** : les trois
+premiers passages sur l'app n'ont rien donné parce que **l'app installée pointe
+sur le tunnel**. Même assis dans le salon, elle sort vers Cloudflare et revient
+— le serveur ne voit alors que l'adresse de Cloudflare. Le diagnostic l'a dit
+noir sur blanc (« par le tunnel : Martial »), là où la carte se contentait
+d'« aucune piste » et envoyait chercher la panne du côté du téléphone.
+- ⚠️ **Et l'app ne peut pas contourner ça toute seule** : une page servie en
+  HTTPS n'a pas le droit d'appeler une adresse en HTTP, le navigateur bloque.
+  Le geste manuel est donc incontournable — ouvrir **`http://maison.local:8090/app/`**
+  une fois dans Safari, sur le Wi-Fi de la maison.
+- ⚠️ **L'origine LAN est un autre domaine** : `localStorage` y est vierge, donc
+  l'app y redemande prénom et code. C'est justement ce qui la fait s'annoncer.
+  Conséquence : **un appareil enrôlé de plus par téléphone**. Sans importance
+  (un jeton n'est qu'une identité), et la liste se nettoie dans /admin/ → Famille.
+
+✅ **Vérifié, contre le doute que j'avais soulevé** : basculer l'adresse Wi-Fi
+privée de « Rotation » à « **Fixe** » **ne change pas l'adresse**. Constaté sur
+les trois téléphones, dont Amandine dont l'inscription fonctionnait déjà et n'a
+pas bougé. L'ordre prudent reste néanmoins « Fixe d'abord, Safari ensuite » :
+on inscrit alors une adresse dont on sait qu'aucun réglage ne la déplacera plus.
+
+🐞 **Deux défauts trouvés pendant cette réparation, tous deux par la vérification
+et non par la relecture** :
+- **Mes propres tests auraient empoisonné la proposition.** La suite enrôle un
+  appareil **au nom d'Enora** ; lancée depuis le PC, elle aurait fait proposer
+  l'adresse du PC pour son téléphone, et un clic aurait cassé son accueil. ⇒ On
+  ne propose qu'une adresse **administrée localement** (2ᵉ chiffre 2, 6, a ou e),
+  c'est-à-dire celle d'un iPhone. Un ordinateur ne peut plus se faire passer
+  pour un téléphone.
+- **L'ancienne adresse restait affichée sans prénom** après correction — un « ? »
+  dans le back-office dont on se demande à qui il appartient. Chaque tour oublie
+  désormais ce qui n'est plus suivi.
+
+💡 **Rappel utile** : l'adresse **IP** peut changer sans rien casser — le
+détecteur ne travaille que sur l'adresse **matérielle**, et relit la
+correspondance dans la table du réseau à chaque tour. C'est l'adresse matérielle
+qui, elle, ne doit plus tourner.
+
 ### 🧪 Les contrôles ont trouvé mes propres fautes
 - 🐞 **Un antislash mangé par un heredoc** (piège déjà documenté au § 2
   quatervicies bis) a coupé un script entier du back-office. Attrapé par
@@ -8022,9 +8070,9 @@ réintroduisant son bug** : il tombe, puis repasse. Sauvegarde base + code faite
 avant écriture. Rendu photographié sur la vraie dalle, avant et après.
 - ❔ Non vérifié : le rendu de l'édition de tâche sur la dalle et sur iPhone
   (elle est dans le panneau, pas sur la tuile — personne n'a encore touché).
-- ⏭ Reste à faire par Rémi : installer le script de température sur le Pi
-  (2 commandes `sudo`), ouvrir l'app une fois sur chaque iPhone depuis la
-  maison, puis /admin/ → Réglages → « 🔎 Chercher les téléphones ».
+- ⏭ Reste à faire : installer le script de température sur le Pi (2 commandes
+  `sudo`), et **le passage Safari pour Martial** — son téléphone était en charge
+  dans sa chambre. Les trois autres sont réparés et vus par le détecteur.
 
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
