@@ -2210,7 +2210,20 @@ function brancherMicro(){
             ${a.prive?'<span class="tag">iPhone probable</span>':''}
             ${a.qui?`<b style="margin-left:auto">${e(a.qui)}</b>`:'<span style="margin-left:auto;color:var(--faint)">non suivi</span>'}
           </div>`).join('') || '<div class="info" style="margin:0">Rien vu.</div>';
-      $('#res_liste').innerHTML = manque + lignes;
+      /* Pourquoi il n'y a peut-être rien à proposer. Sans cette phrase, « aucune
+         piste » envoie chercher la panne du mauvais côté. */
+      const d = r.diag || {};
+      const pourquoi = (d.vusParLeTunnel||[]).length
+        ? `<div class="info" style="margin:0 0 10px">📡 <b>${(d.vusParLeTunnel||[]).map(e).join(', ')}</b>
+             ${(d.vusParLeTunnel||[]).length>1?'ont ouvert':'a ouvert'} l'app <b>par Internet</b>
+             (l'adresse du domaine), pas par le réseau de la maison — on ne voit alors que
+             l'adresse de Cloudflare, qui n'apprend rien.<br>
+             Pour retrouver l'adresse : ouvrir <code>http://maison.local:8090/app/</code>
+             une fois dans Safari, en étant sur le Wi-Fi de la maison.</div>`
+        : ((d.vusEnLocal||[]).length ? '' :
+            `<div class="info" style="margin:0 0 10px">Aucun téléphone n'a encore appelé le serveur
+               depuis la maison. Ouvre l'app une fois sur chacun, en Wi-Fi.</div>`);
+      $('#res_liste').innerHTML = manque + pourquoi + lignes;
       /* Corriger remplace l'adresse DANS le champ, sans enregistrer : on relit
          avant de valider, comme partout ailleurs. */
       $$('[data-remplace]').forEach((b)=>b.onclick = ()=>{

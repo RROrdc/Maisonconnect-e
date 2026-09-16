@@ -317,6 +317,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
 /* Dernière adresse connue de chaque téléphone enrôlé. Rien de plus, rien
    d'horodaté, et ça meurt avec le serveur. */
 const vusDepuis = new Map();
+/* Qui n'a appelé QUE par le tunnel. Un simple ensemble de prénoms : ni adresse,
+   ni date — de quoi expliquer une absence de proposition, rien de plus. */
+const parLeTunnel = new Set();
 
 app.use((req, _res, suite) => {
   try {
@@ -332,9 +335,17 @@ app.use((req, _res, suite) => {
        celle de Cloudflare, et on inscrirait le monde entier.
        ⚠️ En mémoire, jamais en base : une adresse horodatée par personne, c'est
        le journal de présence que ce projet refuse de fabriquer. */
-    if (req.appareil && req.appareil.personne && !req.get('CF-Connecting-IP')) {
-      const ip = String(req.ip || '').replace(/^::ffff:/, '');
-      if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) vusDepuis.set(req.appareil.personne, ip);
+    if (req.appareil && req.appareil.personne) {
+      if (req.get('CF-Connecting-IP')) {
+        /* Passé par le tunnel : l'adresse vue est celle de Cloudflare, donc
+           inutilisable pour retrouver une adresse matérielle. On le NOTE quand
+           même — sans ça, la carte dit « aucune piste » sans dire pourquoi, et
+           l'on cherche du côté du téléphone alors que tout va bien. */
+        parLeTunnel.add(req.appareil.personne);
+      } else {
+        const ip = String(req.ip || '').replace(/^::ffff:/, '');
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) vusDepuis.set(req.appareil.personne, ip);
+      }
     }
   } catch (_) { /* une base momentanément verrouillée ne doit pas tuer la requête */ }
   suite();
@@ -1024,7 +1035,14 @@ app.get('/api/admin/arrivee/reseau', async (_req, res) => {
       const propose = ip && parIp.get(ip);
       return { mac, qui, propose: propose && propose !== mac ? propose : '', ip: propose ? ip : '' };
     });
-    res.json({ appareils, absents });
+    /* Pourquoi il n'y a peut-être aucune proposition — c'est cette phrase-là
+       qui manquait : « aucune piste » sans raison envoie chercher la panne du
+       mauvais côté. */
+    const diag = {
+      vusEnLocal: [...vusDepuis.keys()],
+      vusParLeTunnel: [...parLeTunnel].filter((q) => !vusDepuis.has(q)),
+    };
+    res.json({ appareils, absents, diag });
   } catch (e) { res.status(400).json({ appareils: [], absents: [], raison: messageClair(e) }); }
 });
 
