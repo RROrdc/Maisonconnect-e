@@ -7889,6 +7889,143 @@ en vrai sur deux iPhone. Tunnel vérifié depuis l'extérieur, page par page.
   le mot de passe VNC et les six codes de la famille.
 
 
+## 2 quinvicies bis. 🐞 TROIS DÉFAUTS DE L'USAGE + L'ÉCRAN QUI NE DIT PLUS BONJOUR (16/09/2026)
+
+### 🔑 Une tâche ne se corrigeait pas — donc une date fausse restait fausse
+Rémi : « dans les tâches impossible de modifier une date, comme la lessive
+d'Amandine ». Exact : `PATCH /api/todo/:id` ne lisait **que `done`** depuis
+l'origine. Le seul recours était de supprimer et ressaisir — donc on ne le
+faisait pas, et « lancer lessive foncé » restait plantée au 15.
+- `majTache` n'écrit **que les champs reçus** : cocher n'efface pas l'échéance,
+  et une feuille qui ne montre que la date n'efface pas le destinataire. Une
+  chaîne vide reste une **décision** (« plus d'échéance ») ; c'est `undefined`
+  qui veut dire « n'y touche pas ».
+- 🔑 L'état d'**avant** est relu dans la couche données, jamais demandé au
+  client — un client se trompe ou ment. Il sert à décider s'il faut prévenir
+  quelqu'un d'un changement de destinataire, et **seulement si le destinataire
+  change vraiment** : corriger une faute de frappe ne doit pas resonner chez
+  elle une deuxième fois. Il est retiré de la réponse HTTP.
+- **Sur le mur**, la tâche devient un formulaire **à sa place** plutôt qu'une
+  fenêtre par-dessus : on garde la liste sous les yeux et on voit laquelle on
+  modifie. **Dans l'app**, le texte ouvre la correction, la case coche — deux
+  gestes distincts sur la même ligne.
+- L'interface de `donnees/` reste **unique** : `majTache` existe aussi côté
+  Notion. Une interface à deux formes ne serait plus une interface (§ 2 sexies).
+
+### 🍽️ « Absence justifiée — Cantine » : la cantine n'est pas une absence
+Rémi : « la notif d'absence de Martial du 15 elle y est mais n'est pas partie
+depuis ». Deux défauts dans la même ligne, et la donnée brute les explique :
+```
+typeElement: "Repas"   libelle: "Cantine"   justifie: true   presence: false
+```
+🔑 **EcoleDirecte range la CANTINE dans `absencesRetards`** — une ligne par
+déjeuner pris. Martial a donc mangé au lycée, et l'écran l'a annoncé comme une
+absence, en tête des post-it, où c'est resté.
+- **Le libellé se décrétait au lieu de se lire** : tout ce qui n'était pas une
+  dispense devenait « Absence », **retards compris**. Il vient maintenant du
+  `typeElement` rendu par l'établissement, calculé **une fois** (`libelleVie`)
+  et partagé par le mur et les notifications — deux formulations auraient fini
+  par se contredire, comme les rayons de courses (§ 2 octies).
+- **Rien ne faisait jamais partir une entrée.** L'espace scolaire rend toute
+  l'année : sans fenêtre, le tableau des post-it se remplit d'événements réglés
+  depuis des mois. Fenêtre `ecole_vie_jours` (7 jours), **sauf une absence NON
+  justifiée qui reste quatre fois plus longtemps** — elle demande une action.
+- 🔑 On exclut ce qu'on **sait** n'être pas un événement, et seulement ça : un
+  type inconnu reste visible. **Cacher une absence est bien pire qu'afficher un
+  repas.**
+- Au passage : les options de lecture scolaire étaient recopiées sur **cinq**
+  appels de `ecole.tout()`. Ajouter un réglage demandait de n'en oublier aucun.
+  Elles vivent désormais dans `optionsEcole()`.
+- ✅ Vérifié sur les vraies données : `vie` est vide, le faux post-it a disparu
+  de l'écran (capture avant/après sur la dalle).
+
+### 🌡️ Température du Raspberry — le ventilateur ne sert pas
+**2 322 mesures sur 3 jours**, toutes les deux minutes :
+
+| | valeur |
+|---|---|
+| moyenne | **60,5 °C** |
+| minimum | 51 °C |
+| **maximum absolu** | **67 °C** |
+| seuil de bridage | 80 °C |
+| mesures ≥ 70 °C | **0** |
+| `vcgencmd get_throttled` | **`0x0`** — jamais bridé depuis le démarrage |
+| alertes envoyées | **aucune** |
+
+Le plus chaud est la fin d'après-midi (65–66 °C vers 15 h–17 h), le plus frais
+la nuit (57–58 °C). **13 °C de marge en permanence** ⇒ le ventilateur est
+inutile, et le silence est gratuit. La surveillance reste en place : elle
+préviendra sur l'écran à 70 °C.
+- 🐞 **Le journal vivait dans `/tmp`** — vidé à chaque redémarrage, alors qu'il
+  n'existe que pour répondre, dans quelques semaines, à « le ventilateur a-t-il
+  jamais servi ? ». Il se replie désormais sur le `HOME` avant `/tmp`.
+  ⚠️ L'installation du script corrigé demande `sudo` sur le Pi : le fichier est
+  en place dans `/tmp/surveiller-temperature.sh`, l'historique a été recopié
+  dans `~/temperature-pi.log` pour ne pas le perdre.
+
+### 🔴 « Il ne dit pas souvent bonjour » — deux causes, et il fallait les séparer
+Rémi : « je suis rentré, il n'a rien dit… il l'a fait une fois à Amandine mais
+pas au reste ». **Mesuré sur le vrai réseau plutôt que supposé** : sur les
+**quatre** téléphones enregistrés, **un seul** figurait dans la table ARP du
+Mac — celui d'Amandine, la seule qui ait jamais été saluée.
+
+**1. On ne pouvait pas voir revenir ce qu'on ne voyait plus.** Le réveil mDNS ne
+visait que les adresses **déjà** dans la table. Or un téléphone parti en sort,
+et le Mac n'a aucune raison d'aller chercher un appareil avec qui il ne parle
+pas : rien ne l'y remettait jamais. Un retour était donc invisible — sauf si un
+autre trafic repeuplait l'entrée par hasard, ce qui arrive justement à qui
+utilise l'app. ⇒ **On balaie le sous-réseau** quand quelqu'un manque à l'appel,
+au plus une fois toutes les 4 minutes : envoyer un datagramme oblige le système
+à résoudre l'adresse matérielle, donc à remplir sa table.
+
+**2. Les adresses Wi-Fi privées d'iOS ont tourné.** Après balayage complet du
+/24, les trois adresses restent introuvables **alors que quatre adresses privées
+inconnues sont présentes**. ⚠️ **L'aide du back-office affirmait le contraire**
+(« l'adresse privée d'iOS est fixe par réseau », § 2 vicies) — ce n'est plus
+vrai avec le mode « Rotation » d'iOS, et rien ne le signalait nulle part.
+- Nouvelle carte **📶 Téléphones du réseau** dans /admin/ → Réglages : elle
+  **balaie** puis compare au réglage, nomme les enregistrés introuvables et
+  marque les « iPhone probables ».
+- 🔑 **Et l'adresse se retrouve toute seule** : le serveur note en mémoire à
+  quelle IP chaque téléphone enrôlé a ouvert l'app **depuis la maison** (jamais
+  derrière le tunnel — on y verrait l'adresse de Cloudflare), croise avec la
+  table du réseau, et **propose** l'adresse retrouvée. Un bouton la met dans le
+  champ, sans enregistrer. Il suffit d'ouvrir l'app une fois sur chaque iPhone.
+
+**Et la voie qui survit à la rotation** : `POST /api/arrivee`, que déclenche un
+Raccourci iOS « quand j'arrive » (prévu au § 2 vicies, jamais construit).
+🔒 L'identité vient du **jeton de l'appareil**, jamais du corps — vérifié :
+`{"qui":"Rémi"}` sans jeton répond **401**. Les deux chemins partagent le même
+verrou (`peutSaluer` / `noterSalut`) : le premier qui parle gagne, sinon un
+Raccourci et un balayage distants de 45 s saluent deux fois.
+⚠️ Le verrou vit **en mémoire**, comme le reste du module : ce projet ne
+fabrique pas un journal de présence des enfants (garde-fou n° 1).
+
+### 🧪 Les contrôles ont trouvé mes propres fautes
+- 🐞 **Un antislash mangé par un heredoc** (piège déjà documenté au § 2
+  quatervicies bis) a coupé un script entier du back-office. Attrapé par
+  « syntaxe des scripts », corrigé par `chr(92)` plutôt que par un échappement.
+- 🐞 « **identifiants visés existants** » signalait `r_arrivee_appareils`, qui
+  est **fabriqué** depuis `REGLAGES_CONNUS` et n'existe donc pas en toutes
+  lettres. Le contrôle apprend à reconnaître ces champs générés — **mais en
+  vérifiant que la clé figure bien dans la liste**, donc une faute de frappe y
+  reste attrapée. Vérifié en réintroduisant les deux : `bouton_disparu` **et**
+  `r_arrivee_apareils` tombent.
+- ⚠️ **Le frein anti-force-brute se retourne contre l'outillage** : deux essais
+  avec un mauvais code (extrait par erreur de la ligne de DATE du fichier, pas
+  de la ligne « Rémi ») bloquent les cinq séries qui ouvrent une session. C'est
+  la preuve qu'il fonctionne — il suffit d'attendre une minute.
+
+### Vérifié
+**442 tests, 0 échec** (412 → 442). Chaque contrôle ajouté a été **vérifié en
+réintroduisant son bug** : il tombe, puis repasse. Sauvegarde base + code faite
+avant écriture. Rendu photographié sur la vraie dalle, avant et après.
+- ❔ Non vérifié : le rendu de l'édition de tâche sur la dalle et sur iPhone
+  (elle est dans le panneau, pas sur la tuile — personne n'a encore touché).
+- ⏭ Reste à faire par Rémi : installer le script de température sur le Pi
+  (2 commandes `sudo`), ouvrir l'app une fois sur chaque iPhone depuis la
+  maison, puis /admin/ → Réglages → « 🔎 Chercher les téléphones ».
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -7908,7 +8045,7 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (404 vérifications, ~20 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (442 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
   ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
   `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
   Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.
