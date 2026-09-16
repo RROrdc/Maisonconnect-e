@@ -1424,11 +1424,12 @@ const REGLAGES_CONNUS = [
    + "jamais la musique de quelqu'un qui écoute ailleurs. Si l'enceinte est éteinte, rien ne se passe et "
    + "l'écran le dit. Laisse vide pour ne jamais toucher à la sortie."],
   ['voix_say', 'Voix qui parle sur le mur', 'texte',
-   "Nom d'une voix française de macOS — « Thomas », « Jacques », « Eddy »… "
-   + "C'est le MAC qui synthétise : le Raspberry n'a aucune voix installée, et celles "
-   + "qu'on pourrait y poser sont robotiques. La liste complète est dans Réglages système "
-   + "→ Accessibilité → Contenu parlé, où l'on peut aussi télécharger des voix « premium », "
-   + "gratuites et bien meilleures."],
+   "Se règle plus haut, dans « 🔊 La voix qui parle sur le mur » — où on peut l'ÉCOUTER "
+   + "avant de la garder. Ce champ ne sert qu'à la relire ou à la corriger à la main.\n"
+   + "Un nom en « fr_FR-… » est une voix NEURONALE (Piper), locale et gratuite, posée dans "
+   + "~/piper-voix sur le Mac. Un prénom seul (« Thomas ») est une voix compacte de macOS — "
+   + "c'est le grain « GPS ». Si la voix demandée est introuvable, l'écran retombe sur macOS "
+   + "plutôt que de rester muet."],
   ['voix_say_debit', 'Débit de la voix (mots/minute)', 'texte',
    "170 est un ton posé, celui d'un majordome. 180 est le débit naturel, 140 devient lent."],
 
@@ -1553,6 +1554,33 @@ const REGLAGES_CONNUS = [
 VUES.reglages = ()=>`
   <div class="entete"><div><h2>Réglages</h2>
     <div class="s">Stockés en base — ils remplacent peu à peu le fichier <code>.env</code></div></div></div>
+
+  <div class="carte">
+    <h3>🔊 La voix qui parle sur le mur</h3>
+    <div class="info" style="margin-top:0">C'est la voix des <b>salutations à l'arrivée</b> —
+      celle qu'on entend dans la cuisine. Le <b>Mac</b> la fabrique et l'envoie à l'écran :
+      le Raspberry n'a aucune voix installée.<br>
+      ⚠️ À ne pas confondre avec la carte juste en dessous, « Voix de l'assistant », qui règle
+      la voix de <b>Jarvis dans le navigateur</b> — deux moteurs différents, deux réglages.<br>
+      💡 Les voix <b>neuronales</b> (Piper) sont en tête de liste : elles sont locales, gratuites,
+      et sans commune mesure avec les voix « compactes » de macOS, qui sonnent comme un vieux GPS de voiture.</div>
+
+    <div class="form">
+      <div class="ch large"><label class="ch">Voix</label>
+        <select id="w_voix"><option>—</option></select>
+        <div style="color:var(--faint);font-size:12.5px;margin-top:6px" id="w_note"></div></div>
+      <div class="ch"><label class="ch">Débit (mots/minute)</label>
+        <input id="w_debit" type="number" min="100" max="300" step="5"></div>
+      <div class="ch large"><label class="ch">Phrase d'essai</label>
+        <input id="w_texte" value="Bonjour Monsieur. La maison est en ordre, comme il se doit."></div>
+    </div>
+    <div class="actions" style="justify-content:flex-start;margin-top:12px">
+      <button class="btn doux" id="w_ecouter">▶︎ Écouter sur l'écran de la cuisine</button>
+      <button class="btn doux" id="w_toutes">🎧 Les écouter toutes, à la suite</button>
+      <button class="btn" id="w_garder">Utiliser cette voix</button>
+    </div>
+    <div id="w_etat" class="info" style="margin-top:12px">Choisis une voix, puis écoute.</div>
+  </div>
 
   <div class="carte">
     <h3>🎙️ Voix de l'assistant</h3>
@@ -2064,6 +2092,63 @@ function brancherVoix(){
   $('#v_debit').oninput = maj;
   $('#v_ton').oninput = maj;
   $('#v_voix').onchange = direEssai;
+  /* ── La voix du MUR ────────────────────────────────────────────────────
+     Elle n'était testable nulle part : le bouton « Écouter la voix » de la
+     carte voisine essaie la voix du NAVIGATEUR, et `voix_say` n'était qu'un
+     champ texte. On choisit une voix en l'écoutant, jamais en lisant son nom
+     (§ 2 quaterdecies) — et surtout pas sur un autre haut-parleur que celui
+     qui la jouera. */
+  if($('#w_voix')) (async ()=>{
+    const sel = $('#w_voix'); const note = $('#w_note');
+    $('#w_debit').value = REGLAGES.voix_say_debit || '170';
+    let liste = [];
+    try{
+      const r = await api('/api/admin/voix-systeme');
+      liste = r.voix || [];
+    }catch(err){ note.textContent = '✗ ' + err.message; }
+    /* Une voix Piper porte le nom de son modèle : « fr_FR-tom-medium ». C'est
+       ce qui permet de la distinguer sans tenir une liste en double. */
+    const neuronale = (v)=>/^fr_[A-Z]{2}-/.test(v);
+    const actuelle = REGLAGES.voix_say || '';
+    sel.innerHTML = liste.map((v)=>
+      `<option ${v===actuelle?'selected':''}>${e(v)}</option>`).join('')
+      || '<option>—</option>';
+    const dire = ()=>{ note.innerHTML = neuronale(sel.value)
+      ? '🟢 <b>Voix neuronale</b> (Piper) — fabriquée sur le Mac, en local.'
+      : '⚪️ Voix <b>compacte</b> de macOS — c’est le grain « GPS ».'; };
+    sel.onchange = dire; dire();
+
+    const ecouter = async (v)=>{
+      $('#w_etat').innerHTML = '⏳ ' + e(v) + '…';
+      try{
+        const r = await api('/api/admin/voix/essai-parole','POST',
+          { texte: $('#w_texte').value, voix: v });
+        $('#w_etat').innerHTML = r.ok
+          ? `🔊 <b>${e(v)}</b> — ${e(r.moteur || 'macOS')}${r.cache ? ' (déjà en cache)' : ''}`
+          : '✗ ' + e(r.raison || 'échec');
+      }catch(err){ $('#w_etat').innerHTML = '✗ ' + e(err.message); }
+    };
+    $('#w_ecouter').onclick = ()=>ecouter(sel.value);
+
+    /* Les écouter toutes à la suite : c'est en COMPARANT qu'on choisit. On
+       laisse chaque phrase finir, sinon elles se marchent dessus sur le
+       haut-parleur de la cuisine. */
+    $('#w_toutes').onclick = async ()=>{
+      const b = $('#w_toutes'); b.disabled = true;
+      for(const v of liste.filter(neuronale)){ await ecouter(v); await new Promise((x)=>setTimeout(x, 7000)); }
+      b.disabled = false;
+    };
+
+    $('#w_garder').onclick = async ()=>{
+      try{
+        await api('/api/admin/reglages','POST',
+          { voix_say: sel.value, voix_say_debit: String($('#w_debit').value || 170) });
+        REGLAGES.voix_say = sel.value;
+        $('#w_etat').innerHTML = '✅ <b>' + e(sel.value) + '</b> est maintenant la voix de la maison.';
+      }catch(err){ $('#w_etat').innerHTML = '✗ ' + e(err.message); }
+    };
+  })();
+
   $('#v_essai').onclick = direEssai;
 
   /* Un timbre plus grave et un débit posé : c'est ce qui rapproche le plus une
