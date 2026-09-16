@@ -30,6 +30,56 @@ const path = require('path');
 const MAC = process.platform === 'darwin';
 const DOSSIER = path.join(__dirname, '..', 'public', 'paroles');
 
+/* ── DEUX MOTEURS, ET POURQUOI ────────────────────────────────────────────
+   Rémi, 16/09 : « la voix ressemble trop à un GPS ». Il a raison, et ce n'est
+   pas un réglage à trouver : `say` n'a sur cette machine que les voix
+   COMPACTES de macOS — Thomas et Jacques sont les plus anciennes du lot, et
+   elles sonnent comme un navigateur de 2010. Vérifié plutôt que supposé :
+   aucune voix « Enhanced » ni « Premium » n'est téléchargée, et elles ne
+   s'installent que depuis Réglages système, à la main.
+
+   PIPER est la réponse déjà écrite au § 2 quaterdecies, avant même l'arrivée du
+   Mac : synthèse NEURONALE, locale, gratuite, avec de vraies voix masculines
+   françaises. Mesuré ici sur le M4 : 3,5 s d'audio produites en 1,3 s, modèle
+   chargé compris — largement plus rapide que le temps réel.
+
+   ⚠️ LICENCE : Piper est passé en GPL-3.0 en octobre 2025. On l'invoque comme
+   un PROGRAMME, jamais comme une bibliothèque liée — exactement le montage du
+   pont Python de Pronote (§ 2 duovicies). On paie un lancement de processus
+   pour ne rien contaminer.
+
+   `say` reste le repli : si Piper n'est pas installé, ou si son modèle manque,
+   l'écran parle quand même. Une voix moins belle vaut mieux qu'un silence
+   qu'on ne s'explique pas. */
+const PIPER = {
+  binaire: process.env.PIPER_BIN || path.join(process.env.HOME || '', 'Library/Python/3.13/bin/piper'),
+  dossier: process.env.PIPER_VOIX || path.join(process.env.HOME || '', 'piper-voix'),
+};
+
+/* Le nom d'un modèle Piper, ramené à un fichier existant. On n'accepte QUE ce
+   qui est dans le dossier des voix : le nom vient d'un réglage, et un réglage
+   ne doit jamais pouvoir désigner un fichier arbitraire de la machine. */
+function modelePiper(nom) {
+  const propre = String(nom || '').replace(/[^A-Za-z0-9_-]/g, '');
+  if (!propre) return null;
+  const f = path.join(PIPER.dossier, propre + '.onnx');
+  try { return fs.existsSync(f) && fs.existsSync(f + '.json') ? f : null; } catch { return null; }
+}
+
+function piperDisponible() {
+  try { return fs.existsSync(PIPER.binaire); } catch { return false; }
+}
+
+/* Les modèles posés dans le dossier — c'est la liste que /admin/ propose. */
+function voixPiper() {
+  try {
+    return fs.readdirSync(PIPER.dossier)
+      .filter((f) => f.endsWith('.onnx'))
+      .map((f) => f.slice(0, -5))
+      .sort();
+  } catch { return []; }
+}
+
 /* Bornes. Le texte vient d'un appel interne, mais une phrase de dix mille
    caractères bloquerait `say` plusieurs minutes et remplirait le disque. */
 const MAX_CAR = 400;
@@ -77,6 +127,44 @@ async function dire(texte, options = {}) {
   if (fs.existsSync(dest)) return { ok: true, url, texte: phrase, voix, cache: true };
 
   fs.mkdirSync(DOSSIER, { recursive: true });
+
+  /* Piper si la voix demandée est un de ses modèles. Sinon `say`, et c'est la
+     même fonction pour l'appelant : le serveur ignore lequel a répondu — même
+     principe que `donnees/` et `recettes/`. */
+  const modele = piperDisponible() ? modelePiper(voix) : null;
+  if (modele) {
+    try {
+      await new Promise((resolve, reject) => {
+        /* Le texte passe par un FICHIER, jamais par la ligne de commande : les
+           arguments d'un processus sont visibles de toute la machine, et une
+           salutation contient un prénom. Même précaution que pour `say` et que
+           pour le QR code Pronote (§ 2 duovicies). */
+        const tmpTxt = dest + '.txt';
+        fs.writeFileSync(tmpTxt, phrase, 'utf8');
+        /* `length-scale` > 1 ralentit. Le débit de `say` est en mots/minute :
+           170 est le ton posé du majordome, 180 le débit naturel. On convertit
+           pour que le MÊME réglage gouverne les deux moteurs — sinon changer de
+           voix changerait aussi la vitesse, sans que personne comprenne. */
+        const echelle = Math.min(1.6, Math.max(0.7, 180 / debit)).toFixed(2);
+        execFile(PIPER.binaire,
+          ['-m', modele, '-i', tmpTxt, '-f', dest,
+           '--length-scale', echelle, '--sentence-silence', '0.15'],
+          { timeout: 30000 },
+          (err, _o, stderr) => {
+            try { fs.unlinkSync(tmpTxt); } catch { /* peu importe */ }
+            if (err) return reject(new Error(String(stderr || err.message).trim().slice(0, 160)));
+            resolve();
+          });
+      });
+      menage();
+      return { ok: true, url, texte: phrase, voix, moteur: 'piper', cache: false };
+    } catch (e) {
+      /* Piper a échoué : on ne reste pas muet, on redescend sur `say`. Le
+         journal du serveur le dira, l'écran parlera quand même. */
+      try { fs.unlinkSync(dest); } catch { /* rien à retirer */ }
+    }
+  }
+
   await new Promise((resolve, reject) => {
     /* Le texte passe par `--input-file` et non par la ligne de commande : les
        arguments d'un processus sont visibles de toute la machine, et une phrase
@@ -102,13 +190,15 @@ function voix() {
   if (!MAC) return Promise.resolve([]);
   return new Promise((resolve) => {
     execFile('/usr/bin/say', ['-v', '?'], { timeout: 8000 }, (err, out) => {
-      if (err) return resolve([]);
-      resolve(String(out).split('\n')
+      const systeme = err ? [] : String(out).split('\n')
         .filter((l) => /\bfr_FR\b/.test(l))
         .map((l) => l.split(/\s{2,}|\s+fr_FR/)[0].trim())
-        .filter(Boolean));
+        .filter(Boolean);
+      /* Les voix Piper D'ABORD : ce sont les belles, et une liste se lit du
+         haut. Marquées, sinon on ne sait pas laquelle on choisit. */
+      resolve([...voixPiper(), ...systeme]);
     });
   });
 }
 
-module.exports = { dire, voix, VOIX_DEFAUT, MAX_CAR };
+module.exports = { dire, voix, voixPiper, piperDisponible, VOIX_DEFAUT, MAX_CAR };
