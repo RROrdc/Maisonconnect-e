@@ -169,6 +169,43 @@ function cocherTache(id, done) {
   return { id: sid(id), done: !!done };
 }
 
+/* Corriger une tâche déjà posée : l'échéance qu'on a mise à côté, la personne
+   qui s'en charge finalement, l'intitulé qu'on relit mal. Jusqu'au 16/09 il
+   fallait supprimer et ressaisir — donc on ne le faisait pas, et une date fausse
+   restait fausse (« lancer lessive foncé » plantée au 15).
+
+   On n'écrit QUE ce qu'on reçoit : une feuille d'édition qui ne montre que la
+   date ne doit pas effacer le destinataire au passage. Une chaîne vide reste
+   une décision (« plus d'échéance ») ; c'est `undefined` qui veut dire « n'y
+   touche pas ». */
+function majTache(id, champs = {}) {
+  /* On relit l'état d'AVANT ici, pas dans le serveur : lui seul sait le faire
+     sans une requête de plus, et surtout on ne demande pas au client de nous
+     dire ce qu'il y avait — un client se trompe ou ment. Il sert à décider s'il
+     faut prévenir quelqu'un d'un changement de destinataire. */
+  const avant = lireTaches().find((t) => t.id === sid(id)) || null;
+  const sets = [];
+  const args = [];
+  if (champs.tache !== undefined) {
+    const t = String(champs.tache).trim();
+    if (!t) throw new Error('Une tâche sans intitulé ne se retrouve plus.');
+    sets.push('titre = ?'); args.push(t);
+  }
+  if (champs.who !== undefined) { sets.push('assigne_a = ?'); args.push(champs.who || null); }
+  if (champs.due !== undefined) { sets.push('echeance = ?'); args.push(champs.due || null); }
+  if (champs.done !== undefined) { sets.push('fait = ?'); args.push(champs.done ? 1 : 0); }
+  if (sets.length) {
+    sets.push("maj_le = datetime('now')");
+    args.push(id);
+    ecrire(`UPDATE taches SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  }
+  /* On relit plutôt que de recomposer : le front compare des identifiants en
+     TEXTE et affiche l'échéance telle qu'elle est en base. Renvoyer ce qu'on
+     croit avoir ecrit, c'est risquer d'afficher autre chose que ce qui y est. */
+  const apres = lireTaches().find((t) => t.id === sid(id)) || { id: sid(id) };
+  return { ...apres, avant };
+}
+
 /* ------------------------------------------------------------------ post-it */
 const lirePostits = () =>
   q(`SELECT id, message, auteur, epingle FROM postits
@@ -921,7 +958,7 @@ module.exports = {
   nom: 'sqlite', fichier, ouvrir,
   tout, lireCourses, lireTaches, lirePostits, lireMenu, lirePlannings, lirePersonnes,
   ajouterCourse, cocherCourse, definirRayon, ajouterCoursesEnLot, viderCoursesPrises,
-  ajouterTache, cocherTache, ajouterPostit,
+  ajouterTache, cocherTache, majTache, ajouterPostit,
   definirMenu, lignesMenuBrutes, supprimer,
   listePlats, listePlatsAdmin, nomsPlats, platId, platFiche, enregistrerPlat, fusionnerPlats,
   lignesPlanning, enregistrerCreneau, supprimerCreneau, copierJournee,

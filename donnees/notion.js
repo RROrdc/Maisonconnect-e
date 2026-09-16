@@ -131,6 +131,20 @@ async function cocherTache(id, done) {
   return { id, done: !!done };
 }
 
+/* Même signature que côté SQLite : l'interface de `donnees/` n'existe qu'en un
+   exemplaire, et c'est elle qui a permis de reconstruire le serveur après la
+   quarantaine (§ 2 sexies). Notion est une archive figée, mais une interface à
+   deux formes ne serait plus une interface. */
+async function majTache(id, champs = {}) {
+  const props = {};
+  if (champs.tache !== undefined) props['Tâche'] = { title: [{ text: { content: String(champs.tache) } }] };
+  if (champs.who !== undefined) props['Assigné à'] = champs.who ? { select: { name: champs.who } } : { select: null };
+  if (champs.due !== undefined) props['Échéance'] = champs.due ? { date: { start: champs.due } } : { date: null };
+  if (champs.done !== undefined) props['Statut'] = { status: { name: champs.done ? 'Terminé' : 'Pas commencé' } };
+  if (Object.keys(props).length) await notion.pages.update({ page_id: id, properties: props });
+  return { id, ...champs, avant: null };
+}
+
 async function ajouterPostit({ message, who }) {
   const props = { 'Message': { title: [{ text: { content: message || '' } }] }, 'Épinglé': { checkbox: false } };
   if (who) props['Auteur'] = { select: { name: who } };
@@ -190,7 +204,7 @@ module.exports = {
   nom: 'notion', notion, DB, queryAll, platsMap,
   pTitle, pText, pSel, pChk, pDate, pStatus,
   tout, lireCourses, lireTaches, lirePostits, lireMenu, lirePlannings, lirePersonnes,
-  ajouterCourse, cocherCourse, ajouterTache, cocherTache, ajouterPostit,
+  ajouterCourse, cocherCourse, ajouterTache, cocherTache, majTache, ajouterPostit,
   definirMenu, supprimer, viderCoursesPrises,
   enrolerAppareil: nonSupporte, appareil: () => null,
   /* Notion n'a pas de table `reglages` : le serveur retombe sur les valeurs par

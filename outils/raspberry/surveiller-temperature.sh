@@ -53,8 +53,16 @@ alerter() {
 # Le fichier de trace est choisi UNE FOIS : tenter /var/log à chaque mesure
 # remplissait le journal système d'un « Permission denied » toutes les deux
 # minutes — une erreur bénigne qui noie les vraies.
-TRACE=/var/log/temperature-pi.log
-( : >> "$TRACE" ) 2>/dev/null || TRACE=/tmp/temperature-pi.log
+#
+# 🔴 Et /tmp N'EST PAS un repli acceptable : il est vidé à chaque redémarrage,
+#    donc l'historique disparaît précisément le jour où quelqu'un l'ouvre après
+#    une coupure. Or cette trace n'existe que pour répondre, dans quelques
+#    semaines, à « le ventilateur a-t-il jamais servi ? ». Un service enabled
+#    tourne sous un compte qui a toujours un HOME : on s'y replie avant /tmp.
+for candidat in /var/log/temperature-pi.log "${HOME:-/home/remi}/temperature-pi.log" /tmp/temperature-pi.log; do
+  if ( : >> "$candidat" ) 2>/dev/null; then TRACE="$candidat"; break; fi
+done
+TRACE="${TRACE:-/tmp/temperature-pi.log}"
 
 logger -t surveiller-temperature "démarré — mesure toutes les ${INTERVALLE}s, trace dans $TRACE"
 

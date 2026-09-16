@@ -90,6 +90,12 @@ const REGLAGES = {
      compte EcoleDirecte ET un lancement de Python de ~2 s pour Pronote. */
   ecole_jours:         { env: '', defaut: '7' },
   ecole_cache_minutes: { env: '', defaut: '15' },
+  /* Depuis combien de jours une entrée de vie scolaire reste sous les yeux.
+     Sans fenêtre, l'espace scolaire rend toute l'année et le tableau des post-it
+     se remplit d'événements réglés depuis longtemps (constaté le 16/09).
+     Une absence NON justifiée reste quatre fois plus longtemps : elle demande
+     une action. */
+  ecole_vie_jours:     { env: '', defaut: '7' },
   /* Nom du Raccourci macOS qui renvoie la température. macOS n'offre aucune
      commande pour lire HomeKit : un Raccourci est le seul pont officiel, et il
      évite de stocker le moindre identifiant Netatmo. Vide = carte « à brancher ».
@@ -1016,16 +1022,25 @@ app.post('/api/maison/temperature', async (req, res) => {
   } catch (e) { res.status(400).json({ erreur: e.message }); }
 });
 
+/* Les options de lecture scolaire, à UN seul endroit. Elles étaient recopiées
+   sur cinq appels : ajouter un réglage demandait de ne pas en oublier un, et
+   c'est précisément la duplication qui a déjà coûté au projet des rayons de
+   courses différents des deux côtés (§ 2 octies).
+   Les prénoms du foyer font autorité sur l'orthographe : c'est eux que
+   comparent la présence, l'app et les rappels. */
+async function optionsEcole() {
+  return {
+    jours: Number(config('ecole_jours')) || 7,
+    vieJours: Number(config('ecole_vie_jours')) || 7,
+    maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
+    prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
+  };
+}
+
 app.get('/api/ecole', async (req, res) => {
   try {
     if (req.query.rafraichir) Ecole.viderCache();
-    const charge = await ecole.tout({
-      jours: Number(config('ecole_jours')) || 7,
-      maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
-      /* Les prénoms du foyer font autorité sur l'orthographe : c'est eux que
-         comparent la présence, l'app et les rappels. */
-      prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
-    });
+    const charge = await ecole.tout(await optionsEcole());
     /* Les soucis remontent DANS la réponse plutôt qu'en erreur HTTP : un compte
        fâché ne doit pas faire disparaître les enfants des autres comptes. Ils
        partent aussi au journal, sinon une panne n'existe pour personne
@@ -1371,10 +1386,27 @@ app.post('/api/todo', async (req, res) => {
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
 
+/* Cocher ET corriger passent par la même route : pour le front c'est le même
+   geste — « cette tâche change ». Les champs absents ne sont pas touchés, donc
+   une coche reste une coche et ne remet pas l'échéance à zéro. */
 app.patch('/api/todo/:id', async (req, res) => {
   try {
-    const t = await donnees.cocherTache(req.params.id, req.body.done);
+    const champs = {};
+    for (const c of ['tache', 'who', 'due', 'done']) {
+      if (req.body[c] !== undefined) champs[c] = req.body[c];
+    }
+    const { avant, ...t } = await donnees.majTache(req.params.id, champs);
     majFaite('todo', req);
+    /* Réassigner une tâche, c'est la confier à quelqu'un d'autre : la personne
+       doit l'apprendre maintenant, pas au rappel du lendemain matin. On ne
+       prévient que si le destinataire CHANGE vraiment — sinon corriger une
+       faute de frappe sonnerait chez elle une deuxième fois. */
+    const auteur = qui(req);
+    if (t.who && t.who !== auteur && avant && avant.who !== t.who) {
+      const quand = t.due ? ' — pour le ' + t.due : '';
+      pousserVers(t.who, '✅ ' + auteur + ' te confie', (t.tache || '') + quand)
+        .catch(() => { /* déjà journalisé */ });
+    }
     res.json(t);
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
 });
@@ -2241,10 +2273,7 @@ app.use('/api', (_req, res) => res.status(404).json({ error: 'Route inconnue.' }
    ⚠️ AUCUN filtre de présence, contrairement au mur : la notification part sur
    le téléphone de l'enfant, qu'il soit chez nous ou chez son autre parent. */
 async function devoirsDuSoir() {
-  const charge = await ecole.tout({
-    jours: Number(config('ecole_jours')) || 7,
-    maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
-  });
+  const charge = await ecole.tout(await optionsEcole());
   const auj = pertinence.ymd(new Date());
   const horizon = (charge.cours || []).reduce((max, c) => (c.jour > max ? c.jour : max), auj);
   const retenus = [];
@@ -2289,33 +2318,21 @@ const serveur = app.listen(PORT, '0.0.0.0', () => {
       /* Même inversion pour la vie scolaire : le module de rappels ne sait pas
          d'où viennent les absences, il sait seulement les annoncer. */
       lireVie: async () => {
-        const charge = await ecole.tout({
-          jours: Number(config('ecole_jours')) || 7,
-          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
-          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
-        });
+        const charge = await ecole.tout(await optionsEcole());
         return charge.vie || [];
       },
       /* Même inversion pour les cours et les messages. `Ecole.tout()` partage
          une seule lecture entre les appelants simultanés (§ 2 duovicies) : ces
          trois sources ne déclenchent donc pas trois connexions. */
       lireCours: async () => {
-        const charge = await ecole.tout({
-          jours: Number(config('ecole_jours')) || 7,
-          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
-          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
-        });
+        const charge = await ecole.tout(await optionsEcole());
         /* ⚠️ La charge porte les cours À PLAT, pas imbriqués dans les élèves :
            les lire au mauvais endroit aurait donné zéro notification, sans la
            moindre erreur pour le signaler. Chaque cours porte déjà son `eleve`. */
         return charge.cours || [];
       },
       lireMessages: async () => {
-        const charge = await ecole.tout({
-          jours: Number(config('ecole_jours')) || 7,
-          maxAgeMs: (Number(config('ecole_cache_minutes')) || 15) * 60 * 1000,
-          prenomsFoyer: (await donnees.lirePersonnes()).map((p) => p.nom),
-        });
+        const charge = await ecole.tout(await optionsEcole());
         return charge.messages || [];
       },
     });

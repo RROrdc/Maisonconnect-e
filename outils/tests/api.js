@@ -90,6 +90,39 @@ module.exports = async function (muet) {
   t.dire(flux.recus.some((e) => e.type === 'maj'), 'événement « maj » reçu');
   t.dire(flux.recus.some((e) => e.type === 'notif'), 'événement « notif » reçu');
 
+  /* ── Corriger une tâche ─────────────────────────────────────────────────
+     🔴 Jusqu'au 16/09, `PATCH /api/todo/:id` ne lisait QUE `done` : une date
+     posée de travers ne se rattrapait qu'en supprimant la tâche et en la
+     ressaisissant — donc on ne la rattrapait pas (« lancer lessive foncé »
+     plantée au 15 chez Amandine). */
+  t.titre('Une tâche se corrige');
+  const tache = await A.api('/api/todo', 'POST',
+    { tache: `${A.MARQUE} tâche`, who: 'Rémi', due: '2026-09-15' });
+  t.dire(tache.statut === 200 && tache.j.due === '2026-09-15', 'POST /api/todo', tache.j.due);
+
+  const decale = await A.api('/api/todo/' + tache.j.id, 'PATCH', { due: '2026-09-22' });
+  t.dire(decale.statut === 200 && decale.j.due === '2026-09-22',
+    'l’échéance se déplace', `${tache.j.due} → ${decale.j.due}`);
+  t.dire(decale.j.who === 'Rémi' && decale.j.tache === `${A.MARQUE} tâche`,
+    '🔑 et le reste n’a PAS bougé',
+    'une feuille qui ne montre que la date ne doit pas effacer le destinataire');
+  t.dire(decale.j.avant === undefined, 'l’état d’avant ne sort pas de l’API',
+    'il sert au serveur à décider s’il faut prévenir, pas au front');
+
+  const renvoi = await A.api('/api/todo/' + tache.j.id, 'PATCH', { who: 'Amandine' });
+  t.dire(renvoi.j.who === 'Amandine' && renvoi.j.due === '2026-09-22',
+    'la tâche se confie à quelqu’un d’autre sans perdre son échéance');
+
+  const cochee = await A.api('/api/todo/' + tache.j.id, 'PATCH', { done: true });
+  t.dire(cochee.j.done === true && cochee.j.due === '2026-09-22',
+    '🔑 cocher n’efface pas l’échéance',
+    'les champs absents ne sont pas touchés — sinon une coche remettrait tout à zéro');
+
+  const vide = await A.api('/api/todo/' + tache.j.id, 'PATCH', { tache: '   ' });
+  t.dire(vide.statut === 400, 'un intitulé vide est refusé', 'une tâche sans nom ne se retrouve plus');
+
+  t.dire((await A.api('/api/todo/' + tache.j.id, 'DELETE')).statut === 200, 'DELETE /api/todo/:id');
+
   t.titre('Corbeille');
   t.dire((await A.api('/api/course/' + ajout.j.id, 'DELETE')).statut === 200, 'DELETE /api/course/:id');
   t.dire((await A.api('/api/notif/' + notif.j.notif.id, 'DELETE')).statut === 200,

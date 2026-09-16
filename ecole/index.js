@@ -119,12 +119,60 @@ function devoirNormalise(matiere, pourLe, eleve) {
    pour ensuite afficher du vide serait pire que rien. On garde ce qu'on
    reconnaît, on retombe sur ce qui est présent, et on conserve `brut` pour
    pouvoir affiner le jour où une entrée arrive vraiment. */
+/* 🔴 EcoleDirecte range dans « absencesRetards » des lignes qui ne sont PAS des
+   événements : la CANTINE y figure, une ligne « Repas » par déjeuner pris.
+   Le 15/09 Martial a donc déjeuné au collège, et l'écran mural l'a annoncé
+   « Absence justifiée — Cantine », en tête des post-it, où c'est resté.
+   On exclut donc ce qu'on sait n'être pas un événement — et SEULEMENT ça :
+   un type inconnu reste visible, parce qu'une absence qu'on cache est bien pire
+   qu'un repas qu'on affiche. */
+const VIE_NON_EVENEMENTS = new Set(['repas', 'presence', 'présence']);
+const estEvenementVie = (v) => !VIE_NON_EVENEMENTS.has(clef(v && v.typeElement));
+
+/* Le libellé se déduit du type RENDU PAR L'ÉTABLISSEMENT, pas de la liste d'où
+   la ligne sort : `absencesRetards` mêle absences et retards, et tout appeler
+   « absence » faisait dire à l'écran le contraire de ce qui s'est passé.
+   Écrit ici, partagé par le mur et par les notifications — c'est la duplication
+   des rayons de courses que le projet a déjà payée deux fois (§ 2 octies). */
+function libelleVie(typeElement, type, justifie) {
+  const t = clef(typeElement || type);
+  if (t.includes('retard')) return justifie ? 'Retard justifié' : 'Retard NON justifié';
+  if (t.includes('dispense')) return 'Dispense';
+  if (t.includes('absence')) return justifie ? 'Absence justifiée' : 'Absence NON justifiée';
+  /* Type inconnu : on répète ce que dit l'établissement plutôt que d'inventer. */
+  return String(typeElement || 'Vie scolaire');
+}
+
+/* Combien de temps une entrée reste sous les yeux.
+   L'espace scolaire rend TOUTE l'année : sans fenêtre, le tableau des post-it
+   se remplirait mois après mois d'événements réglés depuis longtemps — et c'est
+   exactement ce que Rémi a constaté le 16/09, l'entrée du 15 « qui n'est pas
+   partie depuis ».
+   Une absence NON justifiée fait exception : elle demande une action, et elle
+   reste donc jusqu'à ce qu'elle soit justifiée — plafonnée quand même, sinon
+   un oubli de l'établissement squatte le mur jusqu'aux vacances. */
+const VIE_RELANCE = 4;
+function vieRecente(entrees, { jours = 7, aujourdhui = jour(new Date()) } = {}) {
+  /* Par `jour()`, jamais par `toISOString()` : découper une date UTC a déjà
+     coûté au projet deux heures de décalage et une conclusion fausse
+     (§ 2 quindecies). Ici on reste en heure locale de bout en bout. */
+  const limite = (n) => jour(dansNJours(-n, new Date(aujourdhui + 'T12:00')));
+  const courte = limite(jours);
+  const longue = limite(jours * VIE_RELANCE);
+  return (entrees || []).filter((v) => {
+    if (!v.date) return true;                 // sans date, on préfère montrer
+    const aAgir = !v.justifie && clef(v.type).includes('absence');
+    return v.date >= (aAgir ? longue : courte);
+  });
+}
+
 function vieNormalisee(v, eleve, type) {
   const prem = (...c) => c.find((x) => x !== undefined && x !== null && x !== '') || '';
   const date = String(prem(v.date, v.displayDate, v.dateDebut, v.debut)).slice(0, 10);
   return {
     eleve,
     type: prem(v.typeElement, type),
+    quoi: libelleVie(v.typeElement, type, v.justifie === true || v.justifie === 1),
     date,
     /* L'établissement remplit tantôt `motif`, tantôt `libelle`, tantôt
        `commentaire`. On prend le premier qui dit quelque chose. */
@@ -269,7 +317,10 @@ class Ecole {
     const d = await e._client.vieScolaire(e.id);
     const out = [];
     for (const [cle, type] of [['absencesRetards', 'absence'], ['dispenses', 'dispense']]) {
-      for (const x of d[cle] || []) out.push(vieNormalisee(x, e.prenom, type));
+      for (const x of d[cle] || []) {
+        if (!estEvenementVie(x)) continue;          // la cantine n'est pas un événement
+        out.push(vieNormalisee(x, e.prenom, type));
+      }
     }
     return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
@@ -289,8 +340,8 @@ class Ecole {
     return Ecole._envol;
   }
 
-  async _tout({ jours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
-    const signature = JSON.stringify([jours, this.clients.map((c) => c.etiquette), pronote.configure(), prenomsFoyer]);
+  async _tout({ jours = 7, vieJours = 7, maxAgeMs = 15 * 60 * 1000, prenomsFoyer = [] } = {}) {
+    const signature = JSON.stringify([jours, vieJours, this.clients.map((c) => c.etiquette), pronote.configure(), prenomsFoyer]);
     const maintenant = Date.now();
     if (Ecole._cache && Ecole._cache.signature === signature && maintenant - Ecole._cache.le < maxAgeMs) {
       return { ...Ecole._cache.charge, cache: true, age: Math.round((maintenant - Ecole._cache.le) / 1000) };
@@ -357,6 +408,10 @@ class Ecole {
       }
     }
 
+    /* La fenêtre est posée ICI, une seule fois : l'écran mural et les rappels
+       lisent la même liste, et deux filtres auraient fini par diverger. */
+    charge.vie = vieRecente(charge.vie, { jours: vieJours });
+
     charge.cours.sort((a, b) => (a.jour + a.debut).localeCompare(b.jour + b.debut));
     charge.devoirs.sort((a, b) => (a.pour + a.eleve).localeCompare(b.pour + b.eleve));
 
@@ -379,4 +434,4 @@ class Ecole {
   static _envol = null;
 }
 
-module.exports = { Ecole, vieNormalisee, pronote, comptesConfigures, fichierEtat, coursNormalise, devoirNormalise, noteNormalisee, messageNormalise, ErreurED, QcmRequis, anneeScolaire };
+module.exports = { Ecole, vieNormalisee, vieRecente, libelleVie, estEvenementVie, pronote, comptesConfigures, fichierEtat, coursNormalise, devoirNormalise, noteNormalisee, messageNormalise, ErreurED, QcmRequis, anneeScolaire };

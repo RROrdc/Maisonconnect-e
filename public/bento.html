@@ -415,6 +415,10 @@
   .form input[type=text],.form select,.form input[type=date],.inline{background:var(--card2);border:none;
     color:var(--txt);border-radius:13px;padding:12px 14px;font-size:15px}
   .form input[type=text]{flex:1;min-width:160px}
+  /* La tâche qu'on corrige prend la place de sa pilule et se signale par un
+     liseré : sur un mur, on doit voir d'un coup d'œil LAQUELLE on modifie. */
+  .form.edit{margin:0 0 10px;border:2px solid var(--ac)}
+  .form button.doux{background:var(--card2);color:var(--muted)}
   .form button{background:var(--ac);color:var(--onac);border:none;border-radius:13px;padding:12px 20px;
     font-weight:750;font-size:15px;cursor:pointer}
   select.inline{padding:9px 11px;font-size:14px}
@@ -1343,9 +1347,12 @@ function render(){
   /* En tête, pas à la suite : une absence non justifiée compte plus qu'un mot
      laissé la semaine dernière, et sur un mur on lit ce qui est en haut. */
   const vie = ((S.ecole && S.ecole.vie) || []).slice(0, 3).map(v => {
-    const quoi = v.type === 'dispense' ? 'Dispense'
-      : (v.justifie ? 'Absence justifiée' : 'Absence NON justifiée');
-    return `<div class="note ecole${v.justifie||v.type==='dispense'?'':' alerte'}">`
+    /* Le libellé vient du SERVEUR (`quoi`), qui le tient de l'établissement :
+       ici on ne devinait pas, on décrétait — un retard et un repas de cantine
+       s'affichaient tous deux « Absence », ce qui est le contraire du vrai. */
+    const quoi = v.quoi || 'Vie scolaire';
+    const aAgir = !v.justifie && /absence|retard/i.test(v.type||'');
+    return `<div class="note ecole${aAgir?' alerte':''}">`
       + `<b class="qui">🏫 ${esc(v.eleve)}</b> ${esc(quoi)}`
       + (v.motif ? ` — ${esc(v.motif)}` : '')
       + `<b>— ${esc(v.date || 'école')}</b></div>`;
@@ -1732,7 +1739,7 @@ function openTile(k){
 function closeTile(){
   openK=null;armed=null;
   MENU_SEM='';MENU_SEM_DATA=null;   // rouvrir le menu repart toujours sur la semaine du jour
-  PROPO=null;PROPO_VARIANTE=0;SUGG=null;HABITUELS=null;   // et sur un panneau propre
+  PROPO=null;PROPO_VARIANTE=0;SUGG=null;HABITUELS=null;EDIT_TODO=null;   // et sur un panneau propre
   document.getElementById('overlay').classList.remove('on');
   document.getElementById('homeBtn').classList.remove('on');
   document.querySelectorAll('.rail button[data-k]').forEach(b=>b.classList.remove('on'));
@@ -2052,9 +2059,19 @@ function body(k){
       <select id="tWho">${famOpts('Toute la famille')}</select><input type="date" id="tDue">
       <button onclick="addTodo()">Ajouter</button></div>`;
     h+=triTodos(S.todos).map(x=>
-      `<div class="pill ${x.done?'fait':''}"><span class="box" onclick="toggleTodo('${x.id}',${!x.done})">${ico('ok')}</span>
+      /* Une tâche en cours de correction devient un formulaire à SA place, plutôt
+         qu'une fenêtre par-dessus : sur un mur on garde la liste sous les yeux,
+         et on voit tout de suite ce qu'on est en train de changer. */
+      x.id===EDIT_TODO
+      ? `<div class="form edit"><input type="text" id="eTache" value="${esc(x.tache)}">
+          <select id="eWho">${famOpts(x.who||'Toute la famille')}</select>
+          <input type="date" id="eDue" value="${esc(x.due||'')}">
+          <button onclick="majTodo('${x.id}')">Enregistrer</button>
+          <button class="doux" onclick="editTodo(null)">Annuler</button></div>`
+      : `<div class="pill ${x.done?'fait':''}"><span class="box" onclick="toggleTodo('${x.id}',${!x.done})">${ico('ok')}</span>
         <span class="lt">${esc(x.tache)}</span>${x.who?`<span class="tag ac">${esc(x.who)}</span>`:''}
-        ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}${delBtn('todo',x.id)}</div>`
+        ${x.due?`<span class="tag ${enRetard(x.due)&&!x.done?'urgent':''}">${dueLabel(x.due)}</span>`:''}
+        <button class="del" onclick="event.stopPropagation();editTodo('${x.id}')" title="Modifier">${ico('pen')}</button>${delBtn('todo',x.id)}</div>`
     ).join('')||'<div class="vide">Rien à faire 🎉</div>';
   /* Le panneau « À faire » garde les TÂCHES ; les devoirs ont le leur, sinon
      on y mélange ce que la famille décide et ce que l'école impose. */
@@ -2389,6 +2406,23 @@ async function addCourse(){
   try{await api('/api/course','POST',{article:v,rayon:document.getElementById('cRayon').value,
     who:document.getElementById('cWho').value});await refresh();}catch(e){showErr(e.message);}
 }
+/* Tâche en cours de correction dans le panneau « À faire ». Jusqu'au 16/09 une
+   date posée de travers ne se rattrapait qu'en supprimant la tâche et en la
+   ressaisissant — donc on ne la rattrapait pas. */
+let EDIT_TODO=null;
+function editTodo(id){EDIT_TODO=id;drawSheet('todo');}
+
+async function majTodo(id){
+  const v=document.getElementById('eTache').value.trim();
+  if(!v)return showErr('Il faut un intitulé.');
+  try{
+    await api('/api/todo/'+id,'PATCH',{tache:v,
+      who:document.getElementById('eWho').value,
+      due:document.getElementById('eDue').value||''});
+    EDIT_TODO=null;await refresh();
+  }catch(e){showErr(e.message);}
+}
+
 async function addTodo(){
   const v=document.getElementById('tNew').value.trim();if(!v)return;
   try{await api('/api/todo','POST',{tache:v,who:document.getElementById('tWho').value,

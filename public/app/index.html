@@ -656,9 +656,12 @@ RENDU.course = ()=>{
 };
 
 /* ---------- À faire ---------- */
+/* Le texte ouvre la correction, la case coche : deux gestes distincts sur la
+   même ligne. Jusqu'au 16/09 une échéance posée de travers ne se rattrapait
+   qu'en supprimant la tâche — donc elle restait fausse. */
 const ligneTache = (t)=>`<div class="li todo ${t.done?'fini':''}">
   <div class="case ${t.done?'on':''}" data-todo="${e(t.id)}">✓</div>
-  <div class="t">${e(t.tache)}${(t.who||t.due)?`<div class="d">${e([t.who, dateCourte(t.due)].filter(Boolean).join(' · '))}</div>`:''}</div>
+  <div class="t" data-edittodo="${e(t.id)}">${e(t.tache)}${(t.who||t.due)?`<div class="d">${e([t.who, dateCourte(t.due)].filter(Boolean).join(' · '))}</div>`:''}</div>
   <div class="fin"><span class="tag" data-suppr="todo:${e(t.id)}">✕</span></div></div>`;
 
 function dateCourte(d){
@@ -1129,6 +1132,10 @@ function brancherEcran(){
     try{ await api('/api/todo/'+t.id,'PATCH',{done:!t.done}); }catch(err){ toast('✗ '+err.message); }
   });
 
+  $$('[data-edittodo]').forEach((n)=>n.onclick = ()=>{
+    const t = (S.todos||[]).find((x)=>x.id===n.dataset.edittodo); if(t) editerTache(t);
+  });
+
   /* Suppression en deux touchers : sur un téléphone, une croix se frôle vite. */
   $$('[data-suppr]').forEach((n)=>n.onclick = async (ev)=>{
     ev.stopPropagation();
@@ -1350,6 +1357,25 @@ function ajoutTache(){
       if(!t){ toast('Il faut un intitulé.'); return false; }
       await api('/api/todo','POST',{tache:t, who:d.querySelector('#a_qui').value, due:d.querySelector('#a_due').value});
       toast('Tâche ajoutée.');
+    });
+}
+
+/* Même feuille que l'ajout, pré-remplie : on corrige ce qu'on voit. Le champ
+   laissé vide est une DÉCISION (« plus d'échéance »), pas un oubli — le serveur
+   ne touche qu'aux champs qu'on lui envoie. */
+function editerTache(t){
+  feuille('Modifier la tâche', `
+    <input class="ch" id="m_tache" value="${e(t.tache||'')}" autocapitalize="sentences">
+    <label class="et">Pour qui</label>
+    <select class="ch" id="m_qui">${gensOptions(t.who||moi)}</select>
+    <label class="et">Échéance</label>
+    <input class="ch" id="m_due" type="date" value="${e(t.due||'')}">`,
+    async (d)=>{
+      const v = d.querySelector('#m_tache').value.trim();
+      if(!v){ toast('Il faut un intitulé.'); return false; }
+      await api('/api/todo/'+t.id,'PATCH',{tache:v,
+        who:d.querySelector('#m_qui').value, due:d.querySelector('#m_due').value});
+      toast('Tâche modifiée.');
     });
 }
 

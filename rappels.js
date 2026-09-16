@@ -250,13 +250,16 @@ function creerRappels({ donnees, diffuser, config }) {
     for (const v of neuves) {
       dejaVu.add(v.cle);
       if (amorcage || force === 'muet') continue;
-      const quoi = v.type === 'dispense' ? 'Dispense' : (v.justifie ? 'Absence justifiée' : 'Absence non justifiée');
+      /* Même libellé que l'écran mural, et il vient du même endroit : deux
+         formulations auraient fini par se contredire — la notification disant
+         « absence » là où le mur dit « retard ». */
+      const quoi = v.quoi || 'Vie scolaire';
       await donnees.ajouterNotif({
         titre: `🏫 ${v.eleve} — ${quoi}`,
         message: [v.date, v.motif].filter(Boolean).join(' · ') || 'Voir l’espace scolaire.',
         pour: null,
         de: 'École',
-        niveau: v.justifie || v.type === 'dispense' ? 'info' : 'alerte',
+        niveau: !v.justifie && /absence|retard/i.test(v.type || '') ? 'alerte' : 'info',
       });
     }
 

@@ -174,6 +174,53 @@ module.exports = async function serie() {
   t.dire(c.matiere === 'Mathématiques' && c.libelle === 'MATHEMATIQUES',
     'le libellé brut est conservé à côté du nom propre');
 
+  /* ── Vie scolaire ─────────────────────────────────────────────────────
+     🔴 Le 16/09, l'écran mural annonçait « Martial — Absence justifiée —
+     Cantine », en tête des post-it, où c'est resté. Ce n'était pas une
+     absence : EcoleDirecte range la CANTINE dans « absencesRetards », une
+     ligne « Repas » par déjeuner. Deux défauts dans la même ligne — un type
+     mal lu, et rien qui fasse jamais partir l'entrée de l'écran. */
+  t.titre('La cantine n’est pas un événement de vie scolaire');
+  t.dire(ecole.estEvenementVie({ typeElement: 'Absence' }), 'une absence en est un');
+  t.dire(ecole.estEvenementVie({ typeElement: 'Retard' }), 'un retard aussi');
+  t.dire(!ecole.estEvenementVie({ typeElement: 'Repas' }), 'un repas de cantine, NON',
+    'le cas réel du 15/09 : libellé « Cantine », justifie=true, presence=false');
+  t.dire(ecole.estEvenementVie({ typeElement: 'Exclusion' }), 'un type INCONNU reste visible',
+    'cacher une absence est bien pire qu’afficher un repas');
+
+  t.titre('Le libellé vient du type rendu par l’établissement');
+  const CAS_VIE = [
+    ['Absence', false, 'Absence NON justifiée'],
+    ['Absence', true, 'Absence justifiée'],
+    ['Retard', false, 'Retard NON justifié'],
+    ['Retard', true, 'Retard justifié'],
+    ['Dispense', true, 'Dispense'],
+  ];
+  for (const [type, justifie, attendu] of CAS_VIE) {
+    t.dire(ecole.libelleVie(type, 'absence', justifie) === attendu, `${type} (justifié : ${justifie}) → « ${attendu} »`);
+  }
+  t.dire(ecole.libelleVie('Exclusion', 'absence', false) === 'Exclusion',
+    'un type inconnu est répété tel quel', 'on répète l’établissement plutôt que d’inventer');
+  t.dire(ecole.vieNormalisee({ typeElement: 'Retard', date: '2026-09-15' }, 'Martial', 'absence').quoi
+    === 'Retard NON justifié',
+    'le libellé voyage AVEC l’entrée',
+    'le mur et les notifications le lisent au même endroit — deux formulations finiraient par se contredire');
+
+  /* La fenêtre : l'espace scolaire rend TOUTE l'année. Sans elle, le tableau
+     des post-it se remplit d'événements réglés depuis des mois. */
+  t.titre('Une entrée de vie scolaire finit par quitter l’écran');
+  const AUJ = '2026-09-16';
+  const garde = (e) => ecole.vieRecente([e], { jours: 7, aujourdhui: AUJ }).length === 1;
+  t.dire(garde({ date: '2026-09-15', type: 'Absence', justifie: true }), 'hier reste');
+  t.dire(!garde({ date: '2026-09-01', type: 'Absence', justifie: true }),
+    'une absence JUSTIFIÉE de quinze jours s’efface', 'elle ne demande plus rien à personne');
+  t.dire(garde({ date: '2026-09-01', type: 'Absence', justifie: false }),
+    'une absence NON justifiée reste bien plus longtemps', 'elle, elle demande une action');
+  t.dire(!garde({ date: '2026-06-01', type: 'Absence', justifie: false }),
+    'mais pas indéfiniment', 'sinon un oubli de l’établissement squatte le mur jusqu’aux vacances');
+  t.dire(garde({ date: '', type: 'Absence', justifie: false }),
+    'sans date, on préfère montrer', 'on ne fait pas disparaître ce qu’on ne sait pas dater');
+
   t.titre('Un message a la même forme');
   const m = ecole.messageNormalise({ id: 12, date: '2026-09-01 17:18:52', read: false, subject: 'Documents officiels', from: { nom: 'KRZESAJ', prenom: 'A.' } });
   t.dire(m.sujet === 'Documents officiels', 'sujet non-base64 laissé intact');
