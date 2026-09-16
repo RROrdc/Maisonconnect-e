@@ -1126,7 +1126,12 @@ app.get('/api/admin/arrivee/reseau', async (_req, res) => {
 });
 
 app.get('/api/admin/voix-systeme', async (_req, res) => {
-  try { res.json({ voix: await Maison.parole.voix(), defaut: Maison.parole.VOIX_DEFAUT }); }
+  try {
+    const voix = await Maison.parole.voix();
+    /* Ce que le sondage a écarté voyage AVEC la liste : neuf lignes qui
+       disparaissent sans explication, c'est un réglage qu'on croit cassé. */
+    res.json({ voix, defaut: Maison.parole.VOIX_DEFAUT, ecartees: Maison.parole.voixEcartees() });
+  }
   catch (e) { res.status(400).json({ voix: [], raison: messageClair(e) }); }
 });
 

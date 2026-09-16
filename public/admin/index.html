@@ -1582,6 +1582,7 @@ VUES.reglages = ()=>`
       <button class="btn" id="w_garder">Utiliser cette voix</button>
     </div>
     <div id="w_etat" class="info" style="margin-top:12px">Choisis une voix, puis écoute.</div>
+    <div id="w_ecartees" style="color:var(--faint);font-size:12.5px;margin-top:10px"></div>
   </div>
 
   <div class="carte">
@@ -2107,6 +2108,19 @@ function brancherVoix(){
     try{
       const r = await api('GET','/api/admin/voix-systeme');
       liste = r.voix || [];
+      /* 🔴 macOS ANNONCE des voix dont les données ne sont pas installées, et
+         `say` retombe alors sur la même sans le dire. Mesuré ici : neuf des dix
+         voix françaises rendaient un fichier identique. On ne les propose plus,
+         mais on DIT pourquoi — neuf lignes qui disparaissent sans explication,
+         c'est un réglage qu'on croit cassé. */
+      if((r.ecartees||[]).length) $('#w_ecartees').innerHTML =
+        `⚠️ <b>${(r.ecartees||[]).length} voix de macOS ne sont pas proposées</b> : elles sont
+         annoncées par le système mais leurs données ne sont pas installées, et donnent
+         exactement le même son que celle qui reste
+         (${(r.ecartees||[]).map(e).join(', ')}).<br>
+         Pour en avoir de vraies : <b>Réglages système → Accessibilité → Contenu parlé →
+         Voix système → Gérer les voix</b>. Ou reste sur les voix neuronales, qui n'ont
+         besoin de rien.`;
     }catch(err){ note.textContent = '✗ ' + err.message; }
     /* Une voix Piper porte le nom de son modèle : « fr_FR-tom-medium ». C'est
        ce qui permet de la distinguer sans tenir une liste en double. */

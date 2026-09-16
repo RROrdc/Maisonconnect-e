@@ -186,19 +186,71 @@ async function dire(texte, options = {}) {
 
 /* Ce qui est disponible ici et maintenant — l'interface grise ce qui ne peut
    pas marcher en disant pourquoi, plutôt que d'offrir un bouton inerte. */
+/* 🔴 `say -v '?'` MENT, et c'est Rémi qui l'a vu : « toutes les autres voix ne
+   changent rien ». Mesuré le 16/09 sur cette machine — NEUF des dix voix
+   françaises annoncées produisent un fichier audio strictement identique :
+   Thomas, Jacques, Eddy, Flo, Grandma, Grandpa, Rocko, Sandy et Shelley.
+   macOS les LISTE sans que leurs données soient téléchargées, et `say` retombe
+   en silence sur la même voix, sans la moindre erreur.
+
+   Une liste de dix choix dont neuf sont le même est pire qu'inutile : elle fait
+   perdre du temps et donne l'impression que le réglage est cassé. On SONDE donc
+   chaque voix — quelques centaines de millisecondes — et l'on ne garde qu'un
+   nom par son réellement distinct.
+
+   Sondé une seule fois et gardé en mémoire : c'est une propriété de la machine,
+   pas une donnée. Un redémarrage la redécouvre, et c'est justement ce qu'on
+   veut le jour où quelqu'un installe enfin les voix « premium ». */
+let _sonde = null;
+
+function empreinteVoix(nom) {
+  return new Promise((resolve) => {
+    const tmp = path.join(DOSSIER, 'sonde-' + crypto.randomBytes(6).toString('hex') + '.aiff');
+    execFile('/usr/bin/say', ['-v', nom, '-o', tmp, 'essai'], { timeout: 10000 }, (err) => {
+      if (err) return resolve(null);
+      try {
+        const h = crypto.createHash('sha1').update(fs.readFileSync(tmp)).digest('hex');
+        fs.unlinkSync(tmp);
+        resolve(h);
+      } catch { resolve(null); }
+    });
+  });
+}
+
+async function voixSystemeDistinctes(noms) {
+  if (_sonde) return _sonde;
+  fs.mkdirSync(DOSSIER, { recursive: true });
+  const vues = new Map();          // empreinte -> premier nom qui la produit
+  const doublons = [];
+  for (const n of noms) {
+    const h = await empreinteVoix(n);
+    if (!h) continue;              // voix qui refuse : on ne la propose pas
+    if (vues.has(h)) { doublons.push(n); continue; }
+    vues.set(h, n);
+  }
+  _sonde = { distinctes: [...vues.values()], doublons };
+  return _sonde;
+}
 function voix() {
   if (!MAC) return Promise.resolve([]);
   return new Promise((resolve) => {
-    execFile('/usr/bin/say', ['-v', '?'], { timeout: 8000 }, (err, out) => {
-      const systeme = err ? [] : String(out).split('\n')
+    execFile('/usr/bin/say', ['-v', '?'], { timeout: 8000 }, async (err, out) => {
+      const annoncees = err ? [] : String(out).split('\n')
         .filter((l) => /\bfr_FR\b/.test(l))
         .map((l) => l.split(/\s{2,}|\s+fr_FR/)[0].trim())
         .filter(Boolean);
+      let systeme = annoncees;
+      try { systeme = (await voixSystemeDistinctes(annoncees)).distinctes; }
+      catch { /* sondage impossible : mieux vaut la liste brute que rien */ }
       /* Les voix Piper D'ABORD : ce sont les belles, et une liste se lit du
-         haut. Marquées, sinon on ne sait pas laquelle on choisit. */
+         haut. Leur nom de modèle les distingue, pas besoin d'une seconde liste. */
       resolve([...voixPiper(), ...systeme]);
     });
   });
 }
 
-module.exports = { dire, voix, voixPiper, piperDisponible, VOIX_DEFAUT, MAX_CAR };
+/* Ce que le sondage a écarté — pour que /admin/ puisse l'EXPLIQUER plutôt que
+   de faire disparaître neuf lignes sans un mot. */
+const voixEcartees = () => (_sonde ? _sonde.doublons : []);
+
+module.exports = { dire, voix, voixPiper, voixEcartees, piperDisponible, VOIX_DEFAUT, MAX_CAR };
