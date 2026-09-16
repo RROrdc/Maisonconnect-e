@@ -29,6 +29,7 @@
 
 const { execFile } = require('child_process');
 const dgram = require('dgram');
+const os = require('os');
 
 /* Réglages, tous surchargeables — aucun foyer codé en dur (§ 5 quater). */
 const D = {
@@ -37,11 +38,17 @@ const D = {
   silenceDe: 22,         // on se tait à partir de cette heure
   silenceA: 7,           // et jusqu'à celle-ci
   grace: 3,              // tours manqués tolérés avant de déclarer parti
+  balayageMin: 4,        // minutes entre deux balayages du sous-réseau
 };
 
 /* état en mémoire, et rien d'autre */
 const vus = new Map();   // cle -> { present, absentDepuis, manques }
 let minuteur = null;
+let dernierBalayage = 0;
+/* Qui a été salué, et quand. En MÉMOIRE et rien d'autre : écrire « Enora est
+   rentrée à 17 h 42 » fabriquerait un journal de présence des enfants, et un
+   journal qui existe finit par se consulter (garde-fou n° 1). */
+const dernierSalut = new Map();
 
 const maintenant = () => Date.now();
 
@@ -98,10 +105,55 @@ function reveiller(ips) {
   });
 }
 
+/* 🔴 LE défaut du 16/09 : on ne pouvait pas voir revenir ce qu'on ne voyait
+   plus. Le réveil mDNS ne visait que les adresses DÉJÀ dans la table ARP —
+   or un téléphone parti en sort. Rien ne le remettait donc jamais dedans : le
+   Mac n'a aucune raison d'aller chercher un appareil avec qui il ne parle pas.
+   Résultat mesuré chez Rémi : sur quatre téléphones enregistrés, un SEUL
+   figurait dans la table — celui d'Amandine, qui utilise l'app, donc le seul
+   avec qui le Mac échange du trafic. Et c'est exactement le seul qui ait
+   jamais été salué.
+
+   ⇒ On balaie le sous-réseau. Envoyer un datagramme oblige le système à
+   résoudre l'adresse matérielle, donc à remplir sa table : les hôtes qui
+   répondent y apparaissent, les autres restent « incomplete » et sont filtrés.
+   254 datagrammes sur un réseau local ne coûtent rien, mais on ne le fait que
+   lorsqu'il manque quelqu'un, et pas plus d'une fois toutes les quelques
+   minutes — chercher en boucle un téléphone réellement parti serait du bruit. */
+function sousReseaux() {
+  const out = [];
+  for (const cartes of Object.values(os.networkInterfaces())) {
+    for (const c of cartes || []) {
+      if (c.family !== 'IPv4' || c.internal) continue;
+      /* /24 seulement : au-delà, le balayage ne serait plus « gratuit ». */
+      if (c.netmask !== '255.255.255.0') continue;
+      out.push(c.address.split('.').slice(0, 3).join('.'));
+    }
+  }
+  return [...new Set(out)];
+}
+
+function balayer(prefixes = sousReseaux()) {
+  const ips = [];
+  for (const p of prefixes) for (let i = 1; i < 255; i++) ips.push(`${p}.${i}`);
+  return reveiller(ips);
+}
+
 function dansLeSilence(de, a) {
   const h = new Date().getHours();
   return de > a ? (h >= de || h < a) : (h >= de && h < a);
 }
+
+/* Le verrou commun aux DEUX chemins de détection — le balayage réseau et le
+   Raccourci iOS. Sans lui, un Raccourci qui déclenche à l'arrivée et une table
+   ARP qui voit le téléphone quarante-cinq secondes plus tard saluent deux fois.
+   « Le premier qui parle gagne » (§ 2 vicies), l'autre se tait. */
+function peutSaluer(qui, { absenceMin = D.absenceMin, silenceDe = D.silenceDe, silenceA = D.silenceA } = {}) {
+  if (dansLeSilence(silenceDe, silenceA)) return false;
+  const vu = dernierSalut.get(qui);
+  return !vu || (maintenant() - vu) / 60000 >= absenceMin;
+}
+function noterSalut(qui) { dernierSalut.set(qui, maintenant()); }
 
 /* `annoncer(qui)` est fourni par le serveur : ce module ne sait ni parler, ni
    diffuser. Même inversion que `lireDevoirs` dans les rappels — une source qui
@@ -121,7 +173,17 @@ async function tour({ reglages = {}, annoncer, journaliser }) {
      réveille tout seul. */
   const arpAvant = await tableArp();
   const ips = liste.map((a) => arpAvant.get(a.mac)).filter(Boolean);
-  if (ips.length) { await reveiller(ips); await new Promise((r) => setTimeout(r, 900)); }
+  if (ips.length) { await reveiller(ips); }
+
+  /* Et si quelqu'un manque à l'appel, on va le CHERCHER : sans ça, un
+     téléphone rentré à la maison n'a aucune raison de réapparaître. */
+  const manquants = liste.filter((a) => !arpAvant.has(a.mac));
+  const assezEspace = maintenant() - dernierBalayage >= D.balayageMin * 60000;
+  if (manquants.length && assezEspace) {
+    dernierBalayage = maintenant();
+    await balayer();
+  }
+  await new Promise((r) => setTimeout(r, 900));
   const arp = await tableArp();
 
   const arrives = [];
@@ -138,7 +200,7 @@ async function tour({ reglages = {}, annoncer, journaliser }) {
            infinie : sans ce garde-fou, un redémarrage du serveur saluerait
            tout le monde d'un coup. */
         const amorcage = !e.absentDepuis;
-        if (!amorcage && absence >= conf.absenceMin && !dansLeSilence(conf.silenceDe, conf.silenceA)) {
+        if (!amorcage && absence >= conf.absenceMin && peutSaluer(a.qui, conf)) {
           arrives.push(a.qui);
         }
       }
@@ -150,6 +212,7 @@ async function tour({ reglages = {}, annoncer, journaliser }) {
   }
 
   if (arrives.length && typeof annoncer === 'function') {
+    for (const q of arrives) noterSalut(q);
     try { await annoncer([...new Set(arrives)]); }
     catch (err) { if (journaliser) journaliser('erreur', 'arrivee', err.message); }
   }
@@ -169,4 +232,4 @@ function arreter() { if (minuteur) clearInterval(minuteur); minuteur = null; }
    jamais un historique. */
 const etat = () => [...vus.entries()].map(([mac, e]) => ({ mac, present: e.present }));
 
-module.exports = { demarrer, arreter, tour, etat, appareils, normMac, tableArp, D };
+module.exports = { demarrer, arreter, tour, etat, appareils, normMac, tableArp, balayer, sousReseaux, peutSaluer, noterSalut, D };

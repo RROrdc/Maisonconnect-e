@@ -977,12 +977,30 @@ app.get('/api/admin/arrivee', (_req, res) => {
 });
 
 /* Voir les appareils du réseau pour aider à saisir les adresses : personne ne
-   connaît l'adresse MAC de son téléphone par cœur. */
+   connaît l'adresse MAC de son téléphone par cœur.
+   🔑 On BALAIE avant de lire : la table ARP ne contient que ce à quoi le Mac a
+   parlé récemment, donc justement pas le téléphone qu'on cherche à inscrire.
+   Et on dit ce qui est déjà suivi — sinon on relit vingt lignes hexadécimales
+   sans savoir lesquelles sont neuves. C'est ce qui permettra à Rémi de
+   retrouver un téléphone dont iOS a fait tourner l'adresse privée. */
 app.get('/api/admin/arrivee/reseau', async (_req, res) => {
   try {
+    await Maison.arrivee.balayer();
+    await new Promise((r) => setTimeout(r, 900));
     const t = await Maison.arrivee.tableArp();
-    res.json({ appareils: [...t.entries()].map(([mac, ip]) => ({ mac, ip })) });
-  } catch (e) { res.status(400).json({ appareils: [], raison: messageClair(e) }); }
+    const connus = new Map(Maison.arrivee.appareils(config('arrivee_appareils')).map((a) => [a.mac, a.qui]));
+    const appareils = [...t.entries()].map(([mac, ip]) => ({
+      mac, ip, qui: connus.get(mac) || '',
+      /* Une adresse « administrée localement » (2e chiffre 2, 6, a ou e) est
+         l'adresse privée d'un iPhone : c'est parmi celles-là qu'il faut
+         chercher, pas parmi les imprimantes. */
+      prive: /^.[26ae]:/i.test(mac),
+    }));
+    /* Les enregistrés qu'on n'a PAS trouvés : c'est la panne elle-même, et elle
+       ne se voit nulle part ailleurs. */
+    const absents = [...connus.entries()].filter(([mac]) => !t.has(mac)).map(([mac, qui]) => ({ mac, qui }));
+    res.json({ appareils, absents });
+  } catch (e) { res.status(400).json({ appareils: [], absents: [], raison: messageClair(e) }); }
 });
 
 app.get('/api/admin/voix-systeme', async (_req, res) => {
@@ -1969,6 +1987,34 @@ admin('post', '/reglages', (req) => {
   reprendreArrivee();
   majFaite('reglages', req);
   return { reglages: r };
+});
+
+/* ── Le chemin du Raccourci iOS ────────────────────────────────────────────
+   Le téléphone annonce lui-même son arrivée. C'est la seule voie qui survit à
+   la ROTATION de l'adresse Wi-Fi privée d'iOS : le 16/09, trois des quatre
+   téléphones enregistrés étaient introuvables sur le réseau, et c'est
+   exactement pour ça que seule Amandine avait jamais été saluée.
+
+   🔒 L'identité vient du JETON de l'appareil, jamais du corps de la requête —
+   même règle que « Mon emploi du temps » (§ 2 quater) : sinon n'importe qui
+   ferait saluer n'importe qui.
+   Le verrou est partagé avec le balayage réseau : celui qui parle en premier
+   gagne, l'autre se tait. */
+app.post('/api/arrivee', async (req, res) => {
+  try {
+    if (config('arrivee_active') !== '1') return res.status(400).json({ ok: false, raison: 'accueil désactivé' });
+    const qui = req.appareil && req.appareil.personne;
+    if (!qui) return res.status(401).json({ ok: false, raison: 'appareil non enrôlé' });
+    const conf = {
+      absenceMin: Number(config('arrivee_absence_min')) || undefined,
+      silenceDe: Number(config('arrivee_silence_de')) || undefined,
+      silenceA: Number(config('arrivee_silence_a')) || undefined,
+    };
+    if (!Maison.arrivee.peutSaluer(qui, conf)) return res.json({ ok: true, salue: false, raison: 'déjà salué ou heure de silence' });
+    Maison.arrivee.noterSalut(qui);
+    await annoncerArrivee([qui]);
+    res.json({ ok: true, salue: true, qui });
+  } catch (e) { res.status(400).json({ ok: false, raison: messageClair(e) }); }
 });
 
 /* Démarre, redémarre ou arrête le détecteur selon les réglages du moment. */

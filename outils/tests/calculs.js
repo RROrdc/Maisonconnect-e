@@ -101,6 +101,46 @@ const CAS_PICTOS = [
   ['', '', 'pas de nom, pas d’emoji'],
 ];
 
+/* ── Detection de l'arrivee ─────────────────────────────────────────────────
+   🔴 Le 16/09, Remi rentre et l'ecran ne dit rien. Mesure sur le vrai reseau :
+   sur QUATRE telephones enregistres, un seul figurait dans la table ARP du Mac
+   — celui d'Amandine, la seule qui ait jamais ete saluee.
+   Deux causes distinctes, et il fallait les separer :
+   1. le detecteur ne reveillait que les adresses DEJA vues, donc il ne pouvait
+      pas voir revenir ce qu'il ne voyait plus ;
+   2. les adresses Wi-Fi privees d'iOS avaient tourne, rendant trois lignes
+      caduques — ce que seule la carte « Telephones du reseau » permet de voir.
+   Ici on eprouve ce qui est eprouvable sans reseau : le verrou commun aux deux
+   chemins de detection (balayage et Raccourci iOS). */
+function testArrivee(t) {
+  const R = require('../../maison/arrivee');
+  t.titre("On ne salue pas deux fois, ni la nuit");
+
+  const jour = { absenceMin: 30, silenceDe: 22, silenceA: 7 };
+  const qui = 'ZZ-essai Personne ' + Date.now();
+
+  /* L'heure compte : on ne peut pas decider du silence sans savoir quand on
+     joue le test. On construit donc une fenetre de silence qui couvre l'heure
+     courante, puis une qui ne la couvre pas. */
+  const h = new Date().getHours();
+  const silenceMaintenant = { absenceMin: 30, silenceDe: h, silenceA: (h + 1) % 24 };
+
+  t.dire(R.peutSaluer(qui, jour), 'un inconnu se salue', 'premiere arrivee');
+  t.dire(!R.peutSaluer(qui, silenceMaintenant), 'mais jamais pendant la fenetre de silence');
+
+  R.noterSalut(qui);
+  t.dire(!R.peutSaluer(qui, jour), '🔑 salue une fois, on se tait ensuite',
+    'le Raccourci iOS et le balayage reseau partagent ce verrou — sinon on salue deux fois');
+  t.dire(R.peutSaluer(qui, { ...jour, absenceMin: 0 }), 'et on repart quand le delai est passe');
+
+  /* Le balayage doit viser un vrai sous-reseau, pas s'inventer des adresses. */
+  t.titre('Le balayage vise le reseau local');
+  const p = R.sousReseaux();
+  t.dire(Array.isArray(p), 'une liste de prefixes', p.join(', ') || '(aucune carte /24)');
+  t.dire(p.every((x) => /^\d+\.\d+\.\d+$/.test(x)), 'chacun est bien un prefixe /24',
+    'on n’envoie rien ailleurs que sur le reseau de la maison');
+}
+
 /* ── Accueil a l'arrivee ────────────────────────────────────────────────────
    Module PUR : rien a monter, donc on peut eprouver les cas tordus. */
 function testAccueil(t) {
@@ -337,6 +377,7 @@ module.exports = async function (muet) {
   }
 
   testAccueil(t);
+  testArrivee(t);
 
   return t;
 };

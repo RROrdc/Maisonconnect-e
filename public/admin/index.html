@@ -1440,9 +1440,11 @@ const REGLAGES_CONNUS = [
   ['arrivee_appareils', 'Téléphones suivis', 'zone',
    "Une ligne par appareil : adresse MAC, une barre verticale, le prénom. "
    + "Exemple : « a1:b2:c3:d4:e5:f6 | Rémi ». "
-   + "L'adresse se lit sur l'iPhone dans Réglages → Général → Informations → Adresse Wi-Fi. "
-   + "⚠️ Prends bien celle du réseau de la MAISON (l'adresse privée d'iOS est fixe par "
-   + "réseau) — un « Oublier ce réseau » la change et il faudra la ressaisir."],
+   + "L'adresse se lit sur l'iPhone dans Réglages → Wi-Fi → ⓘ du réseau de la maison → "
+   + "Adresse Wi-Fi. ⚠️ Elle CHANGE si « Adresse Wi-Fi privée » est sur « Rotation » "
+   + "(mets-la sur « Fixe »), ou après un « Oublier ce réseau ». Le 16/09, trois des quatre "
+   + "adresses suivies étaient devenues introuvables — l'écran ne disait donc plus bonjour "
+   + "qu'à une personne. La carte « Téléphones du réseau » ci-dessus sert à les retrouver."],
   ['arrivee_absence_min', 'Absence minimale avant de saluer (minutes)', 'texte',
    "En dessous, on ne dit rien. Un téléphone disparaît et réapparaît tout seul du réseau "
    + "sans que personne n'ait bougé ; saluer à chaque fois rendrait l'écran insupportable."],
@@ -1645,6 +1647,19 @@ VUES.reglages = ()=>`
       <button class="btn doux" id="m_test">🎙️ Tester 10 secondes</button>
     </div>
     <div id="m_verdict" class="info" style="margin-top:12px">Clique sur « Tester » et parle.</div>
+  </div>
+
+  <div class="carte">
+    <h3>📶 Téléphones du réseau</h3>
+    <div class="info" style="margin-top:0">Pour saisir — ou <b>corriger</b> — une adresse dans
+      « Téléphones suivis ». Le serveur <b>balaie</b> le réseau avant de répondre : la table du
+      Mac ne contient que ce à quoi il vient de parler, donc rarement le téléphone qu'on cherche.<br>
+      💡 Un iPhone se reconnaît à son adresse <b>privée</b> (marquée ci-dessous) ; les autres
+      lignes sont des imprimantes, des télévisions, des ampoules.</div>
+    <div class="actions" style="justify-content:flex-start;margin-top:12px">
+      <button class="btn doux" id="res_voir">🔎 Chercher les téléphones (quelques secondes)</button>
+    </div>
+    <div id="res_liste" style="margin-top:12px"></div>
   </div>
 
   <div class="carte">
@@ -2162,6 +2177,33 @@ function brancherMicro(){
   }
   listerMicros();
   $('#m_test').onclick = testerMicro;
+
+  /* Les téléphones réellement présents. Le vrai sujet n'est pas la liste, c'est
+     la comparaison avec ce qui est ENREGISTRÉ : le 16/09, trois des quatre
+     adresses suivies étaient introuvables — iOS avait fait tourner les adresses
+     privées — et c'est exactement pour ça que l'écran ne disait plus bonjour. */
+  if($('#res_voir')) $('#res_voir').onclick = async ()=>{
+    const b = $('#res_voir'); b.disabled = true; b.textContent = '⏳ Balayage…';
+    try{
+      const r = await api('/api/admin/arrivee/reseau');
+      const manque = (r.absents||[]).length
+        ? `<div class="info" style="margin:0 0 10px;border-left:4px solid var(--alerte)">
+             <b>Enregistrés mais introuvables sur le réseau :</b><br>`
+          + (r.absents||[]).map((a)=>`${e(a.qui)} — <code>${e(a.mac)}</code>`).join('<br>')
+          + `<br>Soit le téléphone est absent, soit iOS a changé son adresse privée :
+             relis-la sur l'iPhone et corrige la ligne ci-dessous.</div>`
+        : '';
+      const lignes = (r.appareils||[]).slice().sort((x,y)=>(y.prive?1:0)-(x.prive?1:0))
+        .map((a)=>`<div style="display:flex;gap:9px;align-items:center;padding:5px 0;border-bottom:1px solid var(--bord)">
+            <code style="flex:0 0 auto">${e(a.mac)}</code>
+            <span style="color:var(--faint);font-size:12.5px">${e(a.ip)}</span>
+            ${a.prive?'<span class="tag">iPhone probable</span>':''}
+            ${a.qui?`<b style="margin-left:auto">${e(a.qui)}</b>`:'<span style="margin-left:auto;color:var(--faint)">non suivi</span>'}
+          </div>`).join('') || '<div class="info" style="margin:0">Rien vu.</div>';
+      $('#res_liste').innerHTML = manque + lignes;
+    }catch(err){ $('#res_liste').innerHTML = `<div class="info" style="margin:0">✗ ${e(err.message)}</div>`; }
+    b.disabled = false; b.textContent = '🔎 Chercher les téléphones (quelques secondes)';
+  };
 }
 
 async function testerMicro(){
