@@ -21,6 +21,12 @@
 
 const JOURS_LONGS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
+/* Comparer deux emplois du temps est un CALCUL, pas une source : ce module ne
+   lit rien et ne connaît ni EcoleDirecte ni Pronote. C'est pourquoi il est
+   requis directement là où les devoirs, eux, sont injectés — un espace scolaire
+   fâché ne doit pas empêcher les anniversaires de partir. */
+const mouvements = require('./ecole/mouvements');
+
 function creerRappels({ donnees, diffuser, config }) {
   const aujourdhui = () => donnees.ymd(new Date());
 
@@ -131,7 +137,13 @@ function creerRappels({ donnees, diffuser, config }) {
       envoyes.push(prevenir({
         titre,
         message: siens.map((d) => (d.matiere && d.matiere !== 'Matière non désignée' ? d.matiere + ' : ' : '')
-          + String(d.contenu || '').replace(/s+/g, ' ').slice(0, 90)).join(' · '),
+          /* 🐞 La classe d'espaces avait perdu son antislash — un heredoc l'avait
+             mangé (piège déjà payé quatre fois). La regex restait VALIDE et
+             remplaçait chaque « s » du devoir par une espace : « Faire les
+             exercices » devenait « Faire le exercice ». Trouvé le 17/09 en
+             relisant ce fichier pour autre chose ; un contrôle le cherche
+             désormais dans tout le projet (série `pages`). */
+          + String(d.contenu || '').replace(/\s+/g, ' ').slice(0, 90)).join(' · '),
         /* 🔒 Adressé à L'ENFANT, jamais au foyer : ses devoirs ne sont pas une
            information de famille, et `pour = null` les afficherait chez tout le
            monde — écran mural compris, devant les invités (§ 2 vicies). */
@@ -288,7 +300,7 @@ function creerRappels({ donnees, diffuser, config }) {
      professeur fait du bruit pour rien : l'enfant le verra sur place, et une
      notification par modification mineure ferait ignorer les vraies. */
   async function passerEcoleNouveautes({ force = false, lireCours = null, lireMessages = null } = {}) {
-    const bilan = { annules: 0, messages: 0 };
+    const bilan = { annules: 0, mouvements: 0, messages: 0 };
 
     if (typeof lireCours === 'function') {
       try {
@@ -316,6 +328,49 @@ function creerRappels({ donnees, diffuser, config }) {
         if (amorcage && annules.length) {
           donnees.journaliser('info', 'rappels',
             `Cours annulés : ${annules.length} mémorisé(s) sans alerter (premier passage).`);
+        }
+
+        /* ── LES MOUVEMENTS ────────────────────────────────────────────────
+           Un cours DÉPLACÉ ne se voit pas venir : l'enfant arrive à l'heure
+           d'hier. On compare donc la photographie de la lecture précédente à
+           celle-ci (`ecole/mouvements.js`, pur et testable sans rien monter).
+
+           Le premier passage est muet SANS avoir besoin d'un drapeau : aucune
+           photographie, donc aucun jour observé en commun, donc aucune
+           comparaison possible. Le garde-fou de la fenêtre glissante fait le
+           travail de l'amorçage — une règle plutôt que deux.
+
+           ⚠️ La photographie est écrite MÊME quand on n'alerte pas : sinon un
+           passage muet ferait tout re-signaler au suivant. */
+        let photo = null;
+        try { photo = JSON.parse(donnees.reglage('cours_horaires_vus', 'null')); } catch { photo = null; }
+        const bouges = mouvements.comparer(photo, cours.filter((c) => c.jour >= aujourdhui()));
+        donnees.ecrireReglages({
+          cours_horaires_vus: JSON.stringify(mouvements.photographier(cours.filter((c) => c.jour >= aujourdhui()))),
+        });
+        /* Un remaniement complet d'emploi du temps existe (rentrée, changement
+           de groupe) : dix notifications à la file feraient couper les
+           notifications, ce qu'on ne récupère jamais. Au-delà, un seul message
+           qui renvoie à l'écran — c'est là que la grille est lisible. */
+        const PLAFOND = 4;
+        if (force !== 'muet' && bouges.length) {
+          if (bouges.length > PLAFOND) {
+            bilan.mouvements = 1;
+            await donnees.ajouterNotif({
+              titre: '🔄 Emploi du temps remanié',
+              message: `${bouges.length} changements d’horaire. Voir les emplois du temps sur l’écran.`,
+              pour: null, de: 'École', niveau: 'alerte',
+            });
+          } else for (const m of bouges) {
+            bilan.mouvements = (bilan.mouvements || 0) + 1;
+            await donnees.ajouterNotif({
+              titre: `🔄 ${m.eleve} — emploi du temps modifié`,
+              message: [mouvements.direMouvement(m), m.jour].filter(Boolean).join(' · '),
+              /* Tout le monde : c'est souvent un parent qui doit s'organiser —
+                 même raison que pour les annulations. */
+              pour: null, de: 'École', niveau: 'alerte',
+            });
+          }
         }
       } catch (e) {
         donnees.journaliser('avert', 'rappels', 'Cours illisibles : ' + e.message);

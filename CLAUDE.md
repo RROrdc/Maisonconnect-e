@@ -8130,6 +8130,122 @@ avant écriture. Rendu photographié sur la vraie dalle, avant et après.
   `sudo`), et **le passage Safari pour Martial** — son téléphone était en charge
   dans sa chambre. Les trois autres sont réparés et vus par le détecteur.
 
+## 2 sextricies. 🎓 L'AGENDA SCOLAIRE VIENT DE L'ÉCOLE (17/09/2026)
+Rémi : « l'agenda d'école d'Enora n'est pas sur la bonne semaine ou le même
+créneau que l'agenda EcoleDirecte — aujourd'hui c'est affiché qu'elle a **étude**
+alors qu'elle a **math** », puis « à part les activités extrascolaires, vérifie
+EcoleDirecte sur les agendas, mets à jour les agendas et permets de voir les
+**changements, les annulations, les mouvements** ».
+
+### 🔴 Le diagnostic lui donne raison, et la cause n'était pas celle qu'on croit
+Confrontation créneau par créneau de la grille saisie à l'emploi du temps réel
+(`scratchpad/ab.js`, sur les vraies données) :
+- **Enora : 0 concordant, 3 discordants.** Ses étiquettes A/B étaient
+  **inversées** — aujourd'hui jeudi 17/09, semaine 38 ⇒ quinzaine **B**, la
+  grille disait « Étude » à 13 h 40, EcoleDirecte dit **MATHEMATIQUES**.
+- **Martial : tous concordants.** C'est donc bien Enora qui est décalée, pas le
+  réglage global.
+⇒ La règle du § 2 octodecies s'applique à la lettre : **on ne touche jamais à
+`quinzaine_paire`** (il sert deux établissements), **on échange A et B dans la
+table de celui des deux qui est décalé.** Fait sur ses 8 créneaux marqués.
+Et la **danse** passe de `Mer 17:00–19:00` à **`Mer 18:00–20:30`**, en activité.
+
+### 🔑 Mais corriger les étiquettes ne traite que ce jour-là
+Une grille tapée à la main dérive à chaque changement d'établissement, et
+personne ne la retape. La vraie réponse est de changer la SOURCE :
+- **Les COURS viennent de l'espace scolaire**, qui les donne **datés**. Aucune
+  semaine A/B à calculer : une date n'a pas de parité. Et ils portent ce
+  qu'aucune grille ne saura jamais — le cours annulé, la vraie salle.
+- **La grille garde les ACTIVITÉS** : danse, natation. L'école ne les connaît
+  pas, et c'est le seul endroit où elles existent.
+
+`ecole/semaine.js` produit **exactement la forme que rend `lirePlannings()`** :
+le rendu du mur n'a pas changé d'une ligne.
+- 🔴 **Mon premier jet indexait le joli nom de matière sur l'HEURE du créneau**
+  (« le cours de 13 h 40 s'appelait Étude, donc appelons-le Étude »). Il
+  affichait « Étude » sur un cours de MATHÉMATIQUES — c'est-à-dire **exactement
+  le bug qu'on corrigeait**. Un horaire n'identifie pas une matière. La
+  correspondance porte désormais sur le **libellé de l'école**, dans le réglage
+  `ecole_matieres` (« SC.NUMERIQ.TECHNOL. | Sciences numériques »), et ce qui n'y
+  figure pas s'affiche **tel quel** : un intitulé moche est un moindre mal devant
+  un intitulé faux.
+- 🔑 **LE REPLI N'EST PAS UN DÉTAIL.** Jeton expiré, QCM à repasser, panne de
+  l'éditeur : l'élève garde sa grille. Un écran vide se lit « il n'a pas cours »,
+  ce qui est faux et pire que légèrement périmé. C'est aussi pour ça que l'échange
+  A/B d'Enora a été fait : le repli doit être **juste**, pas seulement présent.
+- **Personne par personne, jamais le bloc entier** — trouvé par le banc de
+  rendu : prendre le bloc scolaire tel quel faisait disparaître de l'écran un
+  enfant absent de la réponse, et aurait fait attendre un quart d'heure (le
+  cache) un créneau ajouté dans /admin/ à l'instant.
+- **Branché sur `/api/ecole`, PAS sur `/api/data`** : cette route est appelée
+  bien moins souvent, et une lecture scolaire à froid coûte plusieurs secondes.
+  Dans `/api/data`, cocher une case aurait attendu l'école (§ 2 tervicies).
+- L'écran **DIT d'où vient ce qu'il montre** (« 📡 Emploi du temps réel »), et le
+  repère A/B disparaît pour qui est passé au réel — une date n'a pas de parité.
+- Les **cours annulés gardent leur place**, barrés : un trou dans la grille ne se
+  distingue pas d'une heure libre. Ils sont en revanche écartés du « prochain
+  créneau » de l'accueil — annoncer un cours qui n'aura pas lieu est pire que ne
+  rien annoncer.
+
+### 🔄 Les MOUVEMENTS — `ecole/mouvements.js`
+Les annulations étaient détectées depuis le 13/09. Restait le plus utile : un
+cours **déplacé**, personne ne le voit venir — l'enfant arrive à l'heure d'hier.
+Module **pur** (ni base, ni horloge, ni réseau), donc vérifiable sans rien monter.
+- 🔑 **On ne compare que les jours présents dans les DEUX photographies.** La
+  lecture glisse sur sept jours : sans ce garde-fou, chaque journée qui sort de
+  la fenêtre serait annoncée « retirée » et chaque journée qui entre « ajoutée »
+  — **une fausse alerte par jour, tous les jours.**
+- Bénéfice inattendu de cette règle : **le premier passage est muet sans avoir
+  besoin d'un drapeau d'amorçage.** Aucune photographie ⇒ aucun jour commun ⇒
+  rien à comparer. Une règle au lieu de deux.
+- **Salle et professeur sont ignorés** (même choix que pour les annulations :
+  l'enfant le voit sur place), et un cours **annulé n'est pas un mouvement** — il
+  a son propre message ; le dire deux fois ferait douter de ce qu'on lit.
+- Deux séances de la même matière le même jour existent : on compare des
+  **ensembles d'heures**, sinon la seconde passerait pour un déplacement.
+- **Plafond de 4** : un remaniement complet (rentrée, changement de groupe)
+  enverrait dix notifications à la file. Au-delà, un seul message qui renvoie à
+  l'écran.
+- ⏱️ **Rémi proposait « 7 h, midi et 17 h ». La passe tourne déjà toutes les 15
+  minutes** (§ 2 nonies) — donc plus souvent que demandé, et c'est l'heure qui
+  décide, jamais le minuteur. Rien à ajouter.
+
+### 🐞 Deux défauts préexistants trouvés en chemin
+1. 🔴 **`rappels.js` : la classe d'espaces avait perdu son antislash.** La regex
+   restait **parfaitement valide** — donc invisible pour la syntaxe, pour le
+   navigateur et pour la relecture — et remplaçait chaque « s » du devoir par une
+   espace : *« Faire les exercices »* partait en *« Faire le exercice »* dans
+   chaque rappel du soir. C'est le piège du heredoc, **payé pour la cinquième
+   fois**, cette fois-ci arrivé en production.
+   ⇒ **Un contrôle le cherche désormais dans tout le projet** (série `pages`,
+   76 fichiers). Il ne vise que le résidu exact — une regex dont le corps entier
+   est une lettre de classe avec son quantificateur — et il a fallu deux
+   affinages pour qu'il ne crie pas à tort : ignorer les **blocs de commentaire**
+   (ce fichier PARLE du piège) et exiger qu'une regex ne soit **jamais précédée
+   d'une lettre** (l'URL d'un formulaire Google, « forms/d/e/1FA… », remontait).
+   Vérifié en réintroduisant le vrai bug : il tombe, puis repasse.
+2. 🐞 **L'accueil ne disait jamais « tu rentres de ton cours de… »** :
+   `lirePlannings()` rend `{personnes:[…]}`, et le code l'indexait par prénom.
+   `undefined` silencieux, donc un contexte d'accueil toujours vide pour les
+   enfants — alors que c'est justement ce qui rend la salutation vivante.
+
+### Vérifié
+**481 tests, 0 échec** (442 → 481). Chaque contrôle ajouté a été **vérifié en
+réintroduisant son bug** : la fusion débranchée, le garde-fou de fenêtre retiré,
+l'antislash remangé — les trois tombent, puis repassent.
+- ⚠️ Les séries qui ont besoin du serveur ont été jouées **contre une COPIE de la
+  base** dans le bac à sable, avec les identifiants scolaires neutralisés. Raison
+  précise : **le jeton Pronote est à usage unique** (§ 2 duovicies), et un second
+  serveur qui lirait l'école brûlerait celui du Mac. Le piège a déjà été payé
+  deux fois — une fois de trop.
+- ❔ **Non vérifié sur les VRAIES données scolaires** : le PC a changé de réseau
+  en cours de route (retour sur le Wi-Fi du bureau, `10.31.95.95`) et le Mac est
+  devenu injoignable — ni en HTTP, ni en SSH, ni par le tunnel. Le déploiement
+  passe donc par **GitHub** : le Mac tire tout seul toutes les deux minutes
+  (§ 2 tricies). **À regarder dès que l'écran est de nouveau joignable** : le
+  jeudi d'Enora doit afficher « Mathématiques » à 13 h 40, avec le repère
+  « 📡 Emploi du temps réel ».
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -8149,7 +8265,7 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (442 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (481 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
   ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
   `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
   Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.

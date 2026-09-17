@@ -379,6 +379,9 @@
   .quinz{display:inline-flex;align-items:center;gap:7px;background:color-mix(in srgb,var(--ac) 16%,var(--card2));
     color:var(--ac);border-radius:20px;padding:6px 13px;font-size:13.5px;font-weight:700;margin-bottom:12px}
   .quinz b{font-size:16px}
+  /* Emploi du temps venu de l'espace scolaire : même forme, autre couleur — il
+     ne dit pas la même chose qu'un repère A/B, il dit d'où vient la donnée. */
+  .quinz.reel{background:color-mix(in srgb,var(--course) 16%,var(--card2));color:var(--course)}
   .quinz button{background:none;border:none;color:var(--faint);font-size:12.5px;cursor:pointer;
     font-family:inherit;text-decoration:underline}
   /* Suggestion de couverts venue de la garde : visible, mais clairement une
@@ -798,6 +801,12 @@
   .pbloc .pd{font-size:11.5px;opacity:.75;overflow-wrap:anywhere}
   .pbloc.pcourt{flex-direction:row;align-items:center;gap:7px;padding:2px 8px}
   .pbloc.pcourt .pd{display:none}
+  /* Un cours ANNULÉ garde sa place — c'est l'information du jour, et un trou
+     dans la grille ne se distingue pas d'une heure libre ordinaire. Barré et
+     pâle : on voit d'un coup d'œil qu'il n'aura pas lieu. */
+  .pbloc.ann{background:color-mix(in srgb,var(--pc) 14%,var(--card));color:var(--faint);
+    box-shadow:inset 0 0 0 1px var(--line)}
+  .pbloc.ann .pn{text-decoration:line-through}
   .plegende{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
   .plegende span{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;color:#16202c}
   @media (orientation:portrait){
@@ -1169,7 +1178,29 @@ const dueLabel=d=>{if(!d)return '';const p=d.split('-');return p.length===3?p[2]
 const enRetard=d=>!!d&&d<ymd(new Date());
 const triFait=(arr,champ)=>[...arr].sort((a,b)=>(a[champ]?1:0)-(b[champ]?1:0));
 const triTodos=arr=>[...arr].sort((a,b)=>(a.done?1:0)-(b.done?1:0)||(a.due||'9999').localeCompare(b.due||'9999'));
-const personne=n=>((S.plannings&&S.plannings.personnes)||[]).find(p=>p.nom===n);
+/* 🎓 Les plannings viennent de `/api/ecole` quand l'emploi du temps RÉEL a pu
+   être lu, sinon de `/api/data` — la grille saisie à la main. Un seul accès pour
+   toute la page : deux lectures différentes du même planning, c'est la
+   duplication qui a déjà coûté au projet les rayons de courses (§ 2 octies).
+   ⚠️ `S.ecole` peut arriver APRÈS `S` (les deux routes sont indépendantes) : on
+   relit donc à chaque appel plutôt que de figer une variable. */
+const PLANS=()=>{
+  const base=S.plannings||{personnes:[]};
+  const reel=(S.ecole&&S.ecole.plannings)||null;
+  if(!reel)return base;
+  /* ⚠️ On remplace PERSONNE PAR PERSONNE, jamais le bloc entier. La lecture
+     scolaire est en cache un quart d'heure : prendre son bloc tel quel ferait
+     disparaître un créneau ajouté dans /admin/ à l'instant, et un enfant absent
+     de la réponse scolaire disparaîtrait de l'écran. */
+  const reels=new Map((reel.personnes||[]).filter(p=>p.source==='ecole').map(p=>[p.nom,p]));
+  if(!reels.size)return base;
+  return {...base,
+    personnes:(base.personnes||[]).map(p=>reels.get(p.nom)||p),
+    reel:true,
+    /* Le repère A/B ne sert plus qu'à ceux qui sont restés sur la grille. */
+    alterne:Boolean(base.alterne)&&(base.personnes||[]).some(p=>!reels.has(p.nom))};
+};
+const personne=n=>(PLANS().personnes||[]).find(p=>p.nom===n);
 /* Couleur d'un élève : elle vient du serveur (donc de la base). Augustin n'a
    aucun créneau de planning, il n'est donc PAS dans S.plannings.personnes —
    chercher la couleur là aurait marché pour Martial et Enora seulement. */
@@ -1224,7 +1255,12 @@ const resumeDevoirs=()=>{
       <span class="lt"></span>
       <span class="tag ac">${total?total+' à faire':'tout est fait'}</span></div>`;
 };
-function creneauxDuJour(p,i){return (p.semaine&&p.semaine[DAYS[i===undefined?todayIdx():i]])||[];}
+/* Un cours ANNULÉ n'est pas « le prochain créneau » : annoncer un cours qui
+   n'aura pas lieu est pire que ne rien annoncer. Il reste visible dans la
+   grille du panneau, barré — là on le CHERCHE, ici on le subit. */
+function creneauxDuJour(p,i){
+  return ((p.semaine&&p.semaine[DAYS[i===undefined?todayIdx():i]])||[]).filter(c=>!c.annule);
+}
 const slotLine=c=>`<div class="ks"><span class="kt">${c.fin?`${esc(c.h)}–${esc(c.fin)}`:esc(c.h)}</span>
   <span class="kq">${esc(c.quoi)}${c.ou?` <span class="ko">· ${esc(c.ou)}</span>`:''}</span></div>`;
 
@@ -1332,7 +1368,7 @@ function render(){
     :'<div class="vide">Rien de prévu</div>';
 
   // plannings enfants : cartes-avatars dans l'accueil
-  document.getElementById('kids').innerHTML=((S.plannings&&S.plannings.personnes)||[]).map(p=>{
+  document.getElementById('kids').innerHTML=(PLANS().personnes||[]).map(p=>{
     const c=creneauxDuJour(p);
     const suite=c.length?`${c[0].h} ${c[0].quoi}`:"rien aujourd'hui";
     return `<button class="kid" onclick="openTile('plan:${esc(p.nom)}')">
@@ -2122,14 +2158,21 @@ function body(k){
   if(k.startsWith('plan:')){
     const p=personne(k.slice(5));
     if(!p)return'';
-    let h=S.plannings.exemple
+    const PL=PLANS();
+    let h=PL.exemple
       ?'<div class="demo">🧪 Données d\'exemple — remplace-les dans l\'administration (/admin/), puis décoche le repère dans Réglages</div>':'';
+    /* D'OÙ vient ce qu'on montre. Un emploi du temps officiel et une grille
+       tapée à la main ne méritent pas la même confiance, et c'est ce repère qui
+       permettra de voir qu'un espace scolaire est muet depuis trois jours. */
+    if(p.source==='ecole')
+      h+='<div class="quinz reel">📡 Emploi du temps réel — lu dans l\'espace scolaire</div>';
     /* Semaine A / B des collèges. Le repère n'apparaît QUE si des créneaux sont
-       réellement marqués : sinon il n'apprendrait rien et encombrerait. */
-    if(S.plannings.alterne)
-      h+=`<div class="quinz">Semaine <b>${esc(S.plannings.quinzaine||'?')}</b>
-        <span style="color:var(--faint);font-weight:400">· semaine ${S.plannings.semaine}
-        (${S.plannings.semaine%2===0?'paire':'impaire'})</span></div>`;
+       réellement marqués, et plus du tout quand les cours sont datés : une date
+       n'a pas de parité, « semaine B » n'apprendrait rien. */
+    else if(PL.alterne)
+      h+=`<div class="quinz">Semaine <b>${esc(PL.quinzaine||'?')}</b>
+        <span style="color:var(--faint);font-weight:400">· semaine ${PL.semaine}
+        (${PL.semaine%2===0?'paire':'impaire'})</span></div>`;
     return h+vuePlanning(p);
   }
 }
@@ -2310,10 +2353,10 @@ function vuePlanning(p){
   const colonne=d=>{
     const blocs=disposerPlan(tous.filter(c=>c.jour===d)).map(c=>{
       const haut=(c.fin-c.deb)*PX_MIN_PLAN,larg=100/c.nbCol;
-      return `<div class="pbloc ${c.categorie==='activite'?'act':''} ${haut<36?'pcourt':''}"
+      return `<div class="pbloc ${c.categorie==='activite'?'act':''} ${c.annule?'ann':''} ${haut<36?'pcourt':''}"
         style="top:${y(c.deb)}px;height:${haut-2}px;left:calc(${c.col*larg}% + 2px);
                width:calc(${larg}% - 4px);--pc:${esc(coul(c))}">
-        <div class="pn">${esc(c.quoi)}</div>
+        <div class="pn">${c.annule?'🚫 ':''}${esc(c.quoi)}</div>
         <div class="ph">${esc(hmDe(c.deb))} – ${esc(hmDe(c.fin))}</div>
         ${haut>=62&&(c.salle||c.ou)?`<div class="pd">${esc(c.salle||c.ou)}</div>`:''}
       </div>`;

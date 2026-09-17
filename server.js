@@ -31,6 +31,8 @@ const Maison = require('./maison');
 const accueil = require('./maison/accueil');
 const { JOURS: JOURS_SEMAINE } = require('./donnees/commun');
 const pertinence = require('./ecole/pertinence');
+const semaine = require('./ecole/semaine');
+const mouvements = require('./ecole/mouvements');
 const ecole = new Ecole();
 
 /* Une panne réseau ne doit pas rester dans la console : sur un mur, un agenda
@@ -96,6 +98,36 @@ const REGLAGES = {
      Une absence NON justifiée reste quatre fois plus longtemps : elle demande
      une action. */
   ecole_vie_jours:     { env: '', defaut: '7' },
+  /* Les intitulés que les établissements publient sont écrits pour une colonne
+     étroite : « SC.NUMERIQ.TECHNOL. », « ED.PHYSIQUE & SPORT. ». Illisibles sur
+     un mur, et c'est la LÉGENDE de la grille qui les reprend (§ 2 octodecies).
+     Une ligne « LIBELLÉ DE L'ÉCOLE | Nom lisible ». Ce qui n'y figure pas
+     s'affiche tel quel : un intitulé moche est un moindre mal devant un
+     intitulé faux — mon premier jet indexait le joli nom sur l'HEURE du
+     créneau et affichait « Étude » sur un cours de mathématiques, soit
+     exactement le bug qu'on corrigeait. */
+  ecole_matieres:      { env: '', defaut: [
+    'MATHEMATIQUES | Mathématiques',
+    'FRANCAIS | Français',
+    'HISTOIRE-GEOGRAPHIE | Histoire-géo',
+    'ED.PHYSIQUE & SPORT. | EPS',
+    'ANGLAIS LV1 | Anglais',
+    'ALLEMAND LV1 | Allemand',
+    'ESPAGNOL LV2 | Espagnol',
+    'LCA LATIN | Latin',
+    'PHYSIQUE-CHIMIE | Physique-chimie',
+    'PHYSIQUE | Physique',
+    'SCIENCES VIE & TERRE | SVT',
+    'TECHNOLOGIE | Technologie',
+    'ARTS PLASTIQUES | Arts plastiques',
+    'EDUCATION MUSICALE | Musique',
+    'VIE DE CLASSE | Vie de classe',
+    'SC.NUMERIQ.TECHNOL. | Sciences numériques',
+    'SC. ECONO.& SOCIALES | Sciences éco. & sociales',
+    'CREAT.INNOV.TECHNO. | Création innov. techno.',
+    'ACCOMPAGNEMT. PERSO. | Accompagnement perso.',
+    'DS | Devoir surveillé',
+  ].join('\n') },
   /* Nom du Raccourci macOS qui renvoie la température. macOS n'offre aucune
      commande pour lire HomeKit : un Raccourci est le seul pont officiel, et il
      évite de stocker le moindre identifiant Netatmo. Vide = carte « à brancher ».
@@ -949,7 +981,11 @@ function contexteAccueil(qui) {
   try {
     /* Le dernier cours terminé aujourd'hui : c'est de là qu'il ou elle rentre. */
     if (ctx.role === 'enfant') {
-      const p = (donnees.lirePlannings() || {})[qui];
+      /* 🐞 `lirePlannings()` rend `{personnes:[…]}`, pas une table indexée par
+         prénom : l'ancien `[qui]` valait toujours `undefined`, donc « tu rentres
+         de ton cours de… » ne s'est jamais dit à personne. Trouvé le 17/09 en
+         branchant l'emploi du temps réel. */
+      const p = ((donnees.lirePlannings() || {}).personnes || []).find((x) => x.nom === qui);
       const jour = JOURS_SEMAINE[(new Date().getDay() + 6) % 7];
       const creneaux = (p && p.semaine && p.semaine[jour]) || [];
       const hhmm = new Date().toTimeString().slice(0, 5);
@@ -1219,6 +1255,22 @@ app.get('/api/ecole', async (req, res) => {
       const connues = {};
       for (const p of await donnees.lirePersonnes()) { connues[p.nom] = p.couleur; roles[p.nom] = p.role; }
       for (const e of charge.eleves) if (connues[e.prenom]) e.couleur = connues[e.prenom];
+    } catch (e) { noter('ecole', e, 'alerte'); }
+
+    /* 🎓 L'EMPLOI DU TEMPS RÉEL prend la place de la grille saisie à la main.
+       C'est la demande du 17/09 : la grille d'Enora affichait « étude » là où
+       EcoleDirecte dit « mathématiques ». Corriger les étiquettes A/B — ce qui a
+       été fait — ne traite que ce jour-là ; une grille tapée à la main dérive à
+       chaque changement d'établissement, et personne ne la retape.
+       Les cours viennent donc du réel, DATÉS (une date n'a pas de parité), et la
+       grille garde ses ACTIVITÉS : danse, natation — l'école ne les connaît pas.
+       ⚠️ Ici et pas dans `/api/data` : cette route est appelée bien moins
+       souvent, et une lecture scolaire à froid coûte plusieurs secondes. Mettre
+       la fusion dans `/api/data` ferait attendre l'écran pour cocher une case. */
+    try {
+      charge.plannings = semaine.fusionner(donnees.lirePlannings(), charge.cours, {
+        matieres: config('ecole_matieres'),
+      });
     } catch (e) { noter('ecole', e, 'alerte'); }
 
     charge.aujourdhui = {

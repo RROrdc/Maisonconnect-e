@@ -239,6 +239,57 @@ module.exports = async function (muet) {
     return t;
   }
 
+  /* 🔴 LES ANTISLASHS MANGÉS — le piège d'outillage le plus coûteux du projet,
+     payé cinq fois (§ 2 quatervicies bis). Un correctif écrit dans un heredoc
+     perd ses antislashs : `/\s+/` devient `/s+/`, qui est une regex PARFAITEMENT
+     VALIDE — donc invisible pour le contrôle de syntaxe, pour le navigateur et
+     pour la relecture.
+     Trouvé en production le 17/09 dans `rappels.js` : chaque rappel de devoirs
+     remplaçait les « s » du texte par des espaces (« Faire les exercices » →
+     « Faire le exercice »).
+     Le contrôle ne cherche QUE la résidu exacte — une regex dont le corps
+     ENTIER est une lettre de classe avec son quantificateur. Assez serré pour
+     n'avoir aucun faux positif, assez large pour attraper le cas réel : une
+     recherche littérale de « un ou plusieurs s » n'existe pas. */
+  t.titre('Antislashs mangés par un heredoc');
+  const CLASSES = ['s', 'd', 'w', 'S', 'D', 'W', 'b', 'B', 'n', 'r', 't'];
+  /* Une regex littérale n'est JAMAIS précédée d'une lettre ni d'un chiffre —
+     elle suit `(`, `,`, `=`, un espace. Sans cette précaution, l'URL d'un
+     formulaire Google (« forms/d/e/1FA… ») remontait comme une regex abîmée. */
+  const residu = new RegExp('(^|[^A-Za-z0-9_)\\]/:])/(' + CLASSES.join('|') + ')[+*?]?/[gimsuy]*', 'g');
+  const racineProjet = path.join(__dirname, '..', '..');
+  const aExaminer = [];
+  (function balayer(dossier, profondeur) {
+    for (const nom of fs.readdirSync(dossier)) {
+      if (nom === 'node_modules' || nom === '.git' || nom === 'sauvegardes' || nom === 'plats') continue;
+      const p = path.join(dossier, nom);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) { if (profondeur < 2) balayer(p, profondeur + 1); continue; }
+      if (/\.(js|html)$/.test(nom)) aExaminer.push(p);
+    }
+  }(racineProjet, 0));
+  const abimes = [];
+  for (const p of aExaminer) {
+    let dansBloc = false;
+    fs.readFileSync(p, 'utf8').split('\n').forEach((l, i) => {
+      /* Un commentaire peut légitimement PARLER du piège — celui juste au-dessus
+         le fait. Les blocs du projet n'ont pas d'astérisque en continuation :
+         il faut donc suivre l'ouverture et la fermeture, pas deviner ligne à
+         ligne. */
+      const ouvre = l.lastIndexOf('/*'), ferme = l.lastIndexOf('*/');
+      const etait = dansBloc;
+      if (!dansBloc && ouvre >= 0 && ferme < ouvre) dansBloc = true;
+      else if (dansBloc && ferme > (ouvre < 0 ? -1 : ouvre)) dansBloc = false;
+      if (etait) return;
+      if (/^\s*(\/\/|\*)/.test(l)) return;
+      for (const m of l.matchAll(residu)) {
+        abimes.push(`${path.relative(racineProjet, p)}:${i + 1} ${m[0].trim()}`);
+      }
+    });
+  }
+  t.dire(abimes.length === 0, 'aucune regex n’a perdu son antislash',
+    abimes.length ? abimes.join(' · ') : `${aExaminer.length} fichiers examinés`);
+
   t.titre('Pages servies et en-têtes de cache');
   /* La racine doit mener au bento : `public/index.html` n'existe plus, et sans
      redirection on tomberait sur un 404 en tapant simplement l'adresse. */

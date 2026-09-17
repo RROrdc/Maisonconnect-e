@@ -221,6 +221,151 @@ module.exports = async function serie() {
   t.dire(garde({ date: '', type: 'Absence', justifie: false }),
     'sans date, on préfère montrer', 'on ne fait pas disparaître ce qu’on ne sait pas dater');
 
+  /* ── L'emploi du temps RÉEL à la place de la grille saisie ───────────────
+     La demande du 17/09 : la grille d'Enora affichait « étude » là où
+     EcoleDirecte dit « mathématiques ». Ce qui compte ici, ce sont les trois
+     invariants qui rendent la substitution sûre. */
+  t.titre('Cours réels fusionnés dans la grille');
+  const semaine = require(path.join(__dirname, '..', '..', 'ecole', 'semaine'));
+  const DATES = semaine.datesSemaine(new Date('2026-09-17T12:00'));
+  t.dire(DATES.Lun === '2026-09-14' && DATES.Jeu === '2026-09-17',
+    'les sept dates de la semaine, en heure LOCALE',
+    'découper une chaîne ISO UTC a déjà coûté deux heures de décalage (§ 2 quindecies)');
+
+  const GRILLE = {
+    exemple: false, quinzaine: 'B', semaine: 38, alterne: true,
+    personnes: [
+      { nom: 'Enora', couleur: '#f0f', semaine: {
+        Lun: [], Mar: [], Mer: [{ h: '18:00', fin: '20:30', quoi: 'Danse', categorie: 'activite' }],
+        Jeu: [{ h: '13:40', fin: '14:40', quoi: 'Étude', categorie: 'cours', quinzaine: 'B' }],
+        Ven: [], Sam: [], Dim: [] } },
+      { nom: 'Clovis', couleur: '#0ff', semaine: {
+        Lun: [{ h: '08:30', fin: '16:30', quoi: 'École', categorie: 'cours' }],
+        Mar: [], Mer: [], Jeu: [], Ven: [], Sam: [], Dim: [] } },
+    ],
+  };
+  const REELS = [
+    { eleve: 'Enora', jour: '2026-09-17', debut: '13:40', fin: '14:40', matiere: 'MATHEMATIQUES', salle: '220' },
+    { eleve: 'Enora', jour: '2026-09-17', debut: '08:05', fin: '09:05', matiere: 'ED.PHYSIQUE & SPORT.' },
+    { eleve: 'Enora', jour: '2026-09-18', debut: '10:15', fin: '11:15', matiere: 'FRANCAIS', annule: true },
+  ];
+  const fus = semaine.fusionner(GRILLE, REELS, {
+    depuis: new Date('2026-09-17T12:00'),
+    matieres: 'ED.PHYSIQUE & SPORT. | EPS\nMATHEMATIQUES | Mathématiques',
+  });
+  const enora = fus.personnes.find((p) => p.nom === 'Enora');
+  const clovis = fus.personnes.find((p) => p.nom === 'Clovis');
+  const jeudi = enora.semaine.Jeu;
+  t.dire(jeudi.some((c) => c.quoi === 'Mathématiques') && !jeudi.some((c) => c.quoi === 'Étude'),
+    'le cours RÉEL remplace celui de la grille',
+    'c’est exactement le défaut signalé : « étude » affiché sur un cours de maths');
+  t.dire(jeudi[0].quoi === 'EPS' && jeudi[0].h === '08:05',
+    'les cours sont triés par heure et l’intitulé est rendu lisible',
+    'la légende de la grille reprend ces noms — « ED.PHYSIQUE & SPORT. » sur un mur');
+  t.dire(enora.semaine.Mer.some((c) => c.quoi === 'Danse'),
+    'les ACTIVITÉS survivent', 'l’école ne connaît ni la danse ni la natation');
+  t.dire(enora.semaine.Ven.some((c) => c.annule),
+    'un cours annulé est transmis, pas jeté',
+    'c’est l’information du jour, et un trou dans la grille ne se distingue pas d’une heure libre');
+  t.dire(!jeudi.some((c) => c.quinzaine),
+    'plus aucune étiquette A/B sur un cours daté', 'une date n’a pas de parité');
+  t.dire(clovis.source === 'grille' && clovis.semaine.Lun.length === 1,
+    'un enfant SANS compte scolaire garde sa grille',
+    'un écran vide se lit « il n’a pas cours », ce qui est faux et pire que légèrement périmé');
+  t.dire(enora.source === 'ecole' && fus.reel === true,
+    'l’écran peut DIRE d’où vient ce qu’il montre');
+  t.dire(fus.alterne === true,
+    'le repère A/B reste tant qu’un enfant est encore sur la grille');
+  const sansReel = semaine.fusionner(GRILLE, [], { depuis: new Date('2026-09-17T12:00') });
+  t.dire(sansReel.personnes.every((p) => p.source === 'grille') && sansReel.reel === false,
+    'espace scolaire muet : TOUT le monde garde sa grille',
+    'jeton expiré, QCM à repasser, panne de l’éditeur — ça arrive');
+  /* 🔴 Le piège que mon premier jet avait : indexer le joli nom sur l'HEURE du
+     créneau. Il affichait « Étude » sur un cours de mathématiques, soit le bug
+     même qu'on corrigeait. La correspondance porte sur le LIBELLÉ. */
+  t.dire(semaine.tableMatieres('MATHEMATIQUES | Mathématiques').get(semaine.clef('mathematiques')) === 'Mathématiques',
+    'la correspondance se fait sans casse ni accent',
+    'les établissements écrivent en capitales tronquées');
+  t.dire(semaine.fusionner(GRILLE, [{ eleve: 'Enora', jour: DATES.Jeu, debut: '09:00', matiere: 'LCA LATIN' }],
+    { depuis: new Date('2026-09-17T12:00'), matieres: '' })
+    .personnes.find((p) => p.nom === 'Enora').semaine.Jeu[0].quoi === 'LCA LATIN',
+    'une matière absente du réglage s’affiche TELLE QUELLE',
+    'un intitulé moche est un moindre mal devant un intitulé faux');
+
+  /* ── Les mouvements ─────────────────────────────────────────────────────
+     « Permets de voir les changements, les annulations, les mouvements ». Les
+     annulations étaient déjà détectées ; un cours DÉPLACÉ, personne ne le voit
+     venir — l'enfant arrive à l'heure d'hier. */
+  t.titre('Mouvements d’emploi du temps');
+  const mvt = require(path.join(__dirname, '..', '..', 'ecole', 'mouvements'));
+  const AVANT = [
+    { eleve: 'Enora', jour: '2026-09-21', debut: '13:40', matiere: 'MATHEMATIQUES' },
+    { eleve: 'Enora', jour: '2026-09-21', debut: '08:05', matiere: 'FRANCAIS' },
+    { eleve: 'Enora', jour: '2026-09-22', debut: '09:00', matiere: 'ANGLAIS LV1' },
+  ];
+  const photo = mvt.photographier(AVANT);
+  const bouge = (apres) => mvt.comparer(photo, apres);
+
+  const deplace = bouge([
+    { eleve: 'Enora', jour: '2026-09-21', debut: '15:50', matiere: 'MATHEMATIQUES' },
+    { eleve: 'Enora', jour: '2026-09-21', debut: '08:05', matiere: 'FRANCAIS' },
+    { eleve: 'Enora', jour: '2026-09-22', debut: '09:00', matiere: 'ANGLAIS LV1' },
+  ]);
+  t.dire(deplace.length === 1 && deplace[0].quoi === 'deplace'
+    && deplace[0].de === '13:40' && deplace[0].a === '15:50',
+    'un cours déplacé est vu comme un DÉPLACEMENT',
+    '« passe de 13 h 40 à 15 h 50 » se comprend, « retiré puis ajouté » fait chercher deux fois');
+  t.dire(mvt.direMouvement(deplace[0]) === 'MATHEMATIQUES passe de 13:40 à 15:50',
+    'et il se dit en une phrase');
+
+  const ajoute = bouge([...AVANT, { eleve: 'Enora', jour: '2026-09-21', debut: '11:15', matiere: 'LCA LATIN' }]);
+  t.dire(ajoute.length === 1 && ajoute[0].quoi === 'ajoute' && ajoute[0].a === '11:15',
+    'un cours ajouté en cours de semaine est signalé',
+    'un rattrapage ou un remplacement : l’enfant doit venir');
+  const retire = bouge(AVANT.filter((c) => c.matiere !== 'FRANCAIS'));
+  t.dire(retire.length === 1 && retire[0].quoi === 'retire' && retire[0].de === '08:05',
+    'un cours qui disparaît sans être marqué annulé est signalé');
+
+  t.dire(bouge(AVANT).length === 0, 'aucun changement ⇒ aucun mouvement',
+    'une notification par lecture ferait couper les notifications');
+  t.dire(mvt.comparer(null, AVANT).length === 0,
+    'PREMIER passage : muet, sans avoir besoin d’un drapeau',
+    'aucune photographie ⇒ aucun jour observé en commun ⇒ rien à comparer');
+
+  /* 🔑 Le garde-fou qui évite une fausse alerte par jour, tous les jours. */
+  t.dire(bouge([...AVANT, { eleve: 'Enora', jour: '2026-09-28', debut: '08:00', matiere: 'SVT' }]).length === 0,
+    'un jour qui ENTRE dans la fenêtre n’est pas un ajout',
+    'la lecture glisse sur sept jours : sans ça, une fausse alerte par jour');
+  t.dire(bouge(AVANT.filter((c) => c.jour !== '2026-09-22')).length === 0,
+    'un jour qui SORT de la fenêtre n’est pas un retrait');
+
+  t.dire(bouge([
+    { eleve: 'Enora', jour: '2026-09-21', debut: '13:40', matiere: 'MATHEMATIQUES', salle: 'B12', prof: 'AUTRE' },
+    { eleve: 'Enora', jour: '2026-09-21', debut: '08:05', matiere: 'FRANCAIS' },
+    { eleve: 'Enora', jour: '2026-09-22', debut: '09:00', matiere: 'ANGLAIS LV1' },
+  ]).length === 0,
+    'un changement de SALLE ou de professeur ne fait pas de bruit',
+    'l’enfant le voit sur place ; une alerte par détail noierait les vraies');
+  t.dire(bouge([
+    { eleve: 'Enora', jour: '2026-09-21', debut: '13:40', matiere: 'MATHEMATIQUES', annule: true },
+    { eleve: 'Enora', jour: '2026-09-21', debut: '08:05', matiere: 'FRANCAIS' },
+    { eleve: 'Enora', jour: '2026-09-22', debut: '09:00', matiere: 'ANGLAIS LV1' },
+  ]).every((m) => m.quoi !== 'ajoute'),
+    'un cours ANNULÉ n’est pas un mouvement',
+    'il a son propre message — le dire deux fois ferait douter de ce qu’on lit');
+
+  /* Deux séances de la même matière le même jour existent vraiment. */
+  const deuxHeures = [
+    { eleve: 'Martial', jour: '2026-09-21', debut: '08:00', matiere: 'MATHEMATIQUES' },
+    { eleve: 'Martial', jour: '2026-09-21', debut: '10:00', matiere: 'MATHEMATIQUES' },
+  ];
+  t.dire(mvt.comparer(mvt.photographier(deuxHeures), deuxHeures).length === 0,
+    'deux séances d’une même matière le même jour ne se prennent pas l’une pour l’autre');
+
+  t.dire(mvt.comparer({ cours: 'illisible' }, AVANT).length === 0,
+    'une photographie abîmée vaut « aucune »',
+    'un passage muet, jamais une rafale de fausses alertes');
+
   t.titre('Un message a la même forme');
   const m = ecole.messageNormalise({ id: 12, date: '2026-09-01 17:18:52', read: false, subject: 'Documents officiels', from: { nom: 'KRZESAJ', prenom: 'A.' } });
   t.dire(m.sujet === 'Documents officiels', 'sujet non-base64 laissé intact');
@@ -551,10 +696,28 @@ module.exports = async function serie() {
       devoirs: [Object.assign({}, UN, { pourAujourdhui: false })] },
     mien: { devoirs: [UN], parEleve: { Martial: [UN] }, restants: 1, faits: 0, personnel: true },
   };
+  /* La grille SAISIE, celle qui se trompait : « Étude » à l'heure où l'espace
+     scolaire dit « mathématiques ». C'est elle que `/api/data` sert. */
+  const JOUR_AUJ = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][(new Date().getDay() + 6) % 7];
+  const GRILLE_MUR = { exemple: false, quinzaine: 'B', semaine: 38, alterne: true, personnes: [
+    { nom: 'Enora', couleur: '#f0f', semaine: Object.fromEntries(
+      ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((j) => [j,
+        j === JOUR_AUJ ? [{ h: '13:40', fin: '14:40', quoi: 'Étude', categorie: 'cours', quinzaine: 'B' }] : []])) },
+    /* Clovis n'a PAS de compte scolaire : il doit rester à l'écran tel quel. */
+    { nom: 'Clovis', couleur: '#0ff', semaine: Object.fromEntries(
+      ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((j) => [j,
+        j === JOUR_AUJ ? [{ h: '08:30', fin: '16:30', quoi: 'École', categorie: 'cours' }] : []])) },
+  ] };
   const DONNEES = { courses: [], todos: [], postits: [], menu: [], plats: [], agenda: [],
-    plannings: { exemple: false, personnes: [] }, meteo: null, saint: '', news: [],
+    plannings: GRILLE_MUR, meteo: null, saint: '', news: [],
     feries: [], anniversaires: { aujourdhui: [], prochains: [] }, personnes: [],
     rayons: [], reglages: {} };
+  /* Et la fusion RÉELLE, faite par le module du serveur — pas une imitation
+     écrite pour le test : c'est le chemin complet qu'on veut vérifier. */
+  CHARGE.plannings = semaine.fusionner(GRILLE_MUR, [
+    { eleve: 'Enora', jour: semaine.datesSemaine()[JOUR_AUJ], debut: '13:40', fin: '14:40',
+      matiere: 'MATHEMATIQUES', salle: '220' },
+  ], { matieres: 'MATHEMATIQUES | Mathématiques' });
 
   const pages = [['bento.html', 'todoBody', 'écran mural'], ['app/index.html', 'ecran', 'app famille']];
   for (const [chemin, cible, quoi] of pages) {
@@ -573,6 +736,31 @@ module.exports = async function serie() {
       let corps = '';
       try { corps = r.dedans("body('devoirs')"); } catch (e) { corps = 'ERREUR ' + e.message; }
       t.dire(/exposé à préparer/.test(corps), quoi + ' — le panneau dédié montre le devoir entier');
+
+      /* 🎓 LE défaut signalé le 17/09, vérifié là où il se voyait : sur le mur.
+         La fusion peut être juste et l'écran continuer d'afficher la grille —
+         c'est exactement ce qui s'était passé le 03/09 avec les devoirs (la
+         fonction marchait, le branchement non). */
+      let grille = '';
+      try { grille = r.dedans("body('plan:Enora')"); } catch (e) { grille = 'ERREUR ' + e.message; }
+      t.dire(/Mathématiques/.test(grille) && !/Étude/.test(grille),
+        quoi + ' — l’emploi du temps RÉEL arrive à la grille',
+        '« étude » affiché sur un cours de maths : le défaut du 17/09');
+      t.dire(/Emploi du temps réel/.test(grille),
+        quoi + ' — et l’écran DIT d’où ça vient',
+        'une grille tapée à la main et un emploi du temps officiel ne méritent pas la même confiance');
+      t.dire(!/Semaine <b>/.test(grille),
+        quoi + ' — plus de repère A/B quand les cours sont datés',
+        'une date n’a pas de parité');
+      /* 🔑 Le remplacement se fait PERSONNE PAR PERSONNE. Trouvé par ce banc :
+         prendre le bloc scolaire entier faisait disparaître de l'écran un enfant
+         absent de la réponse — et ferait attendre un quart d'heure un créneau
+         ajouté dans /admin/ à l'instant. */
+      let clovis = '';
+      try { clovis = r.dedans("body('plan:Clovis')"); } catch (e) { clovis = 'ERREUR ' + e.message; }
+      t.dire(/École/.test(clovis) && /Semaine <b>/.test(clovis),
+        quoi + ' — un enfant sans compte scolaire garde SA grille',
+        'et son repère A/B, qui lui sert encore');
     } else {
       t.dire(/exposé à préparer/.test(r.html), quoi + ' — le devoir arrive VRAIMENT à l’écran',
         'le contrôle qui manquait le 03/09 : la fonction marchait, le branchement non');

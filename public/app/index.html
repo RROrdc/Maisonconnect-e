@@ -545,10 +545,21 @@ RENDU.jour = ()=>{
      Le rôle vient du serveur (`S.moi`, résolu depuis le jeton de l'appareil) —
      jamais du prénom mémorisé dans le navigateur, qui se change à la main. */
   const enfant = (S.moi||{}).role === 'enfant';
-  const monPlanning = ((S.plannings?.personnes)||[]).find((p)=>p.nom===moi);
-  const mesCours = (monPlanning && (monPlanning.semaine||{})[jr]) || [];
+  /* 🎓 L'emploi du temps RÉEL quand l'espace scolaire a répondu, la grille
+     saisie sinon. Ici on AFFICHE : c'est le réel qui compte, avec ses vraies
+     salles et ses annulations. L'écran « Mon emploi du temps », lui, garde la
+     grille — on n'édite pas ce que l'établissement publie. */
+  /* Personne par personne, jamais le bloc entier : la lecture scolaire est en
+     cache un quart d'heure, et un enfant absent de sa réponse ne doit pas
+     disparaître de l'écran. */
+  const reels = new Map(((ECOLE.plannings||{}).personnes||[])
+    .filter((p)=>p.source==='ecole').map((p)=>[p.nom, p]));
+  const plans = { personnes: ((S.plannings||{}).personnes||[]).map((p)=>reels.get(p.nom)||p) };
+  const monPlanning = ((plans.personnes)||[]).find((p)=>p.nom===moi);
+  const mesCours = ((monPlanning && (monPlanning.semaine||{})[jr]) || []).filter((c)=>!c.annule);
   /* Les autres enfants : sans intérêt pour un enfant, essentiel pour un parent. */
-  const mien = (S.plannings?.personnes||[]).map((p)=>({nom:p.nom, couleur:p.couleur, c:(p.semaine||{})[jr]||[]}))
+  const mien = (plans.personnes||[]).map((p)=>({nom:p.nom, couleur:p.couleur,
+                 c:((p.semaine||{})[jr]||[]).filter((c)=>!c.annule)}))
                  .filter((p)=>p.c.length && (!enfant || p.nom!==moi));
   /* Une tâche SANS destinataire concerne le foyer : elle reste affichée à tout
      le monde. Une tâche assignée à quelqu'un d'autre n'a rien à faire chez un
