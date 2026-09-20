@@ -458,6 +458,67 @@ module.exports = async function (muet) {
       `${Math.round(s * 100)} % — ${garde ? 'à garder' : 'à jeter'}`);
   }
 
+  /* ── Ranger la bibliothèque (20/09) ───────────────────────────────────────
+     Rémi : « fais une repasse sur tous les plats et place dans des catégories
+     simples ». Ces règles ne tranchent QUE le mécanique — le reste part à l'IA,
+     et ce partage ne vaut que si les règles ne se trompent jamais : un plat mal
+     rangé se cherche au mauvais endroit (§ 2 nonies). */
+  t.titre('Catégories de plats — ce que les règles tranchent seules');
+  const cats = require('../../recettes/categories');
+  const CAS_CAT = [
+    ['Crumble pommes-mûres', 'Dessert'],
+    ['Sorbet minute pêche-basilic au Slushi', 'Dessert'],
+    ['Tarte fine aux figues et miel', 'Dessert'],
+    ['cookies', 'Dessert'],
+    ['Taboulé libanais persil-menthe au Magimix', 'Entrée'],
+    ['bruchetta', 'Entrée'],                       // la faute de frappe ne gêne pas
+    ['tomates mozza', 'Entrée'],
+    /* 🔑 Les pièges, et ils sont tous réels.
+       « tarte à l'oignon » est salée : un mot sucré dans le nom ne suffit pas.
+       « poulet aux pommes » non plus. Et « salade verte » en fin de nom décrit
+       l'accompagnement — elle a classé un cake au thon en entrée au 1er essai. */
+    ['Tarte à l’oignon et au comté', null],
+    ['Filet mignon de porc aux pommes et cidre', null],
+    ['Cake salé thon-poivron-olives et salade verte', null],
+    /* Mots entiers : « gratin dauphinois » ne doit pas attraper « tatin », ni
+       « semoule » attraper « moule » — le piège des pictos et des rayons. */
+    ['gratin dauphinois', null],
+    ['semoule orientale proteiné', null],
+    /* Ce qui demande une connaissance culinaire part à l'IA, et c'est voulu. */
+    ['butter chicken', null],
+    ['Mafé de bœuf à la cacahuète', null],         // et la ligature œ ne casse rien
+  ];
+  for (const [nom, attendu] of CAS_CAT) {
+    const r = cats.deviner(nom);
+    t.dire(r === attendu, `« ${nom} »`, r || '(laissé à l’IA)');
+  }
+
+  /* 🔑 Et le bénéfice de tout ce rangement : plus aucun dessert proposé comme
+     repas du soir. Rien ne l'interdisait avant — le défaut était masqué par les
+     52 plats sans catégorie, pas absent. */
+  t.titre('Proposer les soirs vides ne propose pas de dessert');
+  const { creerMenu } = require('../../menu');
+  /* Une fausse couche données : le module n'en lit que trois choses, et un faux
+     objet vaut mieux qu'un serveur pour un calcul pur. */
+  const faux = {
+    lireMenu: () => ['Lun', 'Mar', 'Mer'].map((j, i) => ({
+      id: 'l' + i, jour: j, date: `2026-10-0${i + 1}`, soir: '', midi: '' })),
+    listePlatsAdmin: () => [
+      { id: 'd1', nom: 'Panna cotta', categorie: 'Dessert', etapes: 'x' },
+      { id: 'd2', nom: 'Crumble', categorie: 'dessert', etapes: 'x' },  // casse indifférente
+      { id: 'p1', nom: 'Lasagne', categorie: 'Plat', etapes: 'x' },
+      { id: 'e1', nom: 'Salade ebly', categorie: 'Entrée', etapes: 'x' },
+    ],
+    lignesMenuBrutes: () => [],
+  };
+  const prop = creerMenu({ donnees: faux }).proposer({ moment: 'soir' });
+  const noms = (prop.proposition || []).map((x) => x.plat || '');
+  t.dire(noms.length > 0, 'une proposition est bien produite', noms.join(', ') || '(aucune)');
+  t.dire(!noms.some((n) => /panna cotta|crumble/i.test(n)),
+    '🔑 aucun dessert proposé au menu du soir', noms.join(', '));
+  t.dire(noms.some((n) => /salade ebly/i.test(n)),
+    'mais une ENTRÉE reste candidate — « salade ebly » est un vrai repas du soir ici');
+
   testAccueil(t);
   testArrivee(t);
 

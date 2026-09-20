@@ -2219,8 +2219,9 @@ function body(k){
        entrées — demandé par Rémi : « pour entrée et dessert ne proposer dessert
        et entrée, ça sera plus simple ». Faire défiler 125 plats pour trouver une
        compote n'aide personne.
-       Une SOUPE est proposée comme entrée : c'en est une dans ce foyer, et la
-       catégorie existe déjà en base.
+       La bibliothèque a été rangée le 20/09 en TROIS catégories — Entrée, Plat,
+       Dessert : « Soupe » a disparu, chaque soupe étant en réalité l'une ou
+       l'autre (un gaspacho ouvre le repas, une soupe au potimarron EST le repas).
        ⚠️ La liste n'est qu'une AIDE : le champ reste libre, on peut toujours
        taper ce qu'on veut. C'est ce qui rend le filtre sans risque — 52 des 125
        plats n'ont aucune catégorie, et ceux-là ne seront proposés nulle part
@@ -2231,7 +2232,7 @@ function body(k){
     const liste = (id, noms) => `<datalist id="${id}">`
       + noms.map(d=>`<option value="${esc(d)}">`).join('') + '</datalist>';
     const dispo = liste('platsDispo', S.dishes||[])
-      + liste('platsEntree', parCat(['entrée','entree','soupe']))
+      + liste('platsEntree', parCat(['entrée','entree']))
       + liste('platsDessert', parCat(['dessert']));
     return entete + dispo + (PROPO?blocPropo():'') + lignes.map(m=>{
       /* Le raccourci vers la recette n'apparaît que s'il y a quelque chose à

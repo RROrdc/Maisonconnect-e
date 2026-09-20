@@ -85,6 +85,15 @@ function creerMenu({ donnees }) {
        imprévisible : chaque variante est elle-même reproductible. */
     const graine = `${(lignes[0] && lignes[0].date) || 'defaut'}#${Number(variante) || 0}`;
     const candidats = plats
+      /* 🔑 Un DESSERT n'est pas un repas du soir.
+         Rien ne l'interdisait : la bibliothèque compte 18 desserts depuis qu'elle
+         est rangée (20/09), et « Proposer les soirs vides » pouvait donc placer
+         une panna cotta au menu de mardi. Personne ne l'avait vu parce que 52
+         plats n'avaient aucune catégorie — le défaut était masqué par l'absence
+         de donnée, pas absent.
+         Les ENTRÉES restent candidates : « salade ebly » ou « melon jambon » sont
+         de vrais repas du soir dans ce foyer. */
+      .filter((p) => String(p.categorie || '').trim().toLowerCase() !== 'dessert')
       .map((p) => ({
         id: p.id, nom: p.nom, categorie: p.categorie || '',
         aIngredients: !!String(p.ingredients || '').trim(),
