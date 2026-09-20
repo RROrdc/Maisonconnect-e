@@ -8433,6 +8433,67 @@ Le `datalist` proposait les **125** plats. Désormais une liste par usage — et
 réintroduisant le bug ; le test du placement de l'accompagnement **réécrit** plutôt
 que contourné, puisque la règle d'affichage a changé.
 
+### 🗂️ La bibliothèque est rangée — 125 plats, trois catégories (20/09, 3e vague)
+« Fais une repasse sur tous les plats et place dans des catégories simples. »
+Résultat : **Plat 95 · Dessert 18 · Entrée 12**, zéro sans catégorie.
+
+**TROIS catégories, et c'est le sens de « simples ».** « Soupe » disparaît : une
+catégorie dont on ne sait pas quoi faire ne sert à personne, et chaque soupe est
+en réalité l'une ou l'autre — un gaspacho ouvre le repas, une soupe au potimarron
+et lardons EST le repas.
+
+**Deux étages, et le partage n'est pas arbitraire** (`recettes/categories.js` +
+`outils/categories-plats.js`) :
+- les **règles** tranchent ce qui est mécanique (crumble, sorbet, taboulé) —
+  gratuit, instantané, explicable. **22 rangés.**
+- l'**IA** ne voit QUE le reste. Reconnaître qu'un « mafé de bœuf » ou un
+  « butter chicken » est un plat demande une connaissance culinaire, pas une
+  table de mots : c'est le même raisonnement qu'au § 2 nonies, où `menu.js` se
+  passe d'IA parce qu'il ne fait que de la **rotation**, tandis que `idees()` en a
+  besoin parce qu'il **crée**. **103 rangés, 0 restant.**
+- Simulation par défaut, `--vraiment` pour écrire, comme `photos-plats.js`.
+- Le modèle **RANGE dans une liste fermée** (`enum`), et le nom rendu doit être
+  l'un de ceux envoyés : la machine propose, le code vérifie.
+
+### 🔑 Le vrai bénéfice, qui n'était pas demandé
+**Plus aucun DESSERT proposé comme repas du soir.** Rien ne l'interdisait : avec
+18 desserts en bibliothèque, « Proposer les soirs vides » pouvait placer une panna
+cotta au menu de mardi. ⚠️ **Le défaut était masqué par les 52 plats sans
+catégorie, pas absent** — ranger les données a révélé un bug qui dormait depuis
+le 19/08. Vérifié sur les vraies données : 6 propositions, aucun dessert.
+- Les **entrées restent candidates** : « salade ebly » et « melon jambon » sont de
+  vrais repas du soir dans ce foyer.
+
+### 🐞 Trois défauts trouvés en chemin
+1. **« salade verte » décrit la garniture, pas le plat** : le motif classait
+   « Cake salé thon-poivron-olives et salade verte » en entrée. Même erreur que
+   « jus d'orange » rangé au rayon fruits (§ 2 nonies) — un mot d'accompagnement
+   ne dit rien du plat. Retiré ; les salades-repas partent à l'IA.
+2. **La comparaison se faisait à la clé**, donc « plat » passait pour « déjà
+   bon » : quatre minuscules sont restées après le premier passage. Deux
+   orthographes d'une même catégorie se voient dans le back-office et casseraient
+   toute comparaison stricte écrite plus tard.
+3. 🔑 **`lireReponse` promettait plus qu'elle ne faisait.** Le classement rendait
+   « 0 rangé » **sans la moindre erreur** alors que le modèle répondait
+   parfaitement : cette fonction normalise vers une RECETTE
+   (`{nom, ingredients, etapes…}`) et écrasait la réponse. Un utilitaire au nom
+   trop large finit par être appelé à tort ⇒ la lecture générique est désormais
+   **`lireJson`**, et `lireReponse` s'en sert en gardant SON message de refus
+   (« saisis la recette à la main » n'a aucun sens pour un classement).
+
+### ⚠️ À regarder par Rémi
+- Un plat porte un nom visiblement cassé, venu d'une génération IA :
+  **« Poêlée de gnocchis... non : Poires rôties au miel et mascarpone »**. Classé
+  en dessert (la fin du nom le dit), mais à renommer dans /admin/ → Repas.
+- **« soupe »** (le plat tout court) a été rangé en **Entrée** par l'IA, alors
+  qu'il a été servi au menu du SOIR le 17/09. Sans conséquence — le sélecteur de
+  plat principal n'est pas filtré par catégorie — mais corrigeable d'un clic.
+
+### Vérifié (3e vague)
+**524 tests, 0 échec** (507 → 524). L'exclusion des desserts vérifiée en retirant
+le filtre : « Panna cotta » réapparaît au menu du soir, puis disparaît. Sauvegarde
+base + code faite avant l'écriture des 125 catégories.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -8452,7 +8513,7 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (507 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (524 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
   ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
   `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
   Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.
