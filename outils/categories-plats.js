@@ -132,8 +132,13 @@ async function classerParIA(noms) {
     lignes.push({ p, avant, apres, dou: parRegle.has(p.nom) ? 'règle' : 'IA' });
   }
 
-  const change = lignes.filter((l) => l.apres && cat.clef(l.apres) !== cat.clef(l.avant));
-  const intacts = lignes.filter((l) => l.apres && cat.clef(l.apres) === cat.clef(l.avant));
+  /* Comparaison EXACTE, pas seulement à la clé : la base portait « Plat » ET
+     « plat », « Dessert » ET « dessert ». Les traiter comme identiques les
+     laissait tels quels — le premier passage a rangé 57 plats et laissé quatre
+     minuscules derrière lui. Deux orthographes pour une même catégorie se voient
+     dans le back-office et cassent toute comparaison stricte écrite plus tard. */
+  const change = lignes.filter((l) => l.apres && l.apres !== l.avant);
+  const intacts = lignes.filter((l) => l.apres && l.apres === l.avant);
   const sans = lignes.filter((l) => !l.apres);
 
   for (const c of cat.CATEGORIES) {
