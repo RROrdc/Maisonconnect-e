@@ -8371,9 +8371,10 @@ journal. Sauvegarde base + code faite avant toute écriture.
 - ⚠️ Depuis Windows, **`maison.local` ne résout pas** (pas de Bonjour) : le Mac est
   en `192.168.10.111`, le Pi en `192.168.10.104`, et un hôte `macip` a été ajouté à
   `~/.ssh/config`. L'IP est en DHCP — la relire dans `arp -a` si l'hôte se tait.
-- ⚠️ Le journal porte une alerte à regarder : `ecoledirecte / Martial / devoirs :
-  Réponse illisible`. Les devoirs remontent pourtant (11, dont 4 restants) — à
-  surveiller.
+- ✅ Fausse piste écartée : les deux alertes `ecole` du journal datent du **14/09**
+  (HTTP 503 et un délai dépassé, côté EcoleDirecte) — des indisponibilités
+  passagères du service distant, pas un défaut d'ici. Les devoirs remontent
+  normalement : 11, dont 4 restants.
 - ❔ Non vérifié : le rendu sur un vrai iPhone (app et accompagnement).
 
 ## 3. Suite du projet
