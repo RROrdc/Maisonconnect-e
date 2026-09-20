@@ -123,14 +123,32 @@ function fusionner(plannings, cours, options = {}) {
     if (!reels.length) return { ...p, source: 'grille' };
 
     const semaine = {};
+    let remplaces = 0;
     for (const j of JOURS) {
+      const dujour = reels.filter((c) => c.jour === dates[j]).map((c) => ligneDeCours(c, matieres));
+      /* 🔑 JOUR PAR JOUR, et pas seulement personne par personne.
+         Le garde-fou existait un cran trop haut : il suffisait qu'un élève ait
+         des cours QUELQUE PART pour qu'on entre ici, et chaque jour sans
+         correspondance repartait vide. Le 20/09 — un dimanche — l'espace
+         scolaire rendait les cours du 21 au 25 pendant que le mur affichait la
+         semaine du 14 au 20 : aucune intersection, et les deux emplois du temps
+         se sont vidés de tous leurs cours. Rémi : « l'emploi du temps est
+         planté, il est vide sauf activité extrascolaire ».
+         C'est donc TOUS les week-ends que l'écran se vidait.
+         La règle tient en une phrase : on ne remplace un jour que si l'on a
+         quelque chose à mettre à la place. Un jour non couvert garde sa grille —
+         légèrement théorique vaut mieux que vide, puisqu'un écran vide se lit
+         « il n'a pas cours » (§ 2 sextricies). */
+      if (!dujour.length) { semaine[j] = p.semaine[j] || []; continue; }
+      remplaces++;
       /* Les activités survivent — elles n'existent nulle part ailleurs. */
       const activites = (p.semaine[j] || []).filter((c) => c.categorie === 'activite');
-      const dujour = reels.filter((c) => c.jour === dates[j]).map((c) => ligneDeCours(c, matieres));
       semaine[j] = [...dujour, ...activites]
         .sort((a, b) => (a.h || '').localeCompare(b.h || ''));
     }
-    return { ...p, semaine, source: 'ecole' };
+    /* Aucun jour remplacé ⇒ rien ne vient de l'école pour CETTE semaine : on ne
+       promet pas un « emploi du temps réel » qu'on n'a pas. */
+    return { ...p, semaine, source: remplaces ? 'ecole' : 'grille' };
   });
 
   return {

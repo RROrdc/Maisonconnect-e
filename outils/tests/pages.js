@@ -381,12 +381,33 @@ module.exports = async function (muet) {
        Rémi, en voyant le premier jet : « pas terrible proche de plat, et entrée
        dessert sinon c'est pas logique ». Un accompagnement est une précision sur
        le plat, pas un élément de repas de plus — le placer ailleurs oblige à
-       faire le lien soi-même. Le HTML suit l'ordre d'affichage : il doit donc
-       venir AVANT « entrée… », qui ouvre la ligne suivante. */
-    const iAcc = panneau.indexOf('accompagnement'), iEnt = panneau.indexOf('entrée…');
-    t.dire(iAcc >= 0 && iEnt >= 0 && iAcc < iEnt,
+       faire le lien soi-même. Le HTML suit l'ordre d'affichage. */
+    const iAcc = panneau.indexOf('+ accompagnement'), iSuite = panneau.indexOf('xrow');
+    t.dire(iAcc >= 0 && iSuite >= 0 && iAcc < iSuite,
       '🔑 l’accompagnement est collé au plat, avant la ligne entrée/dessert',
-      `accompagnement à ${iAcc}, entrée à ${iEnt}`);
+      `accompagnement à ${iAcc}, ligne suivante à ${iSuite}`);
+    /* 🔑 Plus de case vide : rien de saisi ⇒ on PROPOSE, on n'encombre pas.
+       C'était « le champ mort sur dessert et entrée » signalé le 20/09 : deux
+       cases par repas décidé, jusqu'à vingt-huit sur la semaine. */
+    t.dire(!/placeholder="entrée…"/.test(panneau) && /\+ entrée ou dessert/.test(panneau),
+      '🔑 aucune case vide entrée/dessert — un bouton à la place');
+  }
+
+  /* Et dès qu'il y a quelque chose à montrer, le champ revient de lui-même. */
+  let bd = null;
+  const AVEC = JSON.parse(JSON.stringify(D));
+  AVEC.menu[0].soirDessert = 'compote';
+  try { bd = await A.executerPage('bento.html', 'menuBody', AVEC, VIDE); }
+  catch (err) { t.dire(false, 'écran mural — menu garni', err.message); }
+  if (bd) {
+    let p2 = '';
+    try { p2 = bd.dedans("body('menu')"); } catch (e) { p2 = 'ERREUR ' + e.message; }
+    t.dire(/placeholder="dessert…"/.test(p2) && /value="compote"/.test(p2),
+      'un dessert saisi rouvre le champ tout seul');
+    /* Et la bonne liste : proposer 125 plats pour choisir une compote n'aide
+       personne — demandé par Rémi le même jour. */
+    t.dire(/list="platsDessert"/.test(p2) && /list="platsEntree"/.test(p2),
+      '🔑 chaque champ propose SA catégorie, pas toute la bibliothèque');
   }
 
   /* ── Le kiosque prend-il la nouvelle version ? ─────────────────────────────

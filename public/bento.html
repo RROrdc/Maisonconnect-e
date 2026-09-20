@@ -259,6 +259,12 @@
      plus discrète, décalée sous le repas auquel elle appartient. */
   .mrow.xrow{margin-top:-4px;opacity:.9}
   .inline.xtra{min-width:120px;flex:1;font-size:15px}
+  /* Discret exprès : il propose, il ne réclame pas l'attention. Une case de
+     saisie vide, elle, se lit comme quelque chose qu'on aurait oublié de
+     remplir — c'est tout le problème qu'il corrige. */
+  .xadd{background:none;border:0;color:var(--faint);font-size:13.5px;cursor:pointer;
+    padding:4px 6px;border-radius:8px}
+  .xadd:hover{background:var(--bg2,rgba(0,0,0,.04));color:var(--txt)}
 
   /* Ce qui joue : la pochette d'abord, parce qu'on la reconnaît d'un coup d'œil
      à deux mètres là où un titre demande de lire. */
@@ -1906,17 +1912,31 @@ function menuRow(m,champ){
     ${acc}${couvertsRow(m,champ)}</div>${menuExtras(m,champ)}`;
 }
 
-/* Entrée et dessert : FACULTATIFS, et traités comme tels.
-   La ligne n'apparaît que si le repas est décidé ou si quelque chose est déjà
-   saisi — sinon sept jours × deux repas × deux champs feraient vingt-huit
-   cases vides dans un panneau qu'on parcourt debout.
+/* Entrée et dessert : FACULTATIFS, et enfin traités comme tels.
+   🔑 Ils s'affichaient dès qu'un plat était choisi — soit deux cases vides par
+   repas, jusqu'à VINGT-HUIT sur la semaine, dans un panneau qu'on parcourt
+   debout. Rémi le 20/09 : « le champ mort sur dessert et entrée, revoir
+   l'affichage ». Le § 2 duotricies avait justement posé cette règle pour éviter
+   les cases vides — elle ne tenait qu'à moitié : la ligne n'apparaissait pas sur
+   un repas VIDE, mais bien sur chaque repas décidé, c'est-à-dire presque tous.
+   Désormais on ne montre que ce qui EXISTE ; le reste s'ouvre d'un toucher, et
+   se referme en se vidant. Un panneau lisible vaut mieux qu'un panneau complet.
    Un `datalist` plutôt qu'un menu déroulant : il propose la bibliothèque ET
    accepte un nom libre, dans un seul champ. Un déroulant obligerait à choisir
    entre les deux, et « compote » n'a pas vocation à devenir une fiche. */
+const EXTRAS_OUVERTS = new Set();
+function ouvrirExtras(cle){ EXTRAS_OUVERTS.add(cle); drawSheet('menu'); }
+
 function menuExtras(m,champ){
   const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'';
   if(!m[champ] && !e && !d) return '';
-  const ch=(part,val,ph)=>`<input class="inline xtra" list="platsDispo" placeholder="${ph}"
+  const cle=m.id+'|'+champ;
+  /* Rien de saisi et personne ne l'a demandé : on propose, on n'encombre pas. */
+  if(!e && !d && !EXTRAS_OUVERTS.has(cle)){
+    return `<div class="mrow xrow"><span class="ml"></span>
+      <button class="xadd" onclick="ouvrirExtras('${cle}')">+ entrée ou dessert</button></div>`;
+  }
+  const ch=(part,val,ph)=>`<input class="inline xtra" list="plats${part}" placeholder="${ph}"
       value="${esc(val)}" onchange="setMenu('${m.id}','${champ}${part}',this.value)">`;
   return `<div class="mrow xrow"><span class="ml"></span>
     ${ch('Entree',e,'entrée…')}${ch('Dessert',d,'dessert…')}</div>`;
@@ -2193,10 +2213,26 @@ function body(k){
       <button onclick="${PROPO?'fermerPropo':'proposerMenu'}()">✨ ${PROPO?'Fermer':'Proposer les soirs vides'}</button>
       <span style="color:var(--faint);font-size:13px">${l0?'du '+esc(dateCourte(l0)):''}</span>
     </div>`;
-    /* Une seule liste pour toutes les cases du panneau : la répéter vingt-huit
-       fois pèserait pour rien sur le Raspberry. */
-    const dispo = '<datalist id="platsDispo">'
-      + (S.dishes||[]).map(d=>`<option value="${esc(d)}">`).join('') + '</datalist>';
+    /* Une liste par usage, et pas vingt-huit : les répéter à chaque case
+       pèserait pour rien sur le Raspberry.
+       🔑 Le champ dessert ne propose QUE des desserts, le champ entrée que des
+       entrées — demandé par Rémi : « pour entrée et dessert ne proposer dessert
+       et entrée, ça sera plus simple ». Faire défiler 125 plats pour trouver une
+       compote n'aide personne.
+       Une SOUPE est proposée comme entrée : c'en est une dans ce foyer, et la
+       catégorie existe déjà en base.
+       ⚠️ La liste n'est qu'une AIDE : le champ reste libre, on peut toujours
+       taper ce qu'on veut. C'est ce qui rend le filtre sans risque — 52 des 125
+       plats n'ont aucune catégorie, et ceux-là ne seront proposés nulle part
+       tant qu'ils ne sont pas rangés dans /admin/ → Repas. */
+    const parCat = (cats) => (S.plats||[])
+      .filter(p => cats.includes(p.categorie||''))
+      .map(p => p.nom);
+    const liste = (id, noms) => `<datalist id="${id}">`
+      + noms.map(d=>`<option value="${esc(d)}">`).join('') + '</datalist>';
+    const dispo = liste('platsDispo', S.dishes||[])
+      + liste('platsEntree', parCat(['entrée','entree','soupe']))
+      + liste('platsDessert', parCat(['dessert']));
     return entete + dispo + (PROPO?blocPropo():'') + lignes.map(m=>{
       /* Le raccourci vers la recette n'apparaît que s'il y a quelque chose à
          montrer : un bouton qui ouvre une page vide use la confiance. */

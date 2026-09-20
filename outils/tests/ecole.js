@@ -194,6 +194,35 @@ module.exports = async function serie() {
   t.dire(sansReel.personnes.every((p) => p.source === 'grille') && sansReel.reel === false,
     'espace scolaire muet : TOUT le monde garde sa grille',
     'jeton expiré, QCM à repasser, panne de l’éditeur — ça arrive');
+
+  /* 🔴 LE bug du 20/09, et il se déclenchait TOUS les week-ends.
+     Un dimanche, l'espace scolaire rend les cours de la semaine QUI VIENT
+     (21→25) pendant que le mur affiche celle qui s'achève (14→20). Le garde-fou
+     était un cran trop haut : il suffisait qu'un élève ait des cours quelque
+     part pour qu'on entre dans la boucle, et chaque jour sans correspondance
+     repartait vide. Résultat constaté par Rémi : « l'emploi du temps est planté,
+     il est vide sauf activité extrascolaire ». */
+  const AUTRE = semaine.fusionner(GRILLE,
+    [{ eleve: 'Enora', jour: '2026-09-24', debut: '08:05', matiere: 'SVT' }],
+    { depuis: new Date('2026-09-17T12:00') });
+  const eAutre = AUTRE.personnes.find((p) => p.nom === 'Enora');
+  t.dire(eAutre.semaine.Jeu.some((c) => c.quoi === 'Étude'),
+    '🔑 des cours d’une AUTRE semaine ne vident pas la grille',
+    'le dimanche, l’école rend déjà la semaine suivante — c’est ce qui vidait l’écran');
+  t.dire(eAutre.semaine.Mer.some((c) => c.quoi === 'Danse'),
+    'et les activités sont toujours là');
+  t.dire(eAutre.source === 'grille',
+    'on ne promet pas un « emploi du temps réel » qu’on n’a pas');
+
+  /* Couverture PARTIELLE : seul le jour réellement couvert change de source. */
+  const PARTIEL = semaine.fusionner(GRILLE,
+    [{ eleve: 'Enora', jour: '2026-09-17', debut: '13:40', matiere: 'MATHEMATIQUES' }],
+    { depuis: new Date('2026-09-17T12:00'), matieres: 'MATHEMATIQUES | Mathématiques' });
+  const ePart = PARTIEL.personnes.find((p) => p.nom === 'Enora');
+  t.dire(ePart.semaine.Jeu.some((c) => c.quoi === 'Mathématiques'),
+    'le jour couvert est bien remplacé');
+  t.dire(ePart.semaine.Mer.some((c) => c.quoi === 'Danse') && ePart.source === 'ecole',
+    'et un jour NON couvert garde ce qu’il avait — jour par jour, pas tout ou rien');
   /* 🔴 Le piège que mon premier jet avait : indexer le joli nom sur l'HEURE du
      créneau. Il affichait « Étude » sur un cours de mathématiques, soit le bug
      même qu'on corrigeait. La correspondance porte sur le LIBELLÉ. */

@@ -234,9 +234,13 @@ const listeVirgules = (t) => String(t || '').split(',').map((x) => x.trim()).fil
    y a une recette à ouvrir. Les ÉTAPES n'y sont pas — trente recettes à chaque
    rafraîchissement de l'écran mural seraient du gaspillage pur. */
 const listePlats = () =>
-  q(`SELECT id, nom, emoji, photo, duree, etapes FROM plats WHERE supprime_le IS NULL ORDER BY nom`)
+  q(`SELECT id, nom, emoji, photo, duree, etapes, categorie FROM plats WHERE supprime_le IS NULL ORDER BY nom`)
     .map((p) => ({ id: sid(p.id), nom: p.nom, emoji: p.emoji || '', photo: p.photo || '',
-      duree: p.duree || '', recette: !!(p.etapes && p.etapes.trim()) }));
+      duree: p.duree || '', recette: !!(p.etapes && p.etapes.trim()),
+      /* Sert à ne proposer que des desserts dans le champ dessert. Normalisée
+         ici, une seule fois : la base porte « Dessert » et « dessert », et deux
+         fronts qui trancheraient chacun de leur côté finiraient par diverger. */
+      categorie: String(p.categorie || '').trim().toLowerCase() }));
 
 const nomsPlats = () =>
   q(`SELECT nom FROM plats WHERE supprime_le IS NULL ORDER BY nom`)
