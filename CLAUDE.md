@@ -8246,6 +8246,136 @@ l'antislash remangé — les trois tombent, puis repassent.
   jeudi d'Enora doit afficher « Mathématiques » à 13 h 40, avec le repère
   « 📡 Emploi du temps réel ».
 
+## 2 septtricies. 🔔 UN RAPPEL QUI N'ARRIVE PAS SUR LE TÉLÉPHONE N'EXISTE PAS (20/09/2026)
+Quatre retours de Rémi. Le plus grave n'était pas celui qu'il a signalé le plus fort.
+
+### 🔴 LE défaut : huit notifications sur neuf ne poussaient rien
+« J'ai pas eu la notif pour aller chercher du poisson vendredi. » Le rappel
+existait pourtant, et la base le prouve : `⏰ poisson — Pour aujourd'hui`, écrit le
+**18/09 à 8 h**, pour Rémi. Il s'est affiché sur le mur. Il n'a jamais fait vibrer
+un téléphone.
+
+Le compte a été fait : sur les **neuf** endroits qui créaient une notification,
+**un seul** poussait — la route `/api/notif`. Les huit autres appelaient
+`ajouterNotif` directement : échéances de tâches, anniversaires, devoirs du soir,
+cours annulé, emploi du temps remanié, message de l'établissement, repas du soir
+non prévu, annonce vocale. Et **six d'entre eux ne diffusaient même pas en
+direct** : un message du lycée n'existait que pour qui pensait à ouvrir l'onglet
+Notifications.
+- ⇒ **`annoncer()` dans `server.js`** — écrire, diffuser, pousser — plutôt qu'un
+  `pousser()` ajouté dans neuf appels : poser le geste dans chaque appelant, c'est
+  huit occasions de l'oublier au neuvième. Même raisonnement que `ClientED.lire()`
+  (§ 2 quatervicies bis). Injectée dans `rappels.js` et `vocal/`, qui n'ont plus à
+  connaître ni la diffusion ni le push.
+- 🔑 **`creerRappels` REFUSE de démarrer sans elle.** Un repli silencieux sur
+  l'écriture seule redonnerait exactement le défaut qu'on répare — et un rappel
+  muet ne se remarque pas, il ressemble à un téléphone qui n'a rien reçu. Mieux
+  vaut un serveur qui s'arrête.
+- ✅ Un contrôle interdit le retour du défaut : aucun appel direct à
+  `ajouterNotif` hors de la couche données. L'intérieur d'`annoncer` est exempté
+  par sa **POSITION**, jamais par son nom de fichier — exempter `server.js`
+  rendrait le contrôle aveugle là où il y a le plus de routes.
+- ⚠️ Le journal ne portait **aucune** ligne `push` : les envois n'échouaient pas,
+  ils n'étaient simplement jamais tentés. Une panne qui ne laisse pas de trace est
+  une panne qu'on cherche du mauvais côté — ici, du côté du téléphone.
+
+### 🐞 « La suppression de post-it est assez longue » — ce n'était pas le serveur
+**Mesuré avant de conclure** : DELETE en **27 ms**, `/api/data` en **150 ms**.
+C'était l'enchaînement : après le 2ᵉ toucher on attendait le DELETE, **puis** un
+rechargement complet, **puis** un SECOND déclenché par notre propre événement SSE
+`maj` 120 ms plus tard — deux re-rendus de toute la page sur un Raspberry, pendant
+lesquels la ligne supprimée restait à l'écran. Dans l'app, pire : le toast
+annonçait « Supprimé. » et **rien ne redessinait**.
+⇒ La ligne part **tout de suite** (retrait local + redessin, instantané), l'appel
+réseau suit, et le `maj` du serveur confirme. Refus du serveur ⇒ la ligne revient
+et l'erreur s'affiche : on ne fait jamais disparaître pour de bon ce qui n'est pas
+supprimé.
+
+### 🍽️ L'accompagnement — un BLOCAGE, pas une préférence d'affichage
+« Parfois on voudrait sélectionner la recette **et** ajouter un complément, genre
+gnocchi et ajouter jambon. » `*_plat` et `*_libre` sont **exclusifs** depuis
+l'origine (la lecture donne la priorité à la relation) : choisir « gnocchi » dans
+la bibliothèque ne laissait donc plus **aucun** champ pour « jambon ».
+- Colonne dédiée `*_garniture`, **TEXTE seul et jamais `platId()`** : le passer par
+  la bibliothèque créerait une fiche « jambon », que `menu.js` proposerait ensuite
+  comme plat du soir. Le piège est écarté **par construction**, pas par un drapeau
+  qu'on peut oublier de passer. ✅ Vérifié sur les vraies données : 125 plats avant
+  et après.
+- 🔑 **Placé sur la ligne du PLAT**, après un retour de Rémi devant l'écran : « pas
+  terrible proche de plat, et entrée dessert sinon c'est pas logique ». Il a
+  raison — un accompagnement n'est pas un élément de repas de plus, c'est une
+  précision SUR le plat ; le lire ailleurs oblige à faire le lien soi-même.
+- Sur la tuile, **DANS la ligne du plat** en plus pâle : une ligne de plus par jour
+  coûterait sept lignes à une mise en page validée. Un contrôle vérifie qu'il y a
+  toujours sept lignes.
+- Proposé aux **courses** (sinon personne n'achète le jambon), traité **avant** le
+  plat pour exister aussi sur un plat sans recette. Et **dit au vocal** : répondre
+  « des gnocchi » quand l'écran affiche « gnocchi + jambon » détruit la confiance.
+
+### 📱 Nouveau téléphone — et l'adresse donnée n'était pas la bonne
+Rémi l'avait lue `16:73:…`. Trois sources concordantes donnent
+**`a6:73:7a:f8:4c:05`** : la table ARP du Mac, celle du PC, et surtout la
+corrélation par son passage sur l'app **en local** (`vusEnLocal: ["Rémi"]` en
+`.119`) — le mécanisme du § 2 quinvicies bis a fait exactement son travail.
+Cinq octets sur six identiques : ce n'était pas une coïncidence, c'était `a6` lu
+`16`. Les quatre téléphones sont de nouveau vus (`absents: []`).
+- ⚠️ **Écrire le réglage en base ne suffit pas** : le détecteur capture la liste au
+  démarrage de sa boucle. Il faut passer par `/api/admin/reglages`, qui appelle
+  `reprendreArrivee()` — c'est écrit dans le code, encore faut-il le lire.
+- ⚠️ `arrivee_absence_min` est à **2 minutes** (défaut 30, garde-fou du § 2 vicies
+  à 30) : sans doute un réglage d'essai laissé en place le 16/09. Non touché.
+
+### 🔴 L'écran mural ne prenait JAMAIS la nouvelle version
+Découvert en vérifiant le rendu : la correction était **en service depuis dix
+minutes** sans rien changer à l'écran. Il a fallu **tuer Chromium par SSH** pour
+voir le champ apparaître.
+Le `no-cache` du 19/08 garantit qu'un **rechargement** prenne la bonne version —
+**rien ne provoquait ce rechargement**. Un kiosque n'est jamais rechargé à la
+main. Sans accès SSH, Rémi aurait simplement conclu « ça ne marche pas », et c'est
+probablement déjà arrivé depuis que le déploiement est automatique (§ 2 tricies).
+⇒ Le serveur publie l'**empreinte des pages servies**, calculée une fois au
+démarrage — un redémarrage sans changement de code ne fait recharger personne. La
+page compare à ce qu'elle a reçu au **premier** chargement, donc elle ne peut pas
+boucler. **Jamais au milieu d'un geste** : panneau ouvert ou champ en cours de
+saisie, le rechargement attend — perdre une course qu'on tape serait pire.
+- 🐞 **Et `versionChangee()` n'était appelée NULLE PART.** Le défaut exact du
+  03/09 (« la fonction marchait, le branchement non »), refait à l'identique et
+  attrapé en le cherchant. Un écran qui ne se recharge pas ressemble en tout point
+  à un écran normal : rien ne l'aurait signalé. Quatre contrôles le tiennent
+  désormais, dont un qui tombe si l'appel est débranché.
+
+### 🧪 Le banc de rendu quitte `ecole.js` pour `aide.js`
+Ce n'est pas un outil d'école : c'est le seul moyen de savoir qu'une donnée arrive
+VRAIMENT à l'écran, et il servait déjà à autre chose. Le laisser là en aurait fait
+une seconde copie — ce que ce projet paie chaque fois (rayons de courses,
+pictogrammes, importateur d'EDT). **Extraction prouvée fidèle AVANT d'y toucher** :
+`ecole.js` ressort **128/128**, exactement comme avant.
+
+### 🐞 Un test qui mesurait la liste de courses de la famille
+`vocal` exigeait « aucun article ne contient *beurre* » pour prouver que le banc
+d'essai n'écrit rien. Il est tombé — parce que Rémi avait mis du beurre sur la
+liste **la veille**. On compare désormais les identifiants avant et après : c'est
+l'invariant réel, et il tient quoi que contienne la liste. Même confusion qu'au
+§ 2 untricies — un test adossé aux vraies données doit distinguer ce que le CODE
+promet de ce que la FAMILLE a saisi.
+
+### Vérifié
+**499 tests, 0 échec** (481 → 499). Chaque contrôle ajouté a été **vérifié en
+réintroduisant son bug** : retrait optimiste débranché, accompagnement retiré de
+la tuile, appel direct à `ajouterNotif` réintroduit, appel à `versionChangee()`
+commenté — tous tombent, puis repassent.
+**Rendu photographié sur la vraie dalle** : « gnocchi creme tomate + jambon » sur
+la ligne SAM, champ « + accompagnement… » dans le panneau. Notification poussée
+pour de vrai vers les trois abonnements de Rémi, sans une ligne d'erreur au
+journal. Sauvegarde base + code faite avant toute écriture.
+- ⚠️ Depuis Windows, **`maison.local` ne résout pas** (pas de Bonjour) : le Mac est
+  en `192.168.10.111`, le Pi en `192.168.10.104`, et un hôte `macip` a été ajouté à
+  `~/.ssh/config`. L'IP est en DHCP — la relire dans `arp -a` si l'hôte se tait.
+- ⚠️ Le journal porte une alerte à regarder : `ecoledirecte / Martial / devoirs :
+  Réponse illisible`. Les devoirs remontent pourtant (11, dont 4 restants) — à
+  surveiller.
+- ❔ Non vérifié : le rendu sur un vrai iPhone (app et accompagnement).
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -8265,7 +8395,7 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (481 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (499 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
   ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
   `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
   Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.
