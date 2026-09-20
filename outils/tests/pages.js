@@ -377,6 +377,16 @@ module.exports = async function (muet) {
     try { panneau = bm.dedans("body('menu')"); } catch (e) { panneau = 'ERREUR ' + e.message; }
     t.dire(/Garniture/.test(panneau) && /accompagnement/i.test(panneau),
       'le panneau Menu offre le champ', /ERREUR/.test(panneau) ? panneau : 'présent');
+    /* 🔑 Et il est sur la ligne du PLAT, pas avec l'entrée et le dessert.
+       Rémi, en voyant le premier jet : « pas terrible proche de plat, et entrée
+       dessert sinon c'est pas logique ». Un accompagnement est une précision sur
+       le plat, pas un élément de repas de plus — le placer ailleurs oblige à
+       faire le lien soi-même. Le HTML suit l'ordre d'affichage : il doit donc
+       venir AVANT « entrée… », qui ouvre la ligne suivante. */
+    const iAcc = panneau.indexOf('accompagnement'), iEnt = panneau.indexOf('entrée…');
+    t.dire(iAcc >= 0 && iEnt >= 0 && iAcc < iEnt,
+      '🔑 l’accompagnement est collé au plat, avant la ligne entrée/dessert',
+      `accompagnement à ${iAcc}, entrée à ${iEnt}`);
   }
 
   t.titre('Pages servies et en-têtes de cache');

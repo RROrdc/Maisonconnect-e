@@ -1305,6 +1305,20 @@ app.get('/api/ecole', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ lecture principale */
+/* Empreinte du contenu réellement servi, calculée une seule fois : un
+   redémarrage sans changement de code ne doit pas faire recharger les écrans
+   pour rien. Les fichiers absents sont ignorés — une empreinte est un repère de
+   comparaison, pas un inventaire. */
+const VERSION_PAGES = (() => {
+  const fichiers = ['bento.html', 'app/index.html', 'voix.js', 'clavier.js'];
+  const h = require('crypto').createHash('sha1');
+  for (const f of fichiers) {
+    try { h.update(require('fs').readFileSync(path.join(__dirname, 'public', f))); }
+    catch (_) { /* pas servi sur cette installation */ }
+  }
+  return h.digest('hex').slice(0, 12);
+})();
+
 app.get('/api/data', async (req, res) => {
   try {
     const base = await donnees.tout();
@@ -1326,6 +1340,15 @@ app.get('/api/data', async (req, res) => {
       : null;
     res.json({ ...base, moi, agenda, meteo, news, saint: saintDuJour(),
       presence: presencePourEcran(complet),
+      /* Version des pages servies. L'écran mural tourne en kiosque et n'est
+         JAMAIS rechargé à la main : sans ce repère, un déploiement laisse le
+         Raspberry sur l'ancien JavaScript jusqu'au prochain redémarrage. Le
+         20/09, il a fallu tuer Chromium par SSH pour voir une correction
+         pourtant en service depuis dix minutes — et sans cet accès, Rémi aurait
+         conclu « ça ne marche pas ». Le `no-cache` du 19/08 garantissait qu'un
+         RECHARGEMENT prenne la bonne version ; rien ne provoquait ce
+         rechargement. */
+      version: VERSION_PAGES,
       reglages: reglagesPublics(), rayons: listeRayons(),
       anniversaires: anniversairesPourEcran(),
       /* Calculés, jamais téléchargés : onze dates par an dont trois dérivées de

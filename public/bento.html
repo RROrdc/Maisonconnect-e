@@ -1881,6 +1881,16 @@ function couvertsRow(m,champ){
 
 function menuRow(m,champ){
   const cur=m[champ]||'',connu=S.dishes.includes(cur),spe=SPECIAL.includes(cur);
+  /* 🔑 L'accompagnement est sur la ligne du PLAT, pas avec l'entrée et le
+     dessert. Rémi, en voyant le premier jet : « le placement d'accompagnement
+     est pas terrible proche de plat, et entrée dessert sinon c'est pas
+     logique ». Il a raison — un accompagnement n'est pas un élément du repas de
+     plus, c'est une précision SUR le plat : le lire ailleurs oblige à faire le
+     lien soi-même. Il n'apparaît qu'une fois le plat choisi (ou s'il porte déjà
+     une valeur, sinon on ne pourrait plus la corriger après avoir vidé le plat). */
+  const g=m[champ+'Garniture']||'';
+  const acc=(cur||g)?`<input class="inline xtra" placeholder="+ accompagnement…"
+      value="${esc(g)}" onchange="setMenu('${m.id}','${champ}Garniture',this.value)">`:'';
   return `<div class="mrow"><span class="ml">${champ==='midi'?'Midi':'Soir'}</span>
     <select class="inline" onchange="setMenu('${m.id}','${champ}',this.value)">
       <option value="">— choisir —</option>
@@ -1889,7 +1899,7 @@ function menuRow(m,champ){
     </select>
     <input class="inline" style="min-width:150px" placeholder="ou écrire un nouveau plat…"
       value="${(!connu&&!spe)?esc(cur):''}" onchange="setMenu('${m.id}','${champ}','P:'+this.value)">
-    ${couvertsRow(m,champ)}</div>${menuExtras(m,champ)}`;
+    ${acc}${couvertsRow(m,champ)}</div>${menuExtras(m,champ)}`;
 }
 
 /* Entrée et dessert : FACULTATIFS, et traités comme tels.
@@ -1900,18 +1910,12 @@ function menuRow(m,champ){
    accepte un nom libre, dans un seul champ. Un déroulant obligerait à choisir
    entre les deux, et « compote » n'a pas vocation à devenir une fiche. */
 function menuExtras(m,champ){
-  const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'', g=m[champ+'Garniture']||'';
-  if(!m[champ] && !e && !d && !g) return '';
+  const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'';
+  if(!m[champ] && !e && !d) return '';
   const ch=(part,val,ph)=>`<input class="inline xtra" list="platsDispo" placeholder="${ph}"
       value="${esc(val)}" onchange="setMenu('${m.id}','${champ}${part}',this.value)">`;
-  /* Ordre du repas : entrée, puis le plat et SON accompagnement, puis dessert.
-     L'accompagnement n'a PAS de `list="platsDispo"` : proposer la bibliothèque
-     ici inviterait à y mettre un second plat, alors que le champ existe pour un
-     à-côté (« jambon », « salade ») — et rien n'y crée de fiche. */
-  const acc=`<input class="inline xtra" placeholder="+ accompagnement…"
-      value="${esc(g)}" onchange="setMenu('${m.id}','${champ}Garniture',this.value)">`;
   return `<div class="mrow xrow"><span class="ml"></span>
-    ${ch('Entree',e,'entrée…')}${acc}${ch('Dessert',d,'dessert…')}</div>`;
+    ${ch('Entree',e,'entrée…')}${ch('Dessert',d,'dessert…')}</div>`;
 }
 
 /* ---------- Proposer la semaine ----------
@@ -2769,6 +2773,31 @@ setInterval(majHorsLigne, 5000);
      vide pendant toute une panne, et on verrait une page blanche au lieu du
      bandeau qui explique ;
    • jamais plus d'une fois par quart d'heure. */
+/* ── Prendre la nouvelle version après un déploiement ──────────────────────
+   Cet écran tourne en kiosque : personne n'appuie jamais sur F5. Le serveur
+   peut donc servir une page corrigée pendant que le Raspberry continue
+   d'exécuter l'ancien JavaScript — indéfiniment. C'est arrivé le 20/09 : trois
+   corrections déployées, invisibles à l'écran, et il a fallu tuer Chromium par
+   SSH pour les voir.
+   On compare donc l'empreinte des pages servies à celle reçue au PREMIER
+   chargement. Elle ne peut pas boucler : après le rechargement, la page
+   mémorise la nouvelle empreinte et n'a plus de raison de recommencer.
+   ⚠️ Jamais au milieu d'un geste : un panneau ouvert, un champ en cours de
+   saisie, et le rechargement attend le cycle suivant. Perdre une course qu'on
+   était en train de taper serait bien pire que d'afficher l'ancienne version
+   une minute de plus. */
+let versionVue = null;
+function versionChangee(){
+  const v = S && S.version;
+  if(!v) return;                                   // serveur plus ancien : rien à comparer
+  if(versionVue === null){ versionVue = v; return; }
+  if(v === versionVue) return;
+  if(openK) return;                                // un panneau est ouvert : on n'interrompt pas
+  const a = document.activeElement;
+  if(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')) return;
+  location.reload();
+}
+
 let dernierSauvetage = 0;
 async function sauverEcran(){
   const age = Date.now() - derniereDonnee;
