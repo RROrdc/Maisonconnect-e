@@ -1555,12 +1555,12 @@ async function voirBib(quoi){
     try{ BIB = await api('/api/maison/musique/bibliotheque'); }
     catch(e){ z.innerHTML = '<div class="vide">'+esc(e.message)+'</div>'; return; }
   }
-  const liste = (quoi==='albums' ? BIB.albums : quoi==='radios' ? BIB.radios : BIB.artistes) || [];
+  const liste = (quoi==='albums' ? BIB.albums : BIB.artistes) || [];
   if(!liste.length){
     z.innerHTML = '<div class="vide">'+esc(BIB.raison || 'Rien à parcourir — Music est-il ouvert ?')+'</div>';
     return;
   }
-  const cmd = quoi==='albums' ? 'album' : quoi==='radios' ? 'radio' : 'artiste';
+  const cmd = quoi==='albums' ? 'album' : 'artiste';
   z.innerHTML = '<div class="ens">'+liste.map(n=>
     '<button class="enc" onclick="lancerBib('+arg(cmd)+','+arg(n)+')"><span class="n">'+esc(n)+'</span></button>'
   ).join('')+'</div>';
@@ -1586,7 +1586,11 @@ async function chercherMusique(q){
   try{
     const r=await api('/api/maison/musique/recherche?q='+encodeURIComponent(q||''));
     if(!r.resultats||!r.resultats.length){
-      z.innerHTML='<div class="vide">'+esc(r.raison||'Rien trouvé.')+'</div>'; return;
+      /* « Rien trouvé » tout court n'oriente vers aucune action : on rappelle où
+         l'on a cherché, et ce qu'il faut faire pour que ça change. */
+      z.innerHTML='<div class="vide">'+esc(r.raison||'Rien dans la bibliothèque.')
+        +(r.raison?'':'<br>Ajoute-le depuis l’app Musique du Mac, il apparaîtra ici.')+'</div>';
+      return;
     }
     /* Les résultats arrivent SOUS le clavier : sans ce défilement on croit que
        la recherche n'a rien trouvé — ce que Rémi a vécu. */
@@ -2069,10 +2073,23 @@ function body(k){
       + '<div class="bar" style="margin-bottom:10px">'
       + '<button onclick="voirBib(\'albums\')">Albums</button>'
       + '<button onclick="voirBib(\'artistes\')">Artistes</button>'
-      + '<button onclick="voirBib(\'radios\')">Stations</button>'
+      /* « Stations » a été retiré le 20/09 : le terme AppleScript qui les
+         listait n'existe pas dans Music.app (vestige d'iTunes), donc ce bouton
+         n'a jamais pu rien afficher. Un bouton mort sur un mur de cuisine est
+         pire que pas de bouton (§ 2 nonies). */
       + '</div><div id="bibZone"></div>';
 
-    h += '<div class="stitre">Chercher un titre ou un artiste</div>'
+    /* 🔑 Le titre DIT le périmètre. Rémi, le 20/09 : « je cherche Marine, il ne
+       trouve pas… même l'artiste n'est pas trouvé ». Ce n'était pas une panne :
+       `search` d'AppleScript prend une PLAYLIST en paramètre et n'a que
+       l'accès `com.apple.Music.library.read` — le catalogue Apple Music lui est
+       fermé, c'est une limite d'Apple et non du code. Une recherche dont on
+       ignore le périmètre passe pour cassée. */
+    h += '<div class="stitre">Chercher dans la bibliothèque'
+      + (typeof (BIB||{}).total === 'number' ? ' <span class="cvt-def">'+BIB.total+' titres</span>' : '')
+      + '</div>'
+      + '<div class="aide">Seulement ce qui a été AJOUTÉ à la bibliothèque, pas tout '
+      + 'Apple Music. Pour qu’un titre apparaisse ici, ajoute-le depuis l’app Musique.</div>'
       + '<input class="rech" id="rechMus" placeholder="Brassens, Les copains d’abord…" autocomplete="off"'
       + ' onkeydown="if(event.key===\'Enter\')chercherMusique(this.value)">'
       + '<button class="hab" onclick="chercherMusique(document.getElementById(\'rechMus\').value)">Chercher</button>'

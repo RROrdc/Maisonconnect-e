@@ -438,6 +438,51 @@ module.exports = async function (muet) {
       'panneau ouvert ⇒ on attend — perdre une saisie serait pire');
   }
 
+  /* ── AppleScript : un terme inconnu rejette TOUT le script ────────────────
+     Né du 20/09. `radio stations` n'existe pas dans le dictionnaire de
+     Music.app (vestige d'iTunes) et faisait échouer la lecture ENTIÈRE de la
+     bibliothèque — albums, artistes et total étaient vides depuis le 11/09,
+     alors qu'ils n'ont rien à voir avec les stations. Le `try … end try` qui
+     l'entourait ne protégeait de rien : une erreur de COMPILATION survient
+     avant la première ligne exécutée.
+     On vérifie donc qu'aucun terme retiré ne revient, et que le front ne pointe
+     plus vers des données qui n'existent pas — un bouton mort sur un mur est
+     pire que pas de bouton. */
+  t.titre('AppleScript — pas de terme retiré');
+  const RETIRES = ['radio station', 'radio stations'];
+  const fautes = [];
+  for (const f of ['maison/musique.js', 'maison/agent.js', 'public/bento.html']) {
+    let texte = '';
+    try { texte = fs.readFileSync(path.join(racineProjet, f), 'utf8'); } catch (_) { continue; }
+    /* ⚠️ Il faut SUIVRE les blocs de commentaire, pas deviner ligne à ligne :
+       les commentaires de ce projet n'ont pas d'astérisque en continuation, et
+       celui qui explique le retrait de `radio station` s'est fait signaler
+       lui-même au premier essai. Même précaution que pour les antislashs. */
+    let dansBloc = false;
+    texte.split('\n').forEach((l, i) => {
+      const ouvre = l.lastIndexOf('/*'), ferme = l.lastIndexOf('*/');
+      const etait = dansBloc;
+      if (!dansBloc && ouvre >= 0 && ferme < ouvre) dansBloc = true;
+      else if (dansBloc && ferme > (ouvre < 0 ? -1 : ouvre)) dansBloc = false;
+      if (etait) return;
+      if (/^\s*(\/\/|\*|\/\*|--)/.test(l)) return;
+      for (const terme of RETIRES) {
+        if (l.includes(terme)) fautes.push(`${f}:${i + 1} « ${terme} »`);
+      }
+    });
+  }
+  t.dire(fautes.length === 0, 'aucun terme AppleScript retiré ne revient',
+    fautes.length ? fautes.join(' · ') : `${RETIRES.length} terme(s) surveillé(s)`);
+
+  const mus = fs.readFileSync(path.join(racineProjet, 'maison', 'musique.js'), 'utf8');
+  t.dire(!/\bradios\b/.test(fs.readFileSync(path.join(racineProjet, 'public', 'bento.html'), 'utf8')),
+    'le front ne demande plus une liste que le serveur ne rend pas');
+  /* Et la lecture de la bibliothèque reste découpée en TROIS sections : si
+     quelqu'un en rajoute une sans l'émettre, tout repart vide en silence. */
+  const sections = (mus.match(/& "==" & linefeed/g) || []).length;
+  t.dire(sections === 2, 'le script émet bien deux séparateurs — trois sections',
+    `${sections} séparateur(s)`);
+
   t.titre('Pages servies et en-têtes de cache');
   /* La racine doit mener au bento : `public/index.html` n'existe plus, et sans
      redirection on tomberait sur un 404 en tapant simplement l'adresse. */

@@ -212,16 +212,12 @@ async function commander(quoi, options = {}) {
   /* Lancer un album ou tout un artiste. Même règle que la playlist : le nom
      vient de l'inventaire que Music nous a donné, on le vérifie avant de s'en
      servir — jamais une chaîne libre venue du réseau. */
-  /* Une station de radio : « Station de Rémi Rommelard », « En boucle »… Elles
-     ne se jouent pas comme une playlist, d'où la commande à part. */
-  if (quoi === 'radio') {
-    const nom = String(options.nom || '');
-    const bib = await bibliothequeOuAgent();
-    if (!(bib.radios || []).includes(nom)) throw new Error(`station inconnue : ${nom}`);
-    await osascript(
-      `tell application "Music" to play (first radio station whose name is "${echapper(nom)}")`, 15000);
-    return { ok: true, radio: nom };
-  }
+  /* 🔴 Il y avait ici une commande « radio » qui ne pouvait pas fonctionner :
+     `radio station` n'existe pas dans le dictionnaire de Music.app, et la liste
+     qu'elle vérifiait (`bib.radios`) n'était jamais remplie pour la même raison.
+     Elle aurait donc toujours répondu « station inconnue ». Retirée plutôt que
+     corrigée : il n'y a rien à corriger, le terme n'existe pas. Du code mort que
+     les tests laissent passer est précisément le piège du 04/09. */
 
   if (quoi === 'album' || quoi === 'artiste') {
     const nom = String(options.nom || '');
