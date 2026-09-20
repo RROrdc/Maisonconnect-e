@@ -440,23 +440,26 @@ async function bibliotheque() {
   repeat with a in vus2
     set out to out & a & linefeed
   end repeat
-  set out to out & "==" & linefeed
-  -- Les stations : « Station de … », « En boucle » et consorts en font partie
-  -- quand elles ont été ajoutées. On ne devine pas leur existence, on demande.
-  try
-    repeat with r in radio stations
-      set out to out & (name of r) & linefeed
-    end repeat
-  end try
   return out
 end tell`, 60000);
-    const [tete, albums, artistes, radios] = brut.split(LF + '==' + LF);
+    /* 🔴 Il y avait ici une quatrième section, « radio stations ».
+       Ce terme N'EXISTE PAS dans le dictionnaire de Music.app — c'est un vestige
+       d'iTunes. Et le `try … end try` qui l'entourait ne servait à rien : une
+       erreur de COMPILATION n'est pas une erreur d'exécution, elle fait rejeter
+       le script ENTIER avant qu'une seule ligne ne s'exécute.
+       Conséquence, découverte le 20/09 : albums, artistes et total étaient vides
+       depuis le 11/09, alors qu'ils n'avaient rien à voir avec les stations. La
+       carte Musique promettait « parcourir par album ou par artiste » et ne
+       montrait rien — une liste vide ressemble à « pas d'albums », donc personne
+       ne l'a signalé.
+       ⚠️ Un `try` AppleScript ne protège JAMAIS d'un terme inconnu. La seule
+       protection est un script séparé, ou de ne pas écrire le terme. */
+    const [tete, albums, artistes] = brut.split(LF + '==' + LF);
     const lignes = (x) => String(x || '').split(LF).map((y) => y.trim()).filter(Boolean);
     v = {
       total: Number(String(tete).trim()) || 0,
       albums: lignes(albums).sort((a, b) => a.localeCompare(b, 'fr')),
       artistes: lignes(artistes).sort((a, b) => a.localeCompare(b, 'fr')),
-      radios: lignes(radios),
       recents: [],
     };
     void SEP2;
