@@ -146,9 +146,30 @@ function enrichir(e) {
   return e instanceof Error ? e : new Error(String(e));
 }
 
-function lireReponse(rep) {
+/* Le JSON d'une réponse structurée, quel que soit le schéma.
+   ⚠️ Extrait de `lireReponse` le 20/09 après s'être fait prendre : ce nom promet
+   une lecture générique, mais la fonction normalise vers une RECETTE
+   (`{nom, ingredients, etapes…}`). Un classement de plats y passait donc pour
+   « 0 rangé », sans la moindre erreur — le modèle avait pourtant parfaitement
+   répondu. Un utilitaire au nom trop large finit par être appelé à tort. */
+function lireJson(rep) {
   /* Testé AVANT le contenu : sur un refus, `content` peut être vide et on
      planterait sur un accès à `[0]`. */
+  if (rep.stop_reason === 'refusal') {
+    throw new Error('Le modèle a décliné cette demande.');
+  }
+  if (rep.stop_reason === 'max_tokens') {
+    throw new Error('Réponse trop longue, elle a été coupée.');
+  }
+  const bloc = (rep.content || []).find((b) => b.type === 'text');
+  if (!bloc || !bloc.text) throw new Error('Réponse vide du modèle.');
+  try { return JSON.parse(bloc.text); }
+  catch (_) { throw new Error('Réponse illisible du modèle. Réessaie.'); }
+}
+
+function lireReponse(rep) {
+  /* Le message d'un refus reste PROPRE à la recette : « saisis-la à la main »
+     n'a aucun sens pour un classement de catégories. */
   if (rep.stop_reason === 'refusal') {
     throw new Error('Le modèle a décliné cette demande. Saisis la recette à la main, '
       + 'ou pars d\'un lien de recette.');
@@ -156,12 +177,7 @@ function lireReponse(rep) {
   if (rep.stop_reason === 'max_tokens') {
     throw new Error('Réponse trop longue, elle a été coupée. Réessaie avec un plat plus simple.');
   }
-  const bloc = (rep.content || []).find((b) => b.type === 'text');
-  if (!bloc || !bloc.text) throw new Error('Réponse vide du modèle.');
-
-  let brut;
-  try { brut = JSON.parse(bloc.text); }
-  catch (_) { throw new Error('Réponse illisible du modèle. Réessaie.'); }
+  const brut = lireJson(rep);
 
   const etapes = nettoyerListe(
     [].concat(brut.etapes || []).flatMap((x) => decouperEtapes(x)), 40);
@@ -282,6 +298,6 @@ async function idees(existants = [], options = {}) {
 module.exports = {
   depuisNom, depuisPhoto, disponible, definirModele, idees,
   get MODELE() { return modele; },        // toujours la valeur courante, pas celle du démarrage
-  appelStructure, supporteEffort,
+  appelStructure, supporteEffort, lireJson,
   SCHEMA, systeme, lireReponse, clientIA, enrichir, MAX_TOKENS,
 };

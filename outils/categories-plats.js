@@ -86,9 +86,9 @@ async function classerParIA(noms) {
       effort: 'low',
       maxTokens: 8000,
     });
-    /* `stop_reason` testé AVANT le contenu : sur un refus, `content` peut être
-       vide et on planterait sur un accès à `[0]` (§ 2 quinquies). */
-    const r = ia.lireReponse(rep);
+    /* `lireJson` et NON `lireReponse` : la seconde normalise vers une recette
+       et renverrait un objet vide ici — ça m'''a coûté un aller-retour. */
+    const r = ia.lireJson(rep);
     for (const p of (r && r.plats) || []) {
       /* On ne fait confiance ni au nom rendu ni à la catégorie : le nom doit
          être l'un de ceux qu'on a envoyés, la catégorie l'une des trois. */
