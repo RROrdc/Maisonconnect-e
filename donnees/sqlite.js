@@ -288,6 +288,16 @@ function enregistrerPlat(p) {
   return platFiche(Number(r.lastInsertRowid));
 }
 
+/* Ne touche QUE la catégorie. `enregistrerPlat` réécrit la fiche entière : s'en
+   servir pour ranger 125 plats ferait dépendre les ingrédients, les étapes et la
+   photo de l'exactitude d'un aller-retour. Même convention que `majTache` —
+   on n'écrit que ce qu'on a reçu (§ 2 quinvicies bis). */
+function definirCategoriePlat(id, categorie) {
+  ecrire(`UPDATE plats SET categorie = ?, maj_le = datetime('now') WHERE id = ?`,
+    String(categorie || '').trim() || null, id);
+  return { id: sid(id), categorie: String(categorie || '').trim() };
+}
+
 /* Fusion de doublons : le menu qui pointait vers le plat absorbé bascule sur celui
    qu'on garde, puis l'absorbé part à la corbeille. Sans le repointage, des jours
    de menu se videraient sans prévenir. */
@@ -981,6 +991,7 @@ module.exports = {
   ajouterTache, cocherTache, majTache, ajouterPostit,
   definirMenu, lignesMenuBrutes, supprimer,
   listePlats, listePlatsAdmin, nomsPlats, platId, platFiche, enregistrerPlat, fusionnerPlats,
+  definirCategoriePlat,
   lignesPlanning, enregistrerCreneau, supprimerCreneau, copierJournee,
   listeMembres, enregistrerMembre, desactiverMembre, definirCode, verifierCode, profil,
   ajouterPasskey, lirePasskey, toucherPasskey, listerPasskeys, retirerPasskey,
