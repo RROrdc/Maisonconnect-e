@@ -8377,6 +8377,62 @@ journal. Sauvegarde base + code faite avant toute écriture.
   normalement : 11, dont 4 restants.
 - ❔ Non vérifié : le rendu sur un vrai iPhone (app et accompagnement).
 
+### 🔴 Les emplois du temps se vidaient TOUS les week-ends (20/09, 2e vague)
+« L'emploi du temps d'Enora et Martial est planté, il est vide sauf activité
+extrascolaire. » Les deux avaient pourtant leurs **31 créneaux** en base, et
+l'école remontait **57 cours**. C'est la **fusion** qui les perdait.
+
+Un **dimanche**, l'espace scolaire rend les cours du **21 au 25** pendant que le
+mur affiche la semaine du **14 au 20** : aucune intersection. Or le garde-fou de
+`ecole/semaine.js` était **un cran trop haut** — il suffisait qu'un élève ait des
+cours QUELQUE PART pour entrer dans la boucle, et chaque jour sans correspondance
+repartait vide. Seules les activités survivaient, parce qu'elles sont recopiées à
+part.
+⚠️ **Ce n'était donc pas un incident : l'écran se vidait chaque week-end**, depuis
+le 17/09. Personne ne l'avait vu parce qu'un emploi du temps vide un dimanche ne
+choque pas.
+- ⇒ **Jour par jour, et plus seulement personne par personne** : on ne remplace un
+  jour que si l'on a quelque chose à mettre à la place. Un jour non couvert garde
+  sa grille — légèrement théorique vaut mieux que vide, un écran vide se lisant
+  « il n'a pas cours ».
+- La **source retombe à `grille`** si aucun jour n'a été remplacé : on ne promet
+  pas un « emploi du temps réel » qu'on n'a pas.
+- ✅ Vérifié en réintroduisant le bug, puis sur les vraies données : 31 créneaux
+  chacun, `source: grille`.
+- 💡 La leçon du 17/09 tenait (« remplacement personne par personne, jamais le bloc
+  entier ») — il fallait descendre **d'un cran de plus**. Une règle juste à un
+  niveau peut être insuffisante au niveau du dessous.
+
+### 🍽️ « Le champ mort sur dessert et entrée »
+Entrée et dessert s'affichaient **dès qu'un plat était choisi** : deux cases vides
+par repas, jusqu'à **vingt-huit** sur la semaine. Le § 2 duotricies avait posé la
+règle pour éviter exactement ça — elle ne tenait qu'à moitié : la ligne
+n'apparaissait pas sur un repas VIDE, mais bien sur chaque repas **décidé**,
+c'est-à-dire presque tous.
+⇒ On ne montre que ce qui **existe** ; le reste s'ouvre d'un toucher
+(« + entrée ou dessert ») et **revient seul** dès qu'une valeur est saisie. Une
+case vide se lit comme un oubli à combler — c'est tout le problème.
+
+### 🥗 Chaque champ propose SA catégorie
+« Pour entrée et dessert ne proposer dessert et entrée, ça sera plus simple. »
+Le `datalist` proposait les **125** plats. Désormais une liste par usage — et les
+**soupes comptent comme entrées**, elles le sont dans ce foyer.
+- ⚠️ **Mesuré avant de construire** : **52 plats sur 125 n'ont AUCUNE catégorie**,
+  et il n'y a que **2 entrées** contre 17 desserts et 5 soupes. Le filtre est donc
+  très utile pour le dessert, encore maigre pour l'entrée tant que la bibliothèque
+  n'est pas rangée (/admin/ → Repas).
+- 🔑 C'est ce qui rend le filtre **sans risque** : la liste n'est qu'une **aide**,
+  le champ reste libre. Un filtre strict sur un champ fermé aurait rendu la saisie
+  impossible pour 52 plats.
+- La catégorie est **normalisée dans la couche données** (`Dessert` et `dessert`
+  coexistent en base) : deux fronts qui trancheraient chacun de leur côté
+  finiraient par diverger.
+
+### Vérifié (2e vague)
+**507 tests, 0 échec** (499 → 507). Le correctif de fusion vérifié en
+réintroduisant le bug ; le test du placement de l'accompagnement **réécrit** plutôt
+que contourné, puisque la règle d'affichage a changé.
+
 ## 3. Suite du projet
 > ✅ **Tranché le 18/08/2026 : le BENTO est l'écran mural.** Tout développement va sur `bento.html`. La mise en page fine sera retravaillée **quand la tablette et le Mac mini seront là** (décision de Rémi).
 > 🗑️ **`public/index.html` SUPPRIMÉ le 19/08** à la demande de Rémi (« on garde que le bento »). Il dormait depuis un mois sans être maintenu : une page qu'on ne teste plus finit par être corrigée par erreur. Il reste dans les archives du coffre (48,5 Ko) si la mise en page paysage devait resservir.
@@ -8396,7 +8452,7 @@ Pour lancer sur le PC : double-clic sur **`demarrer-maison.cmd`** (l'adresse s'a
 Écran mural : `/bento.html` · App famille : `/app/` · **Administration : `/admin/`** · Voix : `/vocal.html` (voir `VOCAL.md`)
 Sauvegarde : **`sauvegarder-tout.cmd`** (base + code, hors dossier projet ; tâche quotidienne à 12:30 déjà installée).
 Premier accès au back-office : `node outils/admin.js` (liste), puis `node outils/admin.js code Rémi 1234`.
-Tests : **`npm test`** (499 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
+Tests : **`npm test`** (507 vérifications, ~25 s) — serveur allumé, données réelles, tout est nettoyé.
   ⚠️ Depuis les codes d’accès du 12/09, il faut **`MAISON_CODE=<code de Rémi>`** (il est dans
   `~/codes-maison.txt` sur le serveur) ; sans lui, cinq séries tombent sur « session refusée ».
   Et **`MAISON_HOTE=<ip ou nom du Mac>`** pour les jouer depuis le PC — le serveur a déménagé.
