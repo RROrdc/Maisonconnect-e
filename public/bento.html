@@ -1131,7 +1131,11 @@ async function load(){try{const d=await api('/api/data');d.ecole=S.ecole||{eleve
      fois, pour qu'un changement fait dans /admin/ prenne effet sans recharger
      l'écran mural — qu'on ne recharge jamais à la main. */
   if(typeof appliquerReglagesVoix==='function')appliquerReglagesVoix();
-  derniereDonnee=Date.now(); majHorsLigne();}
+  derniereDonnee=Date.now(); majHorsLigne();
+  /* Après CHAQUE chargement : c'est le seul moment où l'on sait ce que le
+     serveur sert aujourd'hui. Déclarée plus bas, mais dans le même bloc de
+     script — une `function` y est remontée. */
+  versionChangee();}
   catch(e){ majHorsLigne(); showErr('⚠ Chargement : '+e.message);}}
 
 /* ---------- horloge (numérique + aiguilles) ---------- */

@@ -389,6 +389,34 @@ module.exports = async function (muet) {
       `accompagnement à ${iAcc}, entrée à ${iEnt}`);
   }
 
+  /* ── Le kiosque prend-il la nouvelle version ? ─────────────────────────────
+     Écrit APRÈS avoir failli refaire le défaut du 03/09 : `versionChangee()`
+     existait et n'était appelée nulle part. La fonction marchait, le
+     branchement non — et rien ne l'aurait signalé, puisqu'un écran qui ne se
+     recharge pas ressemble à un écran normal. */
+  t.titre('Rechargement après déploiement');
+  let bv = null;
+  try { bv = await A.executerPage('bento.html', 'postBody', Object.assign({}, D, { version: 'aaa' }), VIDE); }
+  catch (err) { t.dire(false, 'écran mural — version', err.message); }
+  if (bv) {
+    t.dire(bv.dedans('versionVue') === 'aaa',
+      'la version du premier chargement est mémorisée', String(bv.dedans('versionVue')));
+    /* Même version : surtout ne rien faire — sinon l'écran boucle. */
+    let recharge = 0;
+    bv.dedans('location.reload = () => { globalThis.__rechargé = (globalThis.__rechargé||0)+1; }');
+    bv.dedans("S.version='aaa'; versionChangee();");
+    recharge = bv.dedans('globalThis.__rechargé||0');
+    t.dire(recharge === 0, 'version inchangée ⇒ aucun rechargement');
+    /* Version différente : on recharge. */
+    bv.dedans("S.version='bbb'; openK=null; versionChangee();");
+    recharge = bv.dedans('globalThis.__rechargé||0');
+    t.dire(recharge === 1, '🔑 nouvelle version ⇒ l’écran se recharge tout seul');
+    /* Mais jamais au milieu d'un geste. */
+    bv.dedans("versionVue='bbb'; S.version='ccc'; openK='course'; versionChangee();");
+    t.dire(bv.dedans('globalThis.__rechargé||0') === 1,
+      'panneau ouvert ⇒ on attend — perdre une saisie serait pire');
+  }
+
   t.titre('Pages servies et en-têtes de cache');
   /* La racine doit mener au bento : `public/index.html` n'existe plus, et sans
      redirection on tomberait sur un 404 en tapant simplement l'adresse. */
