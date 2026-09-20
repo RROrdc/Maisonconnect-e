@@ -805,8 +805,11 @@ RENDU.menu = ()=>{
         ? `<img class="mini" src="${e(m.soirPhoto)}" alt="" loading="lazy"
              ${ouvrable?`data-recette="${e(m.soirId)}" data-couverts="${e(m.soirCouverts||4)}"`:''}>`
         : (m.soirEmoji?`<span class="mini emo">${e(m.soirEmoji)}</span>`:'')}
-      <div class="t">${e(m.soir||'— à définir —')}
-        <div class="d">midi · ${e(m.midi||'—')}${f&&f.duree?' · '+e(f.duree):''}${
+      <div class="t">${e(m.soir||'— à définir —')}${
+        /* Accompagnement accolé au plat, comme sur le mur : il le complète, il ne
+           le remplace pas — c'est précisément ce qui manquait avant le 20/09. */
+        m.soir&&m.soirGarniture?`<span style="font-weight:400;color:var(--faint)"> + ${e(m.soirGarniture)}</span>`:''}
+        <div class="d">midi · ${e(m.midi||'—')}${m.midiGarniture?' + '+e(m.midiGarniture):''}${f&&f.duree?' · '+e(f.duree):''}${
           m.soirCouvertsChoisi?' · <b>'+e(m.soirCouverts)+' couverts</b>':''}</div>${
           /* Entrée et dessert du SOIR seulement : cette ligne porte le repas du
              soir, et répéter ceux du midi la rendrait illisible. Rien ne
@@ -1156,7 +1159,19 @@ function brancherEcran(){
       return;
     }
     const [genre,id] = n.dataset.suppr.split(':');
-    try{ await api('/api/'+genre+'/'+id,'DELETE'); toast('Supprimé.'); }catch(err){ toast('✗ '+err.message); }
+    /* 🔑 La ligne part TOUT DE SUITE. Avant, le toast annonçait « Supprimé. »
+       pendant que la ligne restait à l'écran : rien ne redessinait, et il fallait
+       attendre l'événement SSE `maj` pour la voir disparaître. Un toast qui dit le
+       contraire de ce qu'on voit fait douter de l'app entière.
+       En cas de refus du serveur, on remet la liste et on le dit. */
+    const CHAMP = { course:'courses', todo:'todos', postit:'postits' }[genre];
+    const avant = CHAMP && S[CHAMP] ? S[CHAMP] : null;
+    if(avant){ S[CHAMP] = avant.filter((x)=>String(x.id)!==String(id)); dessiner(); }
+    try{ await api('/api/'+genre+'/'+id,'DELETE'); toast('Supprimé.'); }
+    catch(err){
+      if(avant){ S[CHAMP] = avant; dessiner(); }
+      toast('✗ '+err.message);
+    }
   });
 
   $$('[data-menu]').forEach((n)=>n.onclick = ()=>changerMenu(lignesMenu().find((m)=>m.id===n.dataset.menu)));
@@ -1439,6 +1454,11 @@ function changerMenu(m){
       <option value="__libre">Autre (écrire)…</option>
     </select>
     <input class="ch" id="a_libre" placeholder="Nom du plat" style="display:none">
+    <label class="et">Accompagnement <span style="font-weight:400;color:var(--faint)">(facultatif)</span></label>
+    <input class="ch" id="a_acc" placeholder="ex. jambon, salade…" value="${e(m.soirGarniture||'')}">
+    <div class="info">S'AJOUTE au plat au lieu de le remplacer : on garde la recette
+      de « gnocchi » et on ajoute « jambon ». Jamais enregistré comme un plat, donc
+      il n'encombre pas la bibliothèque et ne sera pas proposé comme repas du soir.</div>
     <label class="et">On sera combien ?</label>
     <select class="ch" id="a_cvt">${COUVERTS.map((c)=>
       `<option value="${c}" ${c===(m.soirCouverts||4)?'selected':''}>${c} ${c>1?'personnes':'personne'}</option>`).join('')}</select>
@@ -1450,7 +1470,11 @@ function changerMenu(m){
       if(v === '__libre'){ v = d.querySelector('#a_libre').value.trim(); if(!v){ toast('Écris un plat.'); return false; } }
       else if(v.startsWith('!')){ v = v.slice(1); special = true; }
       await api('/api/menu/'+m.id,'PATCH',
-        { [moment]:v, special, [moment+'Couverts']: Number(d.querySelector('#a_cvt').value) });
+        { [moment]:v, special, [moment+'Couverts']: Number(d.querySelector('#a_cvt').value),
+          /* Envoyé même vide : une chaîne vide est une DÉCISION (« plus
+             d'accompagnement »), et c'est `undefined` qui veut dire « n'y touche
+             pas » — la même convention que `majTache` (§ 2 quinvicies bis). */
+          [moment+'Garniture']: d.querySelector('#a_acc').value });
       /* Recharge la semaine AFFICHÉE, pas seulement celle du jour : sans ça, un
          plat saisi pour la semaine prochaine paraîtrait perdu. */
       await apresMenuApp();

@@ -290,6 +290,47 @@ module.exports = async function (muet) {
   t.dire(abimes.length === 0, 'aucune regex n’a perdu son antislash',
     abimes.length ? abimes.join(' · ') : `${aExaminer.length} fichiers examinés`);
 
+  /* ── Une notification passe-t-elle bien par la PORTE UNIQUE ? ──────────────
+     Né du 20/09 : Rémi n'avait pas reçu le rappel « poisson » du vendredi 8 h.
+     Le rappel existait en base et s'affichait sur le mur — mais sur les NEUF
+     endroits qui créaient une notification, un seul poussait vers les
+     téléphones. Les huit autres appelaient `ajouterNotif` directement.
+     Ce contrôle interdit le retour du défaut : hors de la couche données (qui
+     l'implémente) et de `annoncer` (qui l'enrobe), personne n'a le droit
+     d'appeler `ajouterNotif`. Il ne se contourne pas en ajoutant un `pousser()`
+     à côté — c'est la porte qu'on vérifie, pas l'intention. */
+  t.titre('Notifications : une seule porte de sortie');
+  const DROIT = ['donnees/sqlite.js', 'donnees/notion.js', 'donnees/index.js'];
+  const fautifs = [];
+  for (const p of aExaminer) {
+    const rel = path.relative(racineProjet, p).replace(/\\/g, '/');
+    if (DROIT.includes(rel) || rel.startsWith('outils/')) continue;
+    const lignes = fs.readFileSync(p, 'utf8').split('\n');
+    lignes.forEach((l, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(l)) return;              // un commentaire peut en parler
+      if (!/\bajouterNotif\s*\(/.test(l)) return;
+      /* Le repli explicite du vocal est nommé : il est assigné, pas appelé. */
+      if (/typeof annoncer|const poser\s*=/.test(l)) return;
+      /* L'INTÉRIEUR de `annoncer` est la seule exception, et on l'exempte par sa
+         position et non par son nom de fichier : exempter `server.js` en entier
+         rendrait le contrôle aveugle là où il y a le plus de routes. Déplacer cet
+         appel hors de `annoncer`, ou en ajouter un second ailleurs, est détecté. */
+      const dans = lignes.slice(Math.max(0, i - 3), i).some((x) => /^function annoncer\s*\(/.test(x));
+      if (dans) return;
+      fautifs.push(`${rel}:${i + 1}`);
+    });
+  }
+  t.dire(fautifs.length === 0,
+    'aucun appel direct à ajouterNotif hors de la couche données',
+    fautifs.length ? fautifs.join(' · ') : 'tout passe par annoncer()');
+
+  /* Et le garde-fou côté construction : un `creerRappels` sans `annoncer`
+     redonnerait des rappels muets. Il doit REFUSER, pas se replier. */
+  let refuse = false;
+  try { require(path.join(racineProjet, 'rappels.js')).creerRappels({ donnees: {}, config: () => '' }); }
+  catch (e) { refuse = /annoncer/.test(e.message); }
+  t.dire(refuse, 'creerRappels refuse de démarrer sans `annoncer`');
+
   t.titre('Pages servies et en-têtes de cache');
   /* La racine doit mener au bento : `public/index.html` n'existe plus, et sans
      redirection on tomberait sur un 404 en tapant simplement l'adresse. */

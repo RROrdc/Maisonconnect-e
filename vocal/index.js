@@ -85,6 +85,16 @@ function meteoLignes(m, maintenant) {
    Un instantané COMPACT de la maison. Il tient en quelques centaines de mots
    exprès : c'est ce qui permet de répondre à « qu'est-ce qu'on mange ce soir »
    en un seul appel, sans aller-retour, donc sans silence au milieu. */
+/* Un repas se DIT plat + accompagnement, jamais le plat seul. Une seule fonction
+   pour les deux usages ci-dessous : deux formulations auraient fini par diverger,
+   et l'une des deux aurait oublié l'accompagnement. */
+const repasDit = (ligne, moment) => {
+  const plat = (ligne && ligne[moment]) || '';
+  if (!plat) return 'non défini';
+  const acc = (ligne && ligne[moment + 'Garniture']) || '';
+  return acc ? `${plat} avec ${acc}` : plat;
+};
+
 function contexte(donnees, extras = {}) {
   const menu = donnees.lireMenu();
   const aujourdhui = menu.find((m) => (m.jour || '').startsWith(jourCourt())) || {};
@@ -155,8 +165,12 @@ function contexte(donnees, extras = {}) {
   return [
     `Date : ${d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, il est ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}.`,
     `Foyer : ${gens.map((p) => p.nom).join(', ')}.`,
-    `Repas d'aujourd'hui — midi : ${aujourdhui.midi || 'non défini'} ; soir : ${aujourdhui.soir || 'non défini'}.`,
-    `Menu de la semaine : ${menu.map((m) => `${m.jour} soir ${m.soir || '—'}`).join(' | ')}.`,
+    /* L'accompagnement fait partie du repas : sans lui, « qu'est-ce qu'on mange
+       ce soir » répondrait « des gnocchi » alors que l'écran affiche « gnocchi +
+       jambon ». Un assistant qui contredit l'écran détruit la confiance qu'on lui
+       accorde — c'est la leçon du § 2 quindecies, déjà payée sur la météo. */
+    `Repas d'aujourd'hui — midi : ${repasDit(aujourdhui, 'midi')} ; soir : ${repasDit(aujourdhui, 'soir')}.`,
+    `Menu de la semaine : ${menu.map((m) => `${m.jour} soir ${repasDit(m, 'soir')}`).join(' | ')}.`,
     `Courses restantes (${courses.length}) : ${courses.map((c) => c.article).join(', ') || 'aucune'}.`,
     `Tâches en cours (${taches.length}) : ${taches.map((t) => `${t.tache}${t.who ? ' pour ' + t.who : ''}${t.due ? ' avant le ' + t.due : ''}`).join(' ; ') || 'aucune'}.`,
     `Post-it : ${postits.map((p) => `${p.message} (${p.who})`).join(' ; ') || 'aucun'}.`,
@@ -268,7 +282,7 @@ async function comprendre(texte, { donnees, recettes, extras, modele, style, app
 /* ------------------------------------------------------------------ exécution
    Ce que le serveur fait VRAIMENT. Chaque branche valide ses entrées : le
    modèle a beau être contraint par un schéma, il reste une entrée non fiable. */
-function executer(intention, { donnees, personne, style, appellation, roleInterlocuteur }) {
+function executer(intention, { donnees, personne, annoncer, style, appellation, roleInterlocuteur }) {
   const dire = (t) => ({ reponse: t, fait: true });
   const rate = (t) => ({ reponse: t, fait: false });
   /* Les phrases du chemin rapide passent par la même personnalité que celles du
@@ -333,7 +347,14 @@ function executer(intention, { donnees, personne, style, appellation, roleInterl
       if (!titre) return rate("Je n'ai pas saisi quoi annoncer.");
       const gens = donnees.lirePersonnes().map((p) => p.nom);
       const pour = gens.find((n) => donnees.clef(n) === donnees.clef(intention.pour)) || null;
-      donnees.ajouterNotif({ titre, message: intention.message || '', pour, de: personne, niveau: 'info' });
+      /* Par `annoncer` et non `ajouterNotif` : sinon l'annonce s'écrit en base
+         sans être diffusée ni poussée — « préviens tout le monde que je rentre
+         tard » n'apparaîtrait ni sur le mur ni sur un téléphone, ce qui est
+         exactement l'inverse du service demandé. Repli sur l'écriture seule si
+         le serveur ne l'a pas fourni : mieux vaut garder la trace que perdre le
+         message. */
+      const poser = typeof annoncer === 'function' ? annoncer : donnees.ajouterNotif;
+      poser({ titre, message: intention.message || '', pour, de: personne, niveau: 'info' });
       return dire(intention.reponse || 'Tout le monde est prévenu.');
     }
 

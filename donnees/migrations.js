@@ -51,6 +51,18 @@ const COLONNES = {
     midi_dessert_plat: 'INTEGER', midi_dessert_libre: 'TEXT',
     soir_entree_plat: 'INTEGER', soir_entree_libre: 'TEXT',
     soir_dessert_plat: 'INTEGER', soir_dessert_libre: 'TEXT',
+    /* Accompagnement — demandé par Rémi le 20/09 : « parfois on voudrait
+       sélectionner la recette ET ajouter un complément, genre gnocchi et ajouter
+       jambon ».
+       🔑 Ce n'était pas une préférence d'affichage, c'était un BLOCAGE : `*_plat`
+       et `*_libre` sont mutuellement exclusifs depuis l'origine (la lecture donne
+       la priorité à la relation), donc choisir « gnocchi » dans la bibliothèque
+       ne laissait plus aucun champ pour « jambon ».
+       TEXTE SEUL, sans relation, contrairement à l'entrée et au dessert : un
+       accompagnement (« jambon », « salade », « riz ») n'a pas vocation à devenir
+       une fiche avec recette, photo et couverts — c'est le plat principal qui les
+       porte. Un accompagnement qui mérite sa recette se saisit en entrée. */
+    midi_garniture: 'TEXT', soir_garniture: 'TEXT',
   },
   notifications: {
     /* Trouvé par le test, pas par la relecture : la corbeille commune écrit `maj_le`

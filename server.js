@@ -1481,6 +1481,15 @@ app.get('/api/course/suggestions', async (req, res) => {
 
     for (const jour of menu) {
       for (const moment of ['midi', 'soir']) {
+        /* L'accompagnement est traité À PART et AVANT le plat, exprès : il existe
+           aussi sur un plat sans recette ou écrit à la main — or ces cas partent
+           en `continue` juste en dessous. Le mettre après l'aurait rendu invisible
+           précisément quand il est le seul à savoir qu'il faut du jambon.
+           Il n'a pas de quantité : il traverse l'agrégation tel quel, comme
+           « Sel » (§ 2 quinquies). */
+        const acc = String(jour[`${moment}Garniture`] || '').trim();
+        if (acc) entrees.push({ article: acc, plat: (jour[moment] || jour.jour) + ' (accompagnement)' });
+
         const id = jour[`${moment}Id`];
         if (!id) continue;
         const plat = await donnees.platFiche(id);
@@ -1721,15 +1730,35 @@ async function pousserVers(pour, titre, message, saufLui) {
   }
 }
 
+/* 🔑 LA SEULE PORTE par laquelle une notification sort d'ici.
+   Une notification complète, c'est TROIS gestes : écrire (l'historique, qu'un
+   téléphone éteint rattrape), diffuser (l'écran mural et les apps ouvertes) et
+   POUSSER (les téléphones fermés). Les trois étaient dispersés, et le 20/09 le
+   compte a été fait : sur les neuf endroits qui créaient une notification, UN
+   SEUL faisait les trois. Les huit autres — échéances de tâches, anniversaires,
+   devoirs du soir, cours annulé, emploi du temps remanié, message de
+   l'établissement, repas du soir non prévu, annonce vocale — écrivaient en base
+   et s'arrêtaient là. Autrement dit : le rappel « poisson, pour aujourd'hui »
+   du vendredi 18/09 à 8 h existait en base, s'affichait sur le mur, et n'a
+   jamais fait vibrer le téléphone de Rémi.
+
+   D'où cette fonction plutôt qu'un `pousser()` ajouté dans neuf appels : poser
+   le geste dans chaque appelant, c'est huit occasions de l'oublier au neuvième.
+   Même raisonnement que `ClientED.lire()` pour le renouvellement du jeton
+   (§ 2 quatervicies bis). Elle est INJECTÉE dans `rappels.js` et `vocal/`, qui
+   n'ont donc plus à connaître ni la diffusion ni le push. */
+function annoncer(champs) {
+  const n = donnees.ajouterNotif(champs);
+  diffuser('notif', n);
+  /* Sans `await` : l'appelant ne doit pas attendre Apple, et un service de push
+     lent ne doit pas retarder l'affichage sur l'écran mural, qui est déjà fait. */
+  pousser(n).catch(() => { /* déjà journalisé */ });
+  return n;
+}
+
 app.post('/api/notif', (req, res) => {
   try {
-    const n = donnees.ajouterNotif({ ...req.body, de: req.body.de || qui(req) });
-    /* Écrit en base PUIS diffusé : un téléphone éteint retrouvera l'historique. */
-    diffuser('notif', n);
-    /* Et poussé vers les téléphones fermés. Sans `await` : l'appelant ne doit
-       pas attendre Apple, et un service de push lent ne doit pas retarder
-       l'affichage sur l'écran mural, qui est déjà fait. */
-    pousser(n).catch(() => { /* déjà journalisé */ });
+    const n = annoncer({ ...req.body, de: req.body.de || qui(req) });
     majFaite('notif', req);
     res.json({ notif: n });
   } catch (e) { res.status(400).json({ error: messageClair(e) }); }
@@ -1781,7 +1810,7 @@ app.post('/api/vocal', async (req, res) => {
       modele: config('ia_modele_vocal') || config('ia_modele'),
       ...style,
     });
-    const r = vocal.executer(intention, { donnees, personne, ...style });
+    const r = vocal.executer(intention, { donnees, personne, annoncer, ...style });
 
     if (r.fait) majFaite('vocal', req);
     diffuser('notif', {
@@ -2519,7 +2548,7 @@ donnees.purgerSessions?.();
 amorcerReglages();
 recettes.definirModele(config('ia_modele'));
 
-const rappels = creerRappels({ donnees, diffuser, config });
+const rappels = creerRappels({ donnees, config, annoncer });
 const compositeur = creerMenu({ donnees });
 const presence = creerPresence({ donnees, config });
 

@@ -381,6 +381,11 @@ function lireMenu(ref) {
       midiDessertId: m.n_midi_dessert ? sid(m.midi_dessert_plat) : '',
       soirEntreeId: m.n_soir_entree ? sid(m.soir_entree_plat) : '',
       soirDessertId: m.n_soir_dessert ? sid(m.soir_dessert_plat) : '',
+      /* Accompagnement : du texte, pas une relation — aucune jointure à ajouter,
+         donc aucune vignette ni recette à lui chercher. Il s'AJOUTE au plat au
+         lieu de le remplacer, ce qui est tout l'objet de la demande. */
+      midiGarniture: m.midi_garniture || '',
+      soirGarniture: m.soir_garniture || '',
       };
     });
 }
@@ -424,6 +429,17 @@ function definirMenu(id, corps) {
       if (t) { if (special) li = t; else pl = platId(t); }
       ecrire(`UPDATE menu SET ${col}_plat = ?, ${col}_libre = ?, maj_le = datetime('now') WHERE id = ?`,
         pl, li, id);
+    }
+    /* Accompagnement : TEXTE, et surtout jamais `platId()`.
+       🔑 Le passer par `platId()` créerait une fiche « jambon » dans la
+       bibliothèque, qui se retrouverait ensuite PROPOSÉE comme plat du soir par
+       `menu.js`. C'est le piège de la pollution de bibliothèque, déjà payé deux
+       fois avec les champs libres (§ 2 quater) — ici il est écarté par
+       construction, pas par un drapeau qu'on peut oublier de passer. */
+    const g = corps[champ + 'Garniture'];
+    if (typeof g === 'string') {
+      ecrire(`UPDATE menu SET ${champ}_garniture = ?, maj_le = datetime('now') WHERE id = ?`,
+        g.trim() || null, id);
     }
   }
   const ligne = un(`SELECT date FROM menu WHERE id = ?`, id);

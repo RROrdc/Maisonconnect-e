@@ -223,6 +223,11 @@
   .repas .p{display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .repas .m{display:block;font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .repas .p.rien{color:var(--faint);font-weight:400}
+  /* Accompagnement : DANS la ligne du plat, pas en dessous. La mise en page
+     portrait a été validée par Rémi ; une ligne de plus par jour lui coûterait
+     sept lignes, alors qu'un à-côté se lit très bien accolé au plat. Plus pâle
+     et plus petit pour que le plat reste ce qu'on lit en premier. */
+  .repas .acc{font-weight:400;font-size:13px;color:var(--faint)}
 
   /* ---------- agenda ---------- */
   /* Cases à HAUTEUR FIXE, surtout pas `aspect-ratio:1` : sur une carte large, six rangées
@@ -1327,8 +1332,10 @@ function render(){
       <span class="pic ${row.soirPhoto?'aphoto':''} ${ouvrable?'clic':''}"
             ${ouvrable?`onclick="event.stopPropagation();ouvrirRecette('${row.soirId}',${row.soirCouverts||4})"`:''}
             ${ouvrable?'title="Voir la recette"':''}>${vignette}</span>
-      <span class="tx"><span class="p ${row.soir?'':'rien'}">${esc(row.soir)||'à définir'}</span>
-        ${row.midi?`<span class="m">midi · ${esc(row.midi)}</span>`:''}</span></div>`;
+      <span class="tx"><span class="p ${row.soir?'':'rien'}">${esc(row.soir)||'à définir'}${
+          row.soir&&row.soirGarniture?`<span class="acc"> + ${esc(row.soirGarniture)}</span>`:''}</span>
+        ${row.midi?`<span class="m">midi · ${esc(row.midi)}${
+          row.midiGarniture?' + '+esc(row.midiGarniture):''}</span>`:''}</span></div>`;
   }).join('');
 
   // courses — ce qui reste à prendre d'abord (la hauteur est limitée)
@@ -1638,7 +1645,43 @@ function askDel(btn,kind,id){
   clearTimeout(armTimer);armTimer=setTimeout(()=>{if(armed===btn){resetDel(btn);armed=null;}},4000);
 }
 function resetDel(b){b.classList.remove('arm');b.innerHTML=ico('x');}
-async function doDel(kind,id){try{await api('/api/'+kind+'/'+id,'DELETE');await refresh();}catch(e){showErr(e.message);}}
+
+/* Où vit chaque genre dans `S` : sans ça on ne peut pas retirer la ligne
+   localement, et il faut attendre un aller-retour complet pour voir l'effet. */
+const LISTES={course:'courses',todo:'todos',postit:'postits'};
+
+/* 🔑 La ligne part TOUT DE SUITE, l'appel réseau suit.
+   Mesuré le 20/09 : le serveur répond en 27 ms et `/api/data` en 150 ms — donc
+   la lenteur ressentie (« la suppression de post-it est assez longue ») n'était
+   pas le serveur. C'était l'enchaînement : après le 2e toucher, on attendait le
+   DELETE, PUIS un rechargement complet (75 Ko + re-rendu de toute la page), PUIS
+   un SECOND rechargement déclenché par notre propre événement SSE `maj` 120 ms
+   plus tard. Deux re-rendus complets sur un Raspberry, pendant lesquels la ligne
+   supprimée restait affichée.
+   Maintenant : on retire de `S`, on redessine (local, instantané, et les
+   compteurs des tuiles suivent), et on laisse le `maj` du serveur confirmer.
+   Si le serveur refuse, la ligne revient au rechargement suivant ET l'erreur
+   s'affiche — on ne fait donc jamais disparaître pour de bon ce qui n'est pas
+   supprimé. */
+async function doDel(kind,id){
+  const champ=LISTES[kind];
+  const avant=champ&&S[champ]?S[champ]:null;
+  if(avant){
+    S[champ]=avant.filter(x=>String(x.id)!==String(id));
+    render();if(openK)drawSheet(openK);
+  }
+  try{ await api('/api/'+kind+'/'+id,'DELETE'); }
+  catch(e){
+    if(avant){S[champ]=avant;render();if(openK)drawSheet(openK);}
+    showErr(e.message);
+    return;
+  }
+  /* Pas de `refresh()` ici : le serveur diffuse `maj`, qui en déclenche un —
+     en appeler un de plus ferait deux rechargements pour une seule suppression.
+     Les genres sans liste locale (un plat, par exemple) n'ont rien vu bouger :
+     pour eux on recharge, sinon rien ne se passerait à l'écran. */
+  if(!avant) await refresh();
+}
 async function viderPris(){try{const r=await api('/api/course/vider','POST');await refresh();showErr(r.supprimes+' article(s) retiré(s)');}catch(e){showErr(e.message);}}
 
 /* ---------- Courses depuis le menu ----------
@@ -1857,12 +1900,18 @@ function menuRow(m,champ){
    accepte un nom libre, dans un seul champ. Un déroulant obligerait à choisir
    entre les deux, et « compote » n'a pas vocation à devenir une fiche. */
 function menuExtras(m,champ){
-  const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'';
-  if(!m[champ] && !e && !d) return '';
+  const e=m[champ+'Entree']||'', d=m[champ+'Dessert']||'', g=m[champ+'Garniture']||'';
+  if(!m[champ] && !e && !d && !g) return '';
   const ch=(part,val,ph)=>`<input class="inline xtra" list="platsDispo" placeholder="${ph}"
       value="${esc(val)}" onchange="setMenu('${m.id}','${champ}${part}',this.value)">`;
+  /* Ordre du repas : entrée, puis le plat et SON accompagnement, puis dessert.
+     L'accompagnement n'a PAS de `list="platsDispo"` : proposer la bibliothèque
+     ici inviterait à y mettre un second plat, alors que le champ existe pour un
+     à-côté (« jambon », « salade ») — et rien n'y crée de fiche. */
+  const acc=`<input class="inline xtra" placeholder="+ accompagnement…"
+      value="${esc(g)}" onchange="setMenu('${m.id}','${champ}Garniture',this.value)">`;
   return `<div class="mrow xrow"><span class="ml"></span>
-    ${ch('Entree',e,'entrée…')}${ch('Dessert',d,'dessert…')}</div>`;
+    ${ch('Entree',e,'entrée…')}${acc}${ch('Dessert',d,'dessert…')}</div>`;
 }
 
 /* ---------- Proposer la semaine ----------

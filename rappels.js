@@ -27,16 +27,28 @@ const JOURS_LONGS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendred
    fâché ne doit pas empêcher les anniversaires de partir. */
 const mouvements = require('./ecole/mouvements');
 
-function creerRappels({ donnees, diffuser, config }) {
+function creerRappels({ donnees, config, annoncer }) {
   const aujourdhui = () => donnees.ymd(new Date());
 
-  /* Notification : écrite en base PUIS diffusée. Un téléphone éteint retrouvera
-     l'historique ; un téléphone ouvert la voit tout de suite. */
-  function prevenir({ titre, message, pour, niveau }) {
-    const n = donnees.ajouterNotif({ titre, message: message || '', pour: pour || null,
-      de: 'Maison', niveau: niveau || 'info' });
-    diffuser('notif', n);
-    return n;
+  /* 🔑 `annoncer` est OBLIGATOIRE, et on le vérifie ici plutôt que de se replier
+     en silence sur l'écriture seule. C'est exactement le défaut qu'on répare :
+     une notification qui s'écrit sans être poussée ne se remarque pas — elle
+     ressemble à un téléphone qui n'a rien reçu, et on cherche la panne du côté
+     du téléphone. Mieux vaut un serveur qui refuse de démarrer qu'un rappel
+     muet pendant une semaine. */
+  if (typeof annoncer !== 'function') {
+    throw new Error('creerRappels : `annoncer` manquant — les rappels ne seraient ni diffusés ni poussés.');
+  }
+
+  /* LA SEULE porte de sortie des notifications de ce module. Écrit, diffuse et
+     pousse (voir `annoncer` dans server.js). Tous les rappels passent par ici :
+     avant le 20/09, six d'entre eux appelaient `ajouterNotif` directement et
+     n'étaient donc NI diffusés en direct NI poussés sur les téléphones — un
+     message de l'établissement ou un cours annulé n'existait que pour qui
+     pensait à ouvrir l'onglet Notifications. */
+  function prevenir({ titre, message, pour, niveau, de }) {
+    return annoncer({ titre, message: message || '', pour: pour || null,
+      de: de || 'Maison', niveau: niveau || 'info' });
   }
 
   /* ---------------------------------------------------------------- anniversaires */
@@ -266,7 +278,7 @@ function creerRappels({ donnees, diffuser, config }) {
          formulations auraient fini par se contredire — la notification disant
          « absence » là où le mur dit « retard ». */
       const quoi = v.quoi || 'Vie scolaire';
-      await donnees.ajouterNotif({
+      prevenir({
         titre: `🏫 ${v.eleve} — ${quoi}`,
         message: [v.date, v.motif].filter(Boolean).join(' · ') || 'Voir l’espace scolaire.',
         pour: null,
@@ -317,7 +329,7 @@ function creerRappels({ donnees, diffuser, config }) {
           deja.add(cle);
           if (amorcage || force === 'muet') continue;
           bilan.annules++;
-          await donnees.ajouterNotif({
+          prevenir({
             titre: `🚫 ${c.eleve} — cours annulé`,
             message: [c.matiere, c.jour, c.debut && ('à ' + c.debut)].filter(Boolean).join(' · '),
             /* Tout le monde : c'est souvent un parent qui doit s'organiser. */
@@ -356,14 +368,14 @@ function creerRappels({ donnees, diffuser, config }) {
         if (force !== 'muet' && bouges.length) {
           if (bouges.length > PLAFOND) {
             bilan.mouvements = 1;
-            await donnees.ajouterNotif({
+            prevenir({
               titre: '🔄 Emploi du temps remanié',
               message: `${bouges.length} changements d’horaire. Voir les emplois du temps sur l’écran.`,
               pour: null, de: 'École', niveau: 'alerte',
             });
           } else for (const m of bouges) {
             bilan.mouvements = (bilan.mouvements || 0) + 1;
-            await donnees.ajouterNotif({
+            prevenir({
               titre: `🔄 ${m.eleve} — emploi du temps modifié`,
               message: [mouvements.direMouvement(m), m.jour].filter(Boolean).join(' · '),
               /* Tout le monde : c'est souvent un parent qui doit s'organiser —
@@ -391,7 +403,7 @@ function creerRappels({ donnees, diffuser, config }) {
           deja.add(cle);
           if (amorcage || force === 'muet') continue;
           bilan.messages++;
-          await donnees.ajouterNotif({
+          prevenir({
             titre: `✉️ ${m.eleve ? m.eleve + ' — ' : ''}message de l’établissement`,
             /* Le sujet suffit : le corps peut faire deux pages, et une
                notification qu'on ne peut pas lire d'un coup d'œil est ratée. */
@@ -426,7 +438,7 @@ function creerRappels({ donnees, diffuser, config }) {
        qui sont des décisions. */
     if (!m || (m.soir && String(m.soir).trim())) return { rien: true };
 
-    await donnees.ajouterNotif({
+    prevenir({
       titre: '🍽️ Ce soir, rien n’est prévu',
       message: 'Le repas du soir n’est pas renseigné. Encore temps d’y penser.',
       pour: null, de: 'Écran', niveau: 'info',

@@ -67,6 +67,46 @@ module.exports = async function (muet) {
       p6.j.plat.misAEchelle ? 'recalculée' : 'refusée — aucune base de portions');
   }
 
+  /* ── Accompagnement (20/09) ────────────────────────────────────────────────
+     Demandé par Rémi : « sélectionner la recette ET ajouter un complément, genre
+     gnocchi et ajouter jambon ». Ce n'était pas cosmétique : `*_plat` et
+     `*_libre` sont exclusifs, donc choisir un plat de la bibliothèque ne laissait
+     AUCUN champ pour l'à-côté.
+     Le piège à garder fermé est la pollution de la bibliothèque : un
+     accompagnement passé par `platId()` deviendrait une fiche « jambon », que
+     `menu.js` proposerait ensuite comme plat du soir. */
+  t.titre('Accompagnement du repas');
+  const jourAcc = (S.menu || [])[0];
+  if (!jourAcc) {
+    t.dire(false, 'un jour de menu pour l’essai');
+  } else {
+    const platsAvant = (S.dishes || []).length;
+    const accAvant = jourAcc.soirGarniture || '';
+    const w = await A.api('/api/menu/' + jourAcc.id, 'PATCH', { soirGarniture: 'ZZ-essai jambon' });
+    t.dire(w.statut === 200 && w.j.menu.soirGarniture === 'ZZ-essai jambon',
+      'l’accompagnement s’écrit et se relit', w.j.menu && w.j.menu.soirGarniture);
+    /* Il s'AJOUTE : le plat ne doit pas avoir bougé d'un caractère. */
+    t.dire(w.j.menu.soir === (jourAcc.soir || ''),
+      'le plat est intact — l’accompagnement ne le remplace pas', w.j.menu.soir || '(vide)');
+
+    const apres = await A.api('/api/data');
+    t.dire((apres.j.dishes || []).length === platsAvant
+      && !(apres.j.dishes || []).some((d) => /ZZ-essai/.test(d)),
+      'AUCUNE fiche créée dans la bibliothèque', `${platsAvant} plats avant et après`);
+
+    /* Et il remonte dans les courses proposées : sans ça, personne n'achèterait
+       le jambon. Proposé, jamais ajouté — comme tout le reste ici. */
+    const sugAcc = await A.api('/api/course/suggestions');
+    t.dire((sugAcc.j.suggestions || []).some((s) => /ZZ-essai jambon/.test(s.article)),
+      'proposé aux courses (sans rien y ajouter)');
+
+    /* Remis à l'état d'avant : ces tests tournent sur les vraies données. */
+    await A.api('/api/menu/' + jourAcc.id, 'PATCH', { soirGarniture: accAvant });
+    const remis = await A.api('/api/menu/' + jourAcc.id, 'PATCH', { soirGarniture: accAvant });
+    t.dire((remis.j.menu.soirGarniture || '') === accAvant, 'remis à l’état d’origine',
+      accAvant || '(vide)');
+  }
+
   t.titre('Courses depuis le menu (ne crée rien)');
   const sug = await A.api('/api/course/suggestions');
   t.dire(sug.statut === 200, 'GET /api/course/suggestions',
