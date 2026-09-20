@@ -48,8 +48,13 @@ const FRUITS = ['pomme', 'pommes', 'poire', 'poires', 'figue', 'figues', 'quetsc
   'framboise', 'framboises', 'abricot', 'abricots', 'peche', 'peches', 'raisin', 'raisins',
   'myrtille', 'myrtilles', 'cerise', 'cerises', 'banane', 'rhubarbe', 'citron meringue'];
 
-/* Ce qui ouvre un repas. */
-const ENTREES = ['salade verte', 'taboule', 'bruschetta', 'bruchetta', 'carpaccio', 'terrine',
+/* Ce qui ouvre un repas.
+   ⚠️ « salade verte » a été RETIRÉE après le premier essai : elle apparaît
+   surtout en ACCOMPAGNEMENT en fin de nom, et classait « Cake salé
+   thon-poivron-olives et salade verte » en entrée. Un mot qui décrit la garniture
+   ne dit rien du plat — c'est la même erreur que « jus d'orange » rangé au rayon
+   fruits (§ 2 nonies). Les vraies salades-repas partent à l'IA. */
+const ENTREES = ['taboule', 'bruschetta', 'bruchetta', 'carpaccio', 'terrine',
   'houmous', 'guacamole', 'tapenade', 'gaspacho', 'veloute', 'melon', 'tomates mozza',
   'tomate mozza', 'mozzarella', 'oeufs mimosa', 'rillettes', 'toasts', 'tartare de'];
 
