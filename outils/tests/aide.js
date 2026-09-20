@@ -13,6 +13,7 @@
       courses vidée et une journée de planning dupliquée).
    2. **Jamais de `curl`** : sous Git Bash il abîme les accents dans le corps
       JSON, ce qui a déjà fait croire à un bug d'encodage inexistant. */
+const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
@@ -110,4 +111,98 @@ async function ecouterFlux() {
   return { recus, fermer: () => ctrl.abort() };
 }
 
-module.exports = { BASE, PORT, MARQUE, api, session, serveurPret, compteur, attendre, ymd, ecouterFlux };
+/* ── Banc de rendu ────────────────────────────────────────────────────────
+   Vit ICI et non dans une série : ce n'est pas un outil d'école, c'est le
+   seul moyen de vérifier qu'une donnée arrive VRAIMENT à l'écran. Il a été
+   écrit pour les devoirs (03/09), il sert depuis à la suppression et au menu ;
+   le laisser dans ecole.js aurait fini par en faire une seconde copie, ce que
+   ce projet paie chaque fois (rayons de courses, pictogrammes). */
+/* Exécute TOUS les <script> d'une page dans un DOM factice, avec une fausse
+   API. Ce n'est pas un navigateur — la mise en page n'est pas vérifiée (aucune
+   capture d'écran sur ce poste, § 2 sexies) — mais le CHEMIN des données l'est,
+   et c'est précisément là que se logent les défauts qu'aucun test d'API ne voit. */
+async function executerPage(chemin, cibleId, donnees, ecole) {
+  const vm2 = require('vm');
+  const page = fs.readFileSync(path.join(__dirname, '..', '..', 'public', chemin), 'utf8');
+  const els = {};
+  const faux = (id) => (els[id] = els[id] || {
+    id, innerHTML: '', textContent: '', value: '', content: '', style: {}, dataset: {},
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    appendChild() {}, addEventListener() {}, setAttribute() {}, removeAttribute() {},
+    insertAdjacentHTML() {}, remove() {}, focus() {}, blur() {}, scrollIntoView() {},
+    closest: () => null, getBoundingClientRect: () => ({ width: 100, height: 100 }),
+    getContext: () => new Proxy({}, { get: () => () => {} }),
+    querySelector: () => faux(id + '>q'), querySelectorAll: () => [],
+  });
+  const doc = {
+    getElementById: faux, createElement: () => faux('neuf'), addEventListener() {},
+    documentElement: Object.assign(faux('html'), { dataset: {}, style: {} }),
+    body: faux('body'), head: faux('head'),
+    /* ⚠️ L'app passe par $('#ecran') — querySelector — là où le bento appelle
+       getElementById. Sans cette équivalence les deux pages n'écrivent pas dans
+       le même élément factice, et le test échoue pour une raison de banc. */
+    querySelector: (q) => faux(/^#[\w-]+$/.test(q) ? q.slice(1) : 'sel:' + q),
+    querySelectorAll: () => [],
+  };
+  const ctx2 = {
+    console: { log() {}, warn() {}, error() {} }, document: doc, JSON, Math, Date,
+    isNaN, parseInt, parseFloat, String, Number, Object, Array, RegExp, Error, Promise,
+    Set, Map, encodeURIComponent, decodeURIComponent, setImmediate,
+    window: {
+      addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+      location: { protocol: 'http:', reload() {} }, innerWidth: 1080, innerHeight: 1920,
+    },
+    navigator: { userAgent: 'test', language: 'fr-FR' },
+    localStorage: {
+      /* L'app ouvre le dernier onglet consulté : on la place sur « Devoirs »,
+         sinon on juge l'accueil, qui ne montre volontairement que l'échéance
+         courte — et le test échouerait pour la mauvaise raison. */
+      _d: { 'maison-jeton': 'J', 'maison-personne': (donnees.moi && donnees.moi.nom) || 'Martial',
+        'maison-onglet': donnees.__onglet || 'devoirs' },
+      getItem(k) { return this._d[k] === undefined ? null : this._d[k]; },
+      setItem(k, v) { this._d[k] = v; }, removeItem(k) { delete this._d[k]; },
+    },
+    setInterval: () => 0, setTimeout: (fn) => { if (typeof fn === 'function') fn(); return 0; },
+    clearInterval() {}, clearTimeout() {}, requestAnimationFrame: () => 0,
+    EventSource: function () { this.addEventListener = () => {}; this.close = () => {}; },
+    SpeechSynthesisUtterance: function () {},
+    speechSynthesis: { getVoices: () => [], speak() {}, cancel() {} },
+    /* ⚠️ /api/ecole répond APRÈS /api/data, exprès : c'est cet ordre-là qui a
+       révélé la course du 03/09. Un banc où l'école répond en premier passe au
+       vert alors que l'écran reste vide — le test aurait menti. */
+    fetch: async (url) => {
+      const u = String(url);
+      if (u.indexOf('/api/ecole') >= 0) {
+        await new Promise((r) => setImmediate(r));
+        await new Promise((r) => setImmediate(r));
+      }
+      return { ok: true, json: async () => {
+        if (u.indexOf('/api/ecole') >= 0) return ecole;
+        if (u.indexOf('/api/data') >= 0) return donnees;
+        if (u.indexOf('/api/notif') >= 0) return { notifs: [] };
+        if (u.indexOf('/api/planning/mien') >= 0) return { creneaux: [] };
+        return {};
+      } };
+    },
+  };
+  ctx2.globalThis = ctx2; ctx2.self = ctx2; ctx2.location = ctx2.window.location;
+  vm2.createContext(ctx2);
+  const erreurs = [];
+  const scripts = page.match(/<script(?![^>]*\ssrc=)[^>]*>[\s\S]*?<\/script>/g) || [];
+  for (const bloc of scripts) {
+    const code = bloc.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '');
+    try { vm2.runInContext(code, ctx2, { timeout: 8000 }); }
+    catch (e) { erreurs.push(e.message); }
+  }
+  /* ⚠️ Les scripts lancent des fetch : on rend la main assez de fois pour que
+     les promesses se dénouent, sinon on lit l'écran AVANT le chargement et le
+     test échoue pour une raison qui n'a rien à voir avec le produit. */
+  for (let i = 0; i < 40; i++) await new Promise((r) => setImmediate(r));
+  /* `let` en tête de script crée une liaison lexicale, PAS une propriété du
+     contexte : on ne peut pas lire ctx.S depuis l'extérieur. On rend donc une
+     fonction qui évalue DANS le contexte — seule façon d'interroger la page. */
+  const dedans = (expr) => vm2.runInContext(expr, ctx2);
+  return { erreurs, html: (els[cibleId] && els[cibleId].innerHTML) || '', ctx: ctx2, dedans };
+}
+
+module.exports = { BASE, PORT, MARQUE, api, session, serveurPret, compteur, attendre, ymd, ecouterFlux, executerPage };

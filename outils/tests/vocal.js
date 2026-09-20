@@ -272,12 +272,21 @@ module.exports = async function (muet) {
 
   t.titre('Banc d’essai du ton (n’écrit rien)');
   const s = await A.session('Rémi');
+  /* ⚠️ Ce contrôle cherchait « aucun article ne contient beurre ». Il est tombé
+     le 20/09 — parce que Rémi avait mis du beurre sur la liste la veille. Il
+     mesurait donc la liste de courses de la famille, pas la promesse du code.
+     On compare maintenant les identifiants AVANT et APRÈS : l'invariant réel est
+     « l'essai n'ajoute RIEN », et il se vérifie quoi que contienne la liste.
+     Même confusion qu'au § 2 untricies, où deux tests s'appuyaient sur ce que la
+     famille avait saisi au lieu de ce que le code garantit. */
+  const avant = new Set(((await A.api('/api/data')).j.courses || []).map((c) => String(c.id)));
   const essai = await s.api('/api/admin/voix/essai', 'POST',
     { texte: 'ajoute du beurre aux courses', personne: 'Rémi', humour: 'jamais' });
   t.dire(essai.statut === 200 && !!essai.j.reponse, 'POST /api/admin/voix/essai', essai.j.reponse);
-  const courses = (await A.api('/api/data')).j.courses || [];
-  t.dire(!courses.some((c) => /beurre/i.test(c.article)),
-    '🔑 l’essai n’a RIEN écrit dans les courses');
+  const apresEssai = ((await A.api('/api/data')).j.courses || []);
+  const nouveaux = apresEssai.filter((c) => !avant.has(String(c.id)));
+  t.dire(nouveaux.length === 0, '🔑 l’essai n’a RIEN écrit dans les courses',
+    nouveaux.length ? nouveaux.map((c) => c.article).join(', ') : `${apresEssai.length} articles, aucun de plus`);
   const essaiVide = await s.api('/api/admin/voix/essai', 'POST', { texte: '  ' });
   t.dire(essaiVide.statut === 400, 'phrase vide refusée');
   await s.fermer();

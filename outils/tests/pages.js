@@ -331,6 +331,54 @@ module.exports = async function (muet) {
   catch (e) { refuse = /annoncer/.test(e.message); }
   t.dire(refuse, 'creerRappels refuse de démarrer sans `annoncer`');
 
+  /* ── Ce qui arrive VRAIMENT à l'écran ─────────────────────────────────────
+     Deux retours du 20/09 se jouaient dans la page, pas dans l'API : « la
+     suppression de post-it est assez longue » et « on voudrait sélectionner la
+     recette ET ajouter un complément ». Aucun test d'API ne les aurait vus. */
+  t.titre('Suppression instantanée et accompagnement (rendu)');
+  const MENU_T = [{ id: 'm1', jour: 'Lundi', date: '2026-09-21', soir: 'Gnocchi',
+    soirGarniture: 'jambon', midi: 'Salade', midiGarniture: '', soirCouverts: 4 }];
+  const D = { courses: [], todos: [], postits: [{ id: 'p1', message: 'ZZ mot d’essai', who: 'Rémi' }],
+    menu: MENU_T, plats: [], dishes: [], agenda: [],
+    plannings: { exemple: false, personnes: [] }, meteo: null, saint: '', news: [],
+    feries: [], anniversaires: { aujourdhui: [], prochains: [] }, personnes: [],
+    rayons: [], reglages: {} };
+  const VIDE = { eleves: [], devoirs: [], cours: [], notes: [], messages: [], modules: {},
+    soucis: [], aujourdhui: { presents: null, restants: 0, faits: 0, horizon: {}, devoirs: [] },
+    mien: { devoirs: [], parEleve: {}, restants: 0, faits: 0 } };
+
+  let bg = null;
+  try { bg = await A.executerPage('bento.html', 'postBody', D, VIDE); }
+  catch (err) { t.dire(false, 'écran mural — le script s’exécute', err.message); }
+  if (bg) {
+    t.dire(/ZZ mot d’essai/.test(bg.html), 'le post-it est bien à l’écran au départ');
+    /* 🔑 On lance `doDel` SANS l'attendre : l'invariant est que la ligne part
+       AVANT l'aller-retour réseau. Si le retrait local disparaissait, ce contrôle
+       tomberait — et l'attente de 300 ms reviendrait sans que personne le voie. */
+    bg.dedans("doDel('postit','p1')");
+    t.dire(bg.dedans('S.postits.length') === 0,
+      '🔑 la liste locale a déjà perdu la ligne, avant toute réponse du serveur');
+    t.dire(!/ZZ mot d’essai/.test(bg.dedans("document.getElementById('postBody').innerHTML")),
+      'et l’écran est déjà redessiné sans elle');
+  }
+
+  let bm = null;
+  try { bm = await A.executerPage('bento.html', 'menuBody', D, VIDE); }
+  catch (err) { t.dire(false, 'écran mural — menu', err.message); }
+  if (bm) {
+    t.dire(/Gnocchi/.test(bm.html) && /jambon/.test(bm.html),
+      '🔑 le plat ET son accompagnement arrivent à la tuile', 'le plat seul serait incomplet');
+    /* Sur la MÊME ligne : une ligne de plus par jour coûterait sept lignes à une
+       mise en page validée. On vérifie donc qu'aucune ligne n'a été ajoutée. */
+    t.dire((bm.html.match(/class="repas/g) || []).length === 7,
+      'toujours sept lignes — l’accompagnement n’en ajoute aucune');
+    /* Et le champ de saisie existe, sinon on ne peut rien y mettre. */
+    let panneau = '';
+    try { panneau = bm.dedans("body('menu')"); } catch (e) { panneau = 'ERREUR ' + e.message; }
+    t.dire(/Garniture/.test(panneau) && /accompagnement/i.test(panneau),
+      'le panneau Menu offre le champ', /ERREUR/.test(panneau) ? panneau : 'présent');
+  }
+
   t.titre('Pages servies et en-têtes de cache');
   /* La racine doit mener au bento : `public/index.html` n'existe plus, et sans
      redirection on tomberait sur un 404 en tapant simplement l'adresse. */
